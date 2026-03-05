@@ -1,0 +1,37 @@
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:HKA_Handball.Controls"
+             x:Class="HKA_Handball.GamePage"
+             Title="HKA Handball">
+    <Grid>
+        <GraphicsView x:Name="GameView"
+                      HorizontalOptions="FillAndExpand"
+                      VerticalOptions="FillAndExpand">
+            <GraphicsView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnTapped" />
+            </GraphicsView.GestureRecognizers>
+        </GraphicsView>
+
+        <!-- Simplified control bar -->
+        <Grid Padding="10" RowDefinitions="Auto" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" VerticalOptions="End" BackgroundColor="#33000000" ColumnSpacing="8">
+            <Button x:Name="PassUpButton" Text="Pass upp" Clicked="OnPassUp" />
+            <Button x:Name="PassDownButton" Grid.Column="1" Text="Pass ner" Clicked="OnPassDown" />
+            <Button Grid.Column="2" Text="Shoot" Clicked="OnShoot" />
+            <Button x:Name="SwitchDefenderButton" Grid.Column="3" Text="Byt förs." Clicked="OnSwitchDefender" />
+            <Grid x:Name="DefenderSideButtons" Grid.Column="4" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,Auto,Auto" RowSpacing="4" ColumnSpacing="4">
+                <Button Text="↑" Pressed="OnDefenderSideUpPressed" Released="OnDefenderSideReleased" />
+                <Button Grid.Row="1" Text="↓" Pressed="OnDefenderSideDownPressed" Released="OnDefenderSideReleased" />
+                <Button Grid.Column="1" Text="↗" Pressed="OnDefenderDiagUpPressed" Released="OnDefenderDiagReleased" />
+                <Button Grid.Column="1" Grid.Row="1" Text="↘" Pressed="OnDefenderDiagDownPressed" Released="OnDefenderDiagReleased" />
+                <Button Grid.Column="2" Grid.Row="0" Grid.RowSpan="2" Text="→" Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
+            </Grid>
+            <Grid x:Name="AttackDiagonalButtons" Grid.Column="5" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,Auto" RowSpacing="4" ColumnSpacing="4">
+                <Button Text="↗" Pressed="OnAttackDiagUpPressed" Released="OnAttackDiagReleased" />
+                <Button Grid.Row="1" Text="↘" Pressed="OnAttackDiagDownPressed" Released="OnAttackDiagReleased" />
+                <Button Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="→" Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
+            </Grid>
+            <Label Grid.Column="6" x:Name="StatusLabel" TextColor="White" FontSize="12" VerticalTextAlignment="Center" />
+            <controls:JoystickView Grid.Column="7" WidthRequest="120" HeightRequest="120" x:Name="Joystick" />
+        </Grid>
+    </Grid>
+</ContentPage>

@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:HKA_Handball"
+             x:Class="HKA_Handball.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- HK Aranäs inspired palette: Blue & White -->
+            <Color x:Key="AranasBlue">#003DA5</Color>
+            <Color x:Key="AranasBlueLight">#2E7CF6</Color>
+            <Color x:Key="AranasWhite">#FFFFFF</Color>
+            <Color x:Key="FieldGreen">#1B5E20</Color>
+
+            <Style TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{StaticResource AranasBlue}" />
+                <Setter Property="TextColor" Value="{StaticResource AranasWhite}" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="12,8" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
