@@ -1,0 +1,36 @@
+name: Build Android
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+        dotnet-quality: 'preview'
+
+    - name: Install MAUI workload
+      run: dotnet workload install maui-android
+
+    - name: Restore
+      run: dotnet restore HKA_Handball/HKA_Handball.csproj
+
+    - name: Build Android Debug
+      run: dotnet build HKA_Handball/HKA_Handball.csproj -f net10.0-android -c Debug --no-restore
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-debug-apk
+        path: HKA_Handball/bin/Debug/net10.0-android/*.apk
+        retention-days: 14

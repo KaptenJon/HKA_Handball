@@ -1006,45 +1006,92 @@ public class GameDrawable : IDrawable
 
     void DrawField(ICanvas canvas, RectF dirtyRect)
     {
-        canvas.FillColor = Color.FromArgb("#14532D");
+        // Arena background (dark surround like spectator area)
+        canvas.FillColor = Color.FromArgb("#2C1B0E");
         canvas.FillRectangle(dirtyRect);
 
         var fieldMargin = 14f;
-        canvas.FillColor = Color.FromArgb("#166534");
-        canvas.FillRoundedRectangle(fieldMargin, fieldMargin,
-            dirtyRect.Width - fieldMargin * 2, dirtyRect.Height - fieldMargin * 2, 6);
-
+        var courtLeft = fieldMargin;
+        var courtTop = fieldMargin;
+        var courtW = dirtyRect.Width - fieldMargin * 2;
+        var courtH = dirtyRect.Height - fieldMargin * 2;
         var centerX = dirtyRect.Center.X;
         var centerY = dirtyRect.Center.Y;
 
-        canvas.StrokeColor = Color.FromArgb("#88FFFFFF");
-        canvas.StrokeSize = 2;
-        canvas.DrawRoundedRectangle(fieldMargin, fieldMargin,
-            dirtyRect.Width - fieldMargin * 2, dirtyRect.Height - fieldMargin * 2, 6);
-        canvas.DrawLine(centerX, fieldMargin, centerX, dirtyRect.Height - fieldMargin);
-        canvas.DrawCircle(centerX, centerY, 34);
+        // Wooden floor base
+        canvas.FillColor = Color.FromArgb("#C8956C");
+        canvas.FillRoundedRectangle(courtLeft, courtTop, courtW, courtH, 4);
 
-        canvas.FillColor = Color.FromArgb("#88FFFFFF");
+        // Wood plank lines (horizontal grain)
+        canvas.StrokeColor = Color.FromArgb("#18000000");
+        canvas.StrokeSize = 1;
+        float plankHeight = 28f;
+        for (float py = courtTop + plankHeight; py < courtTop + courtH; py += plankHeight)
+        {
+            canvas.DrawLine(courtLeft, py, courtLeft + courtW, py);
+        }
+
+        // Slight color variation on alternating planks
+        canvas.FillColor = Color.FromArgb("#08000000");
+        for (float py = courtTop; py < courtTop + courtH; py += plankHeight * 2)
+        {
+            float h = Math.Min(plankHeight, courtTop + courtH - py);
+            canvas.FillRectangle(courtLeft, py, courtW, h);
+        }
+
+        // Court boundary (thick line)
+        canvas.StrokeColor = Color.FromArgb("#DDFFFFFF");
+        canvas.StrokeSize = 3;
+        canvas.DrawRoundedRectangle(courtLeft, courtTop, courtW, courtH, 4);
+
+        // Center line
+        canvas.StrokeColor = Color.FromArgb("#CCFFFFFF");
+        canvas.StrokeSize = 2;
+        canvas.DrawLine(centerX, courtTop, centerX, courtTop + courtH);
+
+        // Center circle (substitution area)
+        canvas.StrokeColor = Color.FromArgb("#99FFFFFF");
+        canvas.DrawCircle(centerX, centerY, 34);
+        canvas.FillColor = Color.FromArgb("#44FFFFFF");
         canvas.FillCircle(centerX, centerY, 4);
 
+        // Goal area (6m) — solid, colored fill + line
         var goalAreaRadius = 120f;
         var freeThrowRadius = 168f;
         var leftGoalCenterX = 20f;
         var rightGoalCenterX = dirtyRect.Width - 20f;
 
-        canvas.StrokeColor = Color.FromArgb("#66FFFFFF");
-        canvas.StrokeSize = 2;
+        // Goal area fill (light tint)
+        canvas.FillColor = Color.FromArgb("#22003DA5");
+        canvas.FillCircle(leftGoalCenterX, centerY, goalAreaRadius);
+        canvas.FillColor = Color.FromArgb("#22DC143C");
+        canvas.FillCircle(rightGoalCenterX, centerY, goalAreaRadius);
+
+        // Goal area line (solid)
+        canvas.StrokeColor = Color.FromArgb("#BBFFFFFF");
+        canvas.StrokeSize = 2.5f;
         canvas.DrawCircle(leftGoalCenterX, centerY, goalAreaRadius);
         canvas.DrawCircle(rightGoalCenterX, centerY, goalAreaRadius);
 
-        canvas.StrokeDashPattern = [8, 6];
-        canvas.StrokeColor = Color.FromArgb("#44FFFFFF");
+        // Free throw line (9m, dashed)
+        canvas.StrokeDashPattern = [10, 6];
+        canvas.StrokeColor = Color.FromArgb("#77FFFFFF");
+        canvas.StrokeSize = 2;
         canvas.DrawCircle(leftGoalCenterX, centerY, freeThrowRadius);
         canvas.DrawCircle(rightGoalCenterX, centerY, freeThrowRadius);
         canvas.StrokeDashPattern = null;
 
-        DrawGoal(canvas, new RectF(8, centerY - 80, 12, 160), AranasBlue);
-        DrawGoal(canvas, new RectF(dirtyRect.Width - 20, centerY - 80, 12, 160), AwayRed);
+        // 7-meter penalty marks
+        float penaltyLeftX = leftGoalCenterX + goalAreaRadius + 48;
+        float penaltyRightX = rightGoalCenterX - goalAreaRadius - 48;
+        canvas.StrokeColor = Color.FromArgb("#CCFFFFFF");
+        canvas.StrokeSize = 3;
+        canvas.DrawLine(penaltyLeftX, centerY - 8, penaltyLeftX, centerY + 8);
+        canvas.DrawLine(penaltyRightX, centerY - 8, penaltyRightX, centerY + 8);
+
+        // Goals (nets with depth)
+        DrawGoal(canvas, new RectF(4, centerY - 80, 16, 160), AranasBlue);
+        DrawGoal(canvas, new RectF(dirtyRect.Width - 20, centerY - 80, 16, 160), AwayRed);
     }
 
     void DrawPlayers(ICanvas canvas)
@@ -1162,7 +1209,7 @@ public class GameDrawable : IDrawable
     {
         float pillW = 100, pillH = 28;
         float pillX = dirtyRect.Center.X - pillW / 2;
-        canvas.FillColor = Color.FromArgb("#CC1A1A2E");
+        canvas.FillColor = Color.FromArgb("#CC2C1B0E");
         canvas.FillRoundedRectangle(pillX, 6, pillW, pillH, 14);
 
         canvas.FontColor = AranasWhite;
@@ -1174,10 +1221,21 @@ public class GameDrawable : IDrawable
 
     void DrawGoal(ICanvas canvas, RectF rect, Color color)
     {
-        canvas.FillColor = color.WithAlpha(0.3f);
+        // Goal depth/net background
+        canvas.FillColor = Color.FromArgb("#44000000");
         canvas.FillRoundedRectangle(rect, 2);
+
+        // Net pattern (horizontal lines)
+        canvas.StrokeColor = Colors.White.WithAlpha(0.15f);
+        canvas.StrokeSize = 1;
+        for (float ny = rect.Top + 10; ny < rect.Bottom; ny += 10)
+        {
+            canvas.DrawLine(rect.Left + 1, ny, rect.Right - 1, ny);
+        }
+
+        // Goal frame (posts + crossbar)
         canvas.StrokeColor = color;
-        canvas.StrokeSize = 3;
+        canvas.StrokeSize = 4;
         canvas.DrawRoundedRectangle(rect, 2);
     }
 }
