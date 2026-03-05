@@ -13,47 +13,72 @@
             </GraphicsView.GestureRecognizers>
         </GraphicsView>
 
-        <!-- Modern control bar -->
-        <Grid Padding="12,8" RowDefinitions="Auto" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"
-              VerticalOptions="End" BackgroundColor="#AA1A1A2E" ColumnSpacing="6">
+        <!-- Status bar top center -->
+        <Label x:Name="StatusLabel" TextColor="#CCFFFFFF" FontSize="11" FontAttributes="Italic"
+               HorizontalOptions="Center" VerticalOptions="Start" Margin="0,4,0,0" />
 
-            <Button x:Name="PassUpButton" Text="⬆ Pass" FontSize="13"
-                    BackgroundColor="#003DA5" TextColor="White" CornerRadius="8"
-                    Padding="10,6" Clicked="OnPassUp" />
-            <Button x:Name="PassDownButton" Grid.Column="1" Text="⬇ Pass" FontSize="13"
-                    BackgroundColor="#003DA5" TextColor="White" CornerRadius="8"
-                    Padding="10,6" Clicked="OnPassDown" />
-            <Button x:Name="ShootButton" Grid.Column="2" Text="🎯 Skjut" FontSize="13"
-                    BackgroundColor="#B71C1C" TextColor="White" CornerRadius="8"
-                    Padding="10,6" Clicked="OnShoot" />
-            <Button x:Name="SwitchDefenderButton" Grid.Column="3" Text="🔄 Förs." FontSize="13"
-                    BackgroundColor="#FF8F00" TextColor="White" CornerRadius="8"
-                    Padding="10,6" Clicked="OnSwitchDefender" />
+        <!-- LEFT THUMB: Joystick -->
+        <controls:JoystickView x:Name="Joystick" WidthRequest="140" HeightRequest="140"
+                               HorizontalOptions="Start" VerticalOptions="End" Margin="12,0,0,12" />
 
-            <Grid x:Name="DefenderSideButtons" Grid.Column="4" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="3">
-                <Button Text="↑" FontSize="16" BackgroundColor="#455A64" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
-                        Pressed="OnDefenderSideUpPressed" Released="OnDefenderSideReleased" />
-                <Button Grid.Row="1" Text="↓" FontSize="16" BackgroundColor="#455A64" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
-                        Pressed="OnDefenderSideDownPressed" Released="OnDefenderSideReleased" />
-                <Button Grid.Column="1" Text="↗" FontSize="16" BackgroundColor="#37474F" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
-                        Pressed="OnDefenderDiagUpPressed" Released="OnDefenderDiagReleased" />
-                <Button Grid.Column="1" Grid.Row="1" Text="↘" FontSize="16" BackgroundColor="#37474F" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
-                        Pressed="OnDefenderDiagDownPressed" Released="OnDefenderDiagReleased" />
-                <Button Grid.Column="2" Grid.Row="0" Grid.RowSpan="2" Text="→" FontSize="18" BackgroundColor="#263238" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
-                        Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
-            </Grid>
+        <!-- RIGHT THUMB: Action buttons -->
+        <Grid HorizontalOptions="End" VerticalOptions="End" Margin="0,0,12,12"
+              RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,Auto"
+              RowSpacing="6" ColumnSpacing="6">
 
-            <Grid x:Name="AttackDiagonalButtons" Grid.Column="5" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,Auto" RowSpacing="3" ColumnSpacing="3">
-                <Button Text="↗" FontSize="16" BackgroundColor="#1B5E20" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+            <!-- Attack controls (visible when attacking) -->
+            <Button x:Name="PassUpButton" Text="⬆ Pass" FontSize="15"
+                    BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
+                    HeightRequest="52" MinimumWidthRequest="90"
+                    Clicked="OnPassUp" />
+            <Button x:Name="PassDownButton" Grid.Row="1" Text="⬇ Pass" FontSize="15"
+                    BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
+                    HeightRequest="52" MinimumWidthRequest="90"
+                    Clicked="OnPassDown" />
+            <Button x:Name="ShootButton" Grid.Row="2" Text="🎯 Skjut" FontSize="15"
+                    BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
+                    HeightRequest="52" MinimumWidthRequest="90"
+                    Clicked="OnShoot" />
+
+            <!-- Defense controls (visible when defending) -->
+            <Button x:Name="SwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
+                    BackgroundColor="#FF8F00" TextColor="White" CornerRadius="12"
+                    HeightRequest="52" MinimumWidthRequest="90"
+                    Clicked="OnSwitchDefender" />
+
+            <!-- D-pad column (right of action buttons) -->
+            <Grid x:Name="AttackDiagonalButtons" Grid.Column="1" Grid.RowSpan="3"
+                  RowDefinitions="*,*,*" ColumnDefinitions="Auto" RowSpacing="4">
+                <Button Text="↗" FontSize="22" BackgroundColor="#1B5E20" TextColor="White"
+                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
                         Pressed="OnAttackDiagUpPressed" Released="OnAttackDiagReleased" />
-                <Button Grid.Row="1" Text="↘" FontSize="16" BackgroundColor="#1B5E20" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
-                        Pressed="OnAttackDiagDownPressed" Released="OnAttackDiagReleased" />
-                <Button Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="→" FontSize="18" BackgroundColor="#2E7D32" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                <Button Grid.Row="1" Text="→" FontSize="22" BackgroundColor="#2E7D32" TextColor="White"
+                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
                         Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
+                <Button Grid.Row="2" Text="↘" FontSize="22" BackgroundColor="#1B5E20" TextColor="White"
+                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
+                        Pressed="OnAttackDiagDownPressed" Released="OnAttackDiagReleased" />
             </Grid>
 
-            <Label Grid.Column="6" x:Name="StatusLabel" TextColor="#CCFFFFFF" FontSize="11" FontAttributes="Italic" VerticalTextAlignment="Center" Margin="8,0" />
-            <controls:JoystickView Grid.Column="7" WidthRequest="110" HeightRequest="110" x:Name="Joystick" />
+            <Grid x:Name="DefenderSideButtons" Grid.Column="1" Grid.RowSpan="3"
+                  RowDefinitions="*,*,*" ColumnDefinitions="Auto,Auto" RowSpacing="4" ColumnSpacing="4">
+                <Button Text="↑" FontSize="22" BackgroundColor="#455A64" TextColor="White"
+                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
+                        Pressed="OnDefenderSideUpPressed" Released="OnDefenderSideReleased" />
+                <Button Grid.Row="1" Text="→" FontSize="22" BackgroundColor="#263238" TextColor="White"
+                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
+                        Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
+                <Button Grid.Row="2" Text="↓" FontSize="22" BackgroundColor="#455A64" TextColor="White"
+                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
+                        Pressed="OnDefenderSideDownPressed" Released="OnDefenderSideReleased" />
+                <Button Grid.Column="1" Text="↗" FontSize="22" BackgroundColor="#37474F" TextColor="White"
+                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
+                        Pressed="OnDefenderDiagUpPressed" Released="OnDefenderDiagReleased" />
+                <Button Grid.Column="1" Grid.Row="1" />
+                <Button Grid.Column="1" Grid.Row="2" Text="↘" FontSize="22" BackgroundColor="#37474F" TextColor="White"
+                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
+                        Pressed="OnDefenderDiagDownPressed" Released="OnDefenderDiagReleased" />
+            </Grid>
         </Grid>
     </Grid>
 </ContentPage>
