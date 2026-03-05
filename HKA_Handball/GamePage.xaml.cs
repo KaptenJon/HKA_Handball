@@ -1,5 +1,6 @@
 using Microsoft.Maui;
 using Microsoft.Maui.Graphics;
+using Microsoft.Maui.Graphics.Platform;
 using HKA_Handball.Controls;
 using ControlsApplication = Microsoft.Maui.Controls.Application;
 using G = Microsoft.Maui.Graphics;
@@ -56,6 +57,7 @@ public partial class GamePage : ContentPage
             var defending = _state.IsHomeDefending;
             PassUpButton.IsVisible = !defending;
             PassDownButton.IsVisible = !defending;
+            ShootButton.IsVisible = !defending;
             SwitchDefenderButton.IsVisible = defending;
             DefenderSideButtons.IsVisible = defending;
             AttackDiagonalButtons.IsVisible = !defending;
@@ -157,7 +159,6 @@ public class GameState
     // Pass state
     bool _passActive;
     int _passTargetHomeIndex = -1;
-    BallOwnershipType _passTargetType;
     public bool IsPassActive => _passActive;
     public int PassTargetTeammateIndex => _passTargetHomeIndex; // expose for drawable
 
@@ -318,7 +319,6 @@ public class GameState
         }
         if (best is null) return;
         _passActive = true;
-        _passTargetType = BallOwnershipType.Player;
         _passTargetHomeIndex = best.Value.idx;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
@@ -947,101 +947,221 @@ public class GameDrawable : IDrawable
     readonly Color AranasWhite;
     readonly Color AwayRed = Colors.Crimson;
 
+    Microsoft.Maui.Graphics.IImage? _imgPlayerHome;
+    Microsoft.Maui.Graphics.IImage? _imgPlayerAway;
+    Microsoft.Maui.Graphics.IImage? _imgKeeperHome;
+    Microsoft.Maui.Graphics.IImage? _imgKeeperAway;
+    Microsoft.Maui.Graphics.IImage? _imgBall;
+    bool _imagesLoaded;
+
     public GameDrawable(GameState state)
     {
         _state = state;
         AranasBlue = ControlsApplication.Current?.Resources.TryGetValue("AranasBlue", out var b) == true ? (Color)b : Color.FromArgb("#003DA5");
         AranasBlueLight = ControlsApplication.Current?.Resources.TryGetValue("AranasBlueLight", out var bl) == true ? (Color)bl : Color.FromArgb("#2E7CF6");
         AranasWhite = ControlsApplication.Current?.Resources.TryGetValue("AranasWhite", out var w) == true ? (Color)w : Colors.White;
+        _ = LoadImagesAsync();
+    }
+
+    async Task LoadImagesAsync()
+    {
+        try
+        {
+            _imgPlayerHome = await LoadImageAsync("player_home.png");
+            _imgPlayerAway = await LoadImageAsync("player_away.png");
+            _imgKeeperHome = await LoadImageAsync("keeper_home.png");
+            _imgKeeperAway = await LoadImageAsync("keeper_away.png");
+            _imgBall = await LoadImageAsync("ball.png");
+            _imagesLoaded = true;
+        }
+        catch
+        {
+            // Fallback to drawing primitives if images fail to load
+        }
+    }
+
+    static async Task<Microsoft.Maui.Graphics.IImage?> LoadImageAsync(string filename)
+    {
+        using var stream = await FileSystem.OpenAppPackageFileAsync(filename);
+        return Microsoft.Maui.Graphics.Platform.PlatformImage.FromStream(stream);
     }
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
-        var fieldGreen = ControlsApplication.Current?.Resources.TryGetValue("FieldGreen", out var fg) == true ? (Color)fg : Color.FromArgb("#1B5E20");
-        canvas.FillColor = fieldGreen;
+        DrawField(canvas, dirtyRect);
+        DrawPlayers(canvas, dirtyRect);
+        DrawBall(canvas);
+        DrawPassIndicator(canvas);
+        DrawScore(canvas, dirtyRect);
+    }
+
+    void DrawField(ICanvas canvas, RectF dirtyRect)
+    {
+        // Field background
+        canvas.FillColor = Color.FromArgb("#14532D");
         canvas.FillRectangle(dirtyRect);
 
-        canvas.StrokeColor = AranasWhite;
-        canvas.StrokeSize = 3;
-        var fieldMargin = 12f;
-        var centerX = (float)dirtyRect.Center.X;
-        var centerY = (float)dirtyRect.Center.Y;
+        // Subtle inner field
+        var fieldMargin = 14f;
+        canvas.FillColor = Color.FromArgb("#166534");
+        canvas.FillRoundedRectangle(fieldMargin, fieldMargin,
+            dirtyRect.Width - fieldMargin * 2, dirtyRect.Height - fieldMargin * 2, 6);
 
-        canvas.DrawRectangle(fieldMargin, fieldMargin, dirtyRect.Width - fieldMargin * 2, dirtyRect.Height - fieldMargin * 2);
+        var centerX = dirtyRect.Center.X;
+        var centerY = dirtyRect.Center.Y;
+
+        // Field lines
+        canvas.StrokeColor = Color.FromArgb("#88FFFFFF");
+        canvas.StrokeSize = 2;
+        canvas.DrawRoundedRectangle(fieldMargin, fieldMargin,
+            dirtyRect.Width - fieldMargin * 2, dirtyRect.Height - fieldMargin * 2, 6);
         canvas.DrawLine(centerX, fieldMargin, centerX, dirtyRect.Height - fieldMargin);
         canvas.DrawCircle(centerX, centerY, 34);
+
+        // Center dot
+        canvas.FillColor = Color.FromArgb("#88FFFFFF");
+        canvas.FillCircle(centerX, centerY, 4);
 
         var goalAreaRadius = 120f;
         var freeThrowRadius = 168f;
         var leftGoalCenterX = 20f;
         var rightGoalCenterX = dirtyRect.Width - 20f;
 
+        // Goal areas (solid line)
+        canvas.StrokeColor = Color.FromArgb("#66FFFFFF");
+        canvas.StrokeSize = 2;
         canvas.DrawCircle(leftGoalCenterX, centerY, goalAreaRadius);
         canvas.DrawCircle(rightGoalCenterX, centerY, goalAreaRadius);
 
-        canvas.StrokeDashPattern = new float[] { 8, 8 };
+        // Free throw lines (dashed)
+        canvas.StrokeDashPattern = [8, 6];
+        canvas.StrokeColor = Color.FromArgb("#44FFFFFF");
         canvas.DrawCircle(leftGoalCenterX, centerY, freeThrowRadius);
         canvas.DrawCircle(rightGoalCenterX, centerY, freeThrowRadius);
         canvas.StrokeDashPattern = null;
 
-        DrawGoal(canvas, new RectF(8, (float)(dirtyRect.Center.Y - 80), 12, 160), AranasBlue);
-        DrawGoal(canvas, new RectF(dirtyRect.Width - 20, (float)(dirtyRect.Center.Y - 80), 12, 160), AwayRed);
+        // Goals with fill
+        DrawGoal(canvas, new RectF(8, centerY - 80, 12, 160), AranasBlue);
+        DrawGoal(canvas, new RectF(dirtyRect.Width - 20, centerY - 80, 12, 160), AwayRed);
+    }
 
+    void DrawPlayers(ICanvas canvas, RectF dirtyRect)
+    {
         for (int i = 0; i < _state.HomePlayers.Length; i++)
         {
             var p = _state.HomePlayers[i];
-            canvas.FillColor = i == 0 ? AranasBlueLight : AranasBlue;
-            canvas.FillCircle((float)p.Position.X, (float)p.Position.Y, i == 0 ? 18 : 14);
-            if (_state.BallOwnerType == BallOwnershipType.Player && _state.BallOwnerPlayerIndex == i)
-            {
-                canvas.StrokeColor = AranasWhite;
-                canvas.StrokeSize = 2;
-                canvas.DrawCircle((float)p.Position.X, (float)p.Position.Y, (i == 0 ? 20 : 16));
-            }
-            else if (_state.IsHomeDefending && i == _state.ControlledDefenderIndex)
-            {
-                canvas.StrokeColor = Colors.Gold;
-                canvas.StrokeSize = 3;
-                canvas.DrawCircle((float)p.Position.X, (float)p.Position.Y, 18);
-            }
+            var img = i == 0 ? _imgKeeperHome : _imgPlayerHome;
+            var size = i == 0 ? 36f : 28f;
+            bool isActive = _state.BallOwnerType == BallOwnershipType.Player && _state.BallOwnerPlayerIndex == i;
+            bool isDefender = _state.IsHomeDefending && i == _state.ControlledDefenderIndex;
+
+            DrawPlayer(canvas, p.Position, img, size, isActive, isDefender,
+                i == 0 ? AranasBlueLight : AranasBlue, i);
         }
 
         for (int i = 0; i < _state.AwayPlayers.Length; i++)
         {
             var a = _state.AwayPlayers[i];
-            canvas.FillColor = i == 0 ? Color.FromArgb("#FF5555") : AwayRed;
-            canvas.FillCircle((float)a.Position.X, (float)a.Position.Y, i == 0 ? 18 : 14);
-            if (_state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex == i)
-            {
-                canvas.StrokeColor = AranasWhite;
-                canvas.StrokeSize = 2;
-                canvas.DrawCircle((float)a.Position.X, (float)a.Position.Y, (i == 0 ? 20 : 16));
-            }
+            var img = i == 0 ? _imgKeeperAway : _imgPlayerAway;
+            var size = i == 0 ? 36f : 28f;
+            bool isActive = _state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex == i;
+
+            DrawPlayer(canvas, a.Position, img, size, isActive, false,
+                i == 0 ? Color.FromArgb("#FF5555") : AwayRed, i);
         }
+    }
 
-        // Ball
-        canvas.FillColor = Colors.Orange;
-        canvas.FillCircle((float)_state.BallPos.X, (float)_state.BallPos.Y, 6);
+    void DrawPlayer(ICanvas canvas, Point pos, Microsoft.Maui.Graphics.IImage? img, float size,
+        bool isActive, bool isDefender, Color fallbackColor, int number)
+    {
+        float x = (float)pos.X;
+        float y = (float)pos.Y;
+        float half = size / 2;
 
-        // Pass indicator
-        if (_state.IsPassActive && _state.PassTargetTeammateIndex >= 0)
+        if (_imagesLoaded && img is not null)
         {
-            var target = _state.HomePlayers[_state.PassTargetTeammateIndex].Position;
-            canvas.StrokeColor = AranasWhite;
-            canvas.StrokeSize = 2;
-            canvas.DrawLine((float)_state.BallPos.X, (float)_state.BallPos.Y, (float)target.X, (float)target.Y);
+            canvas.DrawImage(img, x - half, y - half, size, size);
+        }
+        else
+        {
+            // Fallback: filled circle
+            canvas.FillColor = fallbackColor;
+            canvas.FillCircle(x, y, half);
         }
 
-        // Score
+        // Selection ring
+        if (isActive)
+        {
+            canvas.StrokeColor = AranasWhite;
+            canvas.StrokeSize = 2.5f;
+            canvas.DrawCircle(x, y, half + 3);
+        }
+        else if (isDefender)
+        {
+            canvas.StrokeColor = Colors.Gold;
+            canvas.StrokeSize = 3;
+            canvas.DrawCircle(x, y, half + 3);
+        }
+
+        // Player number
+        if (number > 0)
+        {
+            canvas.FontColor = AranasWhite;
+            canvas.FontSize = 9;
+            canvas.DrawString(number.ToString(), x - 6, y + half + 1, 12, 12,
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Top);
+        }
+    }
+
+    void DrawBall(ICanvas canvas)
+    {
+        float bx = (float)_state.BallPos.X;
+        float by = (float)_state.BallPos.Y;
+
+        if (_imagesLoaded && _imgBall is not null)
+        {
+            canvas.DrawImage(_imgBall, bx - 7, by - 7, 14, 14);
+        }
+        else
+        {
+            canvas.FillColor = Colors.Orange;
+            canvas.FillCircle(bx, by, 6);
+        }
+    }
+
+    void DrawPassIndicator(ICanvas canvas)
+    {
+        if (!_state.IsPassActive || _state.PassTargetTeammateIndex < 0) return;
+
+        var target = _state.HomePlayers[_state.PassTargetTeammateIndex].Position;
+        canvas.StrokeColor = Color.FromArgb("#AAFFFFFF");
+        canvas.StrokeSize = 2;
+        canvas.StrokeDashPattern = [4, 4];
+        canvas.DrawLine((float)_state.BallPos.X, (float)_state.BallPos.Y, (float)target.X, (float)target.Y);
+        canvas.StrokeDashPattern = null;
+    }
+
+    void DrawScore(ICanvas canvas, RectF dirtyRect)
+    {
+        // Score background pill
+        float pillW = 100, pillH = 28;
+        float pillX = dirtyRect.Center.X - pillW / 2;
+        canvas.FillColor = Color.FromArgb("#CC1A1A2E");
+        canvas.FillRoundedRectangle(pillX, 6, pillW, pillH, 14);
+
         canvas.FontColor = AranasWhite;
         canvas.FontSize = 18;
-        canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}", new RectF(0, 8, dirtyRect.Width, 24), G.HorizontalAlignment.Center, G.VerticalAlignment.Top);
+        canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
+            new RectF(0, 8, dirtyRect.Width, 24),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Top);
     }
 
     void DrawGoal(ICanvas canvas, RectF rect, Color color)
     {
+        canvas.FillColor = color.WithAlpha(0.3f);
+        canvas.FillRoundedRectangle(rect, 2);
         canvas.StrokeColor = color;
         canvas.StrokeSize = 3;
-        canvas.DrawRectangle(rect);
+        canvas.DrawRoundedRectangle(rect, 2);
     }
 }

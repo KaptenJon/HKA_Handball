@@ -1,4 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="24" fill="#512BD4"/>
-  <circle cx="64" cy="64" r="34" fill="#ffffff"/>
+  <!-- Handball ball -->
+  <circle cx="64" cy="50" r="28" fill="#FF8C00"/>
+  <circle cx="58" cy="42" r="6" fill="#FFFFFF" opacity="0.35"/>
+  <!-- HKA text -->
+  <text x="64" y="105" font-family="sans-serif" font-weight="bold" font-size="22" fill="#FFFFFF" text-anchor="middle">HKA</text>
 </svg>

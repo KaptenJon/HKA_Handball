@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.companyname.hka_handball">
-    <application android:allowBackup="true" android:label="HKA_Handball" android:supportsRtl="true"></application>
-    <uses-permission android:name="android.permission.INTERNET" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="true"
+        android:label="HKA Handball"
+        android:supportsRtl="true"
+        android:icon="@mipmap/appicon"
+        android:roundIcon="@mipmap/appicon_round"
+        android:theme="@style/Maui.SplashTheme">
+    </application>
+    <!-- No permissions needed: fully offline game, no ads, no internet -->
 </manifest>

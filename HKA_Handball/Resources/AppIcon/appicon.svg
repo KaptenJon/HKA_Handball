@@ -1,3 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#512BD4"/>
+  <rect width="512" height="512" rx="96" fill="#14532D"/>
+  <rect x="24" y="24" width="464" height="464" rx="80" fill="#166534"/>
+  <!-- Field lines -->
+  <line x1="256" y1="40" x2="256" y2="472" stroke="#FFFFFF" stroke-width="4" opacity="0.3"/>
+  <circle cx="256" cy="256" r="48" fill="none" stroke="#FFFFFF" stroke-width="4" opacity="0.3"/>
 </svg>

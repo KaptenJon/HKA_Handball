@@ -2,7 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:HKA_Handball.Controls"
              x:Class="HKA_Handball.GamePage"
-             Title="HKA Handball">
+             Title="HKA Handball"
+             BackgroundColor="#1A1A2E">
     <Grid>
         <GraphicsView x:Name="GameView"
                       HorizontalOptions="FillAndExpand"
@@ -12,26 +13,47 @@
             </GraphicsView.GestureRecognizers>
         </GraphicsView>
 
-        <!-- Simplified control bar -->
-        <Grid Padding="10" RowDefinitions="Auto" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" VerticalOptions="End" BackgroundColor="#33000000" ColumnSpacing="8">
-            <Button x:Name="PassUpButton" Text="Pass upp" Clicked="OnPassUp" />
-            <Button x:Name="PassDownButton" Grid.Column="1" Text="Pass ner" Clicked="OnPassDown" />
-            <Button Grid.Column="2" Text="Shoot" Clicked="OnShoot" />
-            <Button x:Name="SwitchDefenderButton" Grid.Column="3" Text="Byt förs." Clicked="OnSwitchDefender" />
-            <Grid x:Name="DefenderSideButtons" Grid.Column="4" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,Auto,Auto" RowSpacing="4" ColumnSpacing="4">
-                <Button Text="↑" Pressed="OnDefenderSideUpPressed" Released="OnDefenderSideReleased" />
-                <Button Grid.Row="1" Text="↓" Pressed="OnDefenderSideDownPressed" Released="OnDefenderSideReleased" />
-                <Button Grid.Column="1" Text="↗" Pressed="OnDefenderDiagUpPressed" Released="OnDefenderDiagReleased" />
-                <Button Grid.Column="1" Grid.Row="1" Text="↘" Pressed="OnDefenderDiagDownPressed" Released="OnDefenderDiagReleased" />
-                <Button Grid.Column="2" Grid.Row="0" Grid.RowSpan="2" Text="→" Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
+        <!-- Modern control bar -->
+        <Grid Padding="12,8" RowDefinitions="Auto" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"
+              VerticalOptions="End" BackgroundColor="#AA1A1A2E" ColumnSpacing="6">
+
+            <Button x:Name="PassUpButton" Text="⬆ Pass" FontSize="13"
+                    BackgroundColor="#003DA5" TextColor="White" CornerRadius="8"
+                    Padding="10,6" Clicked="OnPassUp" />
+            <Button x:Name="PassDownButton" Grid.Column="1" Text="⬇ Pass" FontSize="13"
+                    BackgroundColor="#003DA5" TextColor="White" CornerRadius="8"
+                    Padding="10,6" Clicked="OnPassDown" />
+            <Button x:Name="ShootButton" Grid.Column="2" Text="🎯 Skjut" FontSize="13"
+                    BackgroundColor="#B71C1C" TextColor="White" CornerRadius="8"
+                    Padding="10,6" Clicked="OnShoot" />
+            <Button x:Name="SwitchDefenderButton" Grid.Column="3" Text="🔄 Förs." FontSize="13"
+                    BackgroundColor="#FF8F00" TextColor="White" CornerRadius="8"
+                    Padding="10,6" Clicked="OnSwitchDefender" />
+
+            <Grid x:Name="DefenderSideButtons" Grid.Column="4" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="3">
+                <Button Text="↑" FontSize="16" BackgroundColor="#455A64" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                        Pressed="OnDefenderSideUpPressed" Released="OnDefenderSideReleased" />
+                <Button Grid.Row="1" Text="↓" FontSize="16" BackgroundColor="#455A64" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                        Pressed="OnDefenderSideDownPressed" Released="OnDefenderSideReleased" />
+                <Button Grid.Column="1" Text="↗" FontSize="16" BackgroundColor="#37474F" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                        Pressed="OnDefenderDiagUpPressed" Released="OnDefenderDiagReleased" />
+                <Button Grid.Column="1" Grid.Row="1" Text="↘" FontSize="16" BackgroundColor="#37474F" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                        Pressed="OnDefenderDiagDownPressed" Released="OnDefenderDiagReleased" />
+                <Button Grid.Column="2" Grid.Row="0" Grid.RowSpan="2" Text="→" FontSize="18" BackgroundColor="#263238" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                        Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
             </Grid>
-            <Grid x:Name="AttackDiagonalButtons" Grid.Column="5" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,Auto" RowSpacing="4" ColumnSpacing="4">
-                <Button Text="↗" Pressed="OnAttackDiagUpPressed" Released="OnAttackDiagReleased" />
-                <Button Grid.Row="1" Text="↘" Pressed="OnAttackDiagDownPressed" Released="OnAttackDiagReleased" />
-                <Button Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="→" Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
+
+            <Grid x:Name="AttackDiagonalButtons" Grid.Column="5" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,Auto" RowSpacing="3" ColumnSpacing="3">
+                <Button Text="↗" FontSize="16" BackgroundColor="#1B5E20" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                        Pressed="OnAttackDiagUpPressed" Released="OnAttackDiagReleased" />
+                <Button Grid.Row="1" Text="↘" FontSize="16" BackgroundColor="#1B5E20" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                        Pressed="OnAttackDiagDownPressed" Released="OnAttackDiagReleased" />
+                <Button Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="→" FontSize="18" BackgroundColor="#2E7D32" TextColor="White" CornerRadius="6" Padding="8,4" MinimumWidthRequest="36"
+                        Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
             </Grid>
-            <Label Grid.Column="6" x:Name="StatusLabel" TextColor="White" FontSize="12" VerticalTextAlignment="Center" />
-            <controls:JoystickView Grid.Column="7" WidthRequest="120" HeightRequest="120" x:Name="Joystick" />
+
+            <Label Grid.Column="6" x:Name="StatusLabel" TextColor="#CCFFFFFF" FontSize="11" FontAttributes="Italic" VerticalTextAlignment="Center" Margin="8,0" />
+            <controls:JoystickView Grid.Column="7" WidthRequest="110" HeightRequest="110" x:Name="Joystick" />
         </Grid>
     </Grid>
 </ContentPage>
