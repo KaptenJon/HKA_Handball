@@ -33,3 +33,7 @@ dotnet publish -f net10.0-android -c Release \
 ## Privacy
 
 This app collects **no data**. See [Privacy Policy](PRIVACY_POLICY.md).
+
+## Security
+
+To report a vulnerability, please see [Security Policy](SECURITY.md).
