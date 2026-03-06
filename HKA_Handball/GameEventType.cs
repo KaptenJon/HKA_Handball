@@ -16,5 +16,6 @@ public enum GameEventType
     Interception,
     HalfTime,
     FullTime,
-    PenaltyAwarded
+    PenaltyAwarded,
+    Suspension
 }

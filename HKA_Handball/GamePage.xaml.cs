@@ -187,6 +187,7 @@ public partial class GamePage : ContentPage
             case GameEventType.HalfTime:
             case GameEventType.FullTime:
             case GameEventType.PenaltyAwarded:
+            case GameEventType.Suspension:
                 _soundManager.PlayWhistle();
                 break;
         }
@@ -203,6 +204,8 @@ public class Actor
     public double BaseY;
     public double BaseX;
     public bool WasAdvancing; // track if this actor initiated advance
+    public int SuspensionTicks; // remaining ticks of 2-minute suspension (0 = active)
+    public bool IsSuspended => SuspensionTicks > 0;
 }
 
 public class GameState
@@ -238,6 +241,14 @@ public class GameState
     const double PenaltyShotDuration = 0.7f;
     const double PenaltySaveChance = 0.45; // 45% GK save on penalties
     const double PenaltyAwardChance = 0.4; // 40% chance foul near goal area awards penalty
+
+    // 2-minute suspension constants
+    const int SuspensionDurationTicks = 7200; // ~2 real minutes at 60fps
+    const double SuspensionChance = 0.15; // 15% chance a collision results in a suspension
+
+    // Shot distance factor constants
+    const double MaxShotDistance = 400; // beyond this distance, shots are very unlikely to score
+    const double CloseRangeShotBonus = 0.15; // bonus save reduction for close shots
 
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
@@ -347,6 +358,10 @@ public class GameState
     public bool IsGoalCelebration => _goalCelebrationTicks > 0;
     public string GoalCelebrationText { get; private set; } = "";
 
+    // Suspension display
+    public int HomeSuspensionCount => HomePlayers.Count(p => p.IsSuspended);
+    public int AwaySuspensionCount => AwayPlayers.Count(p => p.IsSuspended);
+
     public GameState(GameMode mode = GameMode.SinglePlayer)
     {
         Mode = mode;
@@ -414,9 +429,15 @@ public class GameState
 
     public void SwitchControlledDefender()
     {
-        ControlledDefenderIndex++;
-        if (ControlledDefenderIndex >= HomePlayers.Length)
-            ControlledDefenderIndex = 1;
+        int startIdx = ControlledDefenderIndex;
+        for (int attempt = 0; attempt < HomePlayers.Length - 1; attempt++)
+        {
+            ControlledDefenderIndex++;
+            if (ControlledDefenderIndex >= HomePlayers.Length)
+                ControlledDefenderIndex = 1;
+            if (!HomePlayers[ControlledDefenderIndex].IsSuspended)
+                break;
+        }
         SetStatusOverride($"Försvarare #{ControlledDefenderIndex}", 45);
     }
 
@@ -472,6 +493,7 @@ public class GameState
         for (int i = 0; i < HomePlayers.Length; i++)
         {
             if (i == BallOwnerPlayerIndex) continue;
+            if (HomePlayers[i].IsSuspended) continue;
             var dy = HomePlayers[i].Position.Y - owner.Position.Y;
             if (dirY < 0 && dy >= 0) continue;
             if (dirY > 0 && dy <= 0) continue;
@@ -588,6 +610,11 @@ public class GameState
         // Fast break timers
         if (_homeFastBreakTicks > 0) _homeFastBreakTicks--;
         if (_awayFastBreakTicks > 0) _awayFastBreakTicks--;
+
+        // Suspension timers
+        foreach (var team in new[] { HomePlayers, AwayPlayers })
+            foreach (var a in team)
+                if (a.SuspensionTicks > 0) a.SuspensionTicks--;
 
         // Passive play tracking
         if (BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive)
@@ -722,6 +749,12 @@ public class GameState
         // Supporting players
         for (int i = 1; i < HomePlayers.Length; i++)
         {
+            // Suspended players stay off-field
+            if (HomePlayers[i].IsSuspended)
+            {
+                HomePlayers[i].Position = new Point(20, 30); // bench area top-left
+                continue;
+            }
             if (BallOwnerType == BallOwnershipType.Player && i == BallOwnerPlayerIndex) continue;
             if (IsHomeDefending && i == ControlledDefenderIndex)
             {
@@ -758,9 +791,20 @@ public class GameState
             }
             else
             {
-                desiredX = Math.Min(pressLineX - (i * 18), ViewSize.Width - 200);
+                // Attacking: spread evenly based on field index, shift with ball carrier
+                int fieldIdx = i - 1; // 0-based among field players
+                int fieldCount = HomePlayers.Length - 1;
+                double topY = 80;
+                double bottomY = ViewSize.Height > 0 ? ViewSize.Height - 80 : 520;
+                double slotY = topY + fieldIdx * ((bottomY - topY) / Math.Max(fieldCount - 1, 1));
+
+                // Shift toward ball carrier Y position
+                double carrierY = BallOwnerPlayerIndex >= 0 ? HomePlayers[BallOwnerPlayerIndex].Position.Y : ViewSize.Height / 2;
+                slotY = Lerp(slotY, carrierY, 0.2);
+
+                desiredX = Math.Min(pressLineX - 20, ViewSize.Width - 200);
                 desiredX = Math.Max(p.BaseX + 30, desiredX);
-                desiredY = p.BaseY;
+                desiredY = slotY;
             }
             double newX = p.Position.X + (desiredX - p.Position.X) * 0.04;
             double newY = p.Position.Y + (desiredY - p.Position.Y) * 0.04;
@@ -865,33 +909,50 @@ public class GameState
 
             if (!awayAttacking)
             {
-                // Defending: actively mark nearest home attacker instead of idle sway
+                // Suspended away players stay off-field
+                if (a.IsSuspended)
+                {
+                    a.Position = new Point(ViewSize.Width > 0 ? ViewSize.Width - 20 : 700, 30); // bench area top-right
+                    continue;
+                }
+
+                // Defending: 6-0 formation — defenders form an arc along the free-throw line
                 if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
                 {
-                    // Find nearest home field player to mark (excluding goalkeeper)
-                    int markTarget = -1;
-                    double markDist = double.MaxValue;
-                    for (int h = 1; h < HomePlayers.Length; h++)
+                    int fieldIdx = i - 1; // 0-based field index (0-5)
+                    int fieldCount = AwayPlayers.Length - 1;
+                    double defArcCenterX = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset : 700;
+                    double defArcRadius = GoalAreaRadius + 25;
+
+                    // Shift arc toward ball carrier
+                    double arcCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+                    double carrierY = HomePlayers[BallOwnerPlayerIndex].Position.Y;
+                    arcCenterY += (carrierY - arcCenterY) * 0.35;
+
+                    double angleRange = 120.0;
+                    double startAngle = 180.0 - angleRange / 2; // face left (toward home goal)
+                    double angleDeg = startAngle + fieldIdx * (angleRange / Math.Max(fieldCount - 1, 1));
+                    double angleRad = angleDeg * Math.PI / 180.0;
+
+                    double defX = defArcCenterX + defArcRadius * Math.Cos(angleRad);
+                    double defY = arcCenterY + defArcRadius * Math.Sin(angleRad);
+
+                    // Step out to pressure ball carrier when nearby
+                    double carrierX = HomePlayers[BallOwnerPlayerIndex].Position.X;
+                    double distToCarrier = Distance(a.Position, HomePlayers[BallOwnerPlayerIndex].Position);
+                    if (distToCarrier < 100)
                     {
-                        var d = Distance(a.Position, HomePlayers[h].Position);
-                        if (d < markDist) { markDist = d; markTarget = h; }
+                        // Pressure: move toward carrier
+                        defX = Lerp(defX, carrierX + 20, 0.3);
+                        defY = Lerp(defY, carrierY, 0.3);
                     }
-                    if (markTarget >= 0)
-                    {
-                        var target = HomePlayers[markTarget].Position;
-                        // Position between the attacker and the goal they're attacking (right goal)
-                        double goalX = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset : a.BaseX;
-                        double markX = target.X + (goalX - target.X) * 0.15;
-                        double markY = target.Y;
-                        a.Position = new Point(
-                            Lerp(a.Position.X, markX, 0.04),
-                            Lerp(a.Position.Y, markY, 0.04));
-                    }
-                    else
-                    {
-                        var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
-                        a.Position = new Point(a.BaseX, a.BaseY + swing);
-                    }
+
+                    // Subtle defensive sway
+                    double drift = Math.Sin(Environment.TickCount / 600.0 + i * 1.2) * 8;
+
+                    a.Position = new Point(
+                        Lerp(a.Position.X, defX, 0.06),
+                        Lerp(a.Position.Y, defY + drift, 0.06));
                 }
                 else
                 {
@@ -1030,14 +1091,18 @@ public class GameState
                 if (_leftGoal.Contains(BallPos))
                 {
                     ScoreAway++;
-                    SetStatusOverride("Motståndaren skjuter och gör mål", 120);
+                    SetStatusOverride("Motståndaren gör mål!", 120);
                     GameEvent?.Invoke(GameEventType.GoalAway);
                     ResetAfterScore(homeScored: false);
                     return;
                 }
 
                 var homeKeeper = HomePlayers[0];
-                bool keeperSave = IsShotNearKeeperLine(_awayShootStart, _awayShootEnd, homeKeeper.Position) && Random.Shared.NextDouble() < 0.80;
+                // Distance-based save chance for away shots
+                double awayShotDist = Distance(_awayShootStart, _awayShootEnd);
+                double awayDistFactor = Math.Clamp(awayShotDist / MaxShotDistance, 0, 1);
+                double awaySaveChance = 0.60 + awayDistFactor * 0.25 - (awayShotDist < 200 ? CloseRangeShotBonus : 0);
+                bool keeperSave = IsShotNearKeeperLine(_awayShootStart, _awayShootEnd, homeKeeper.Position) && Random.Shared.NextDouble() < awaySaveChance;
                 if (keeperSave)
                 {
                     GameEvent?.Invoke(GameEventType.Save);
@@ -1068,10 +1133,14 @@ public class GameState
             {
                 _shootActive = false;
 
-                if (_rightGoal.Contains(BallPos)) { ScoreHome++; SetStatusOverride("MÅL!", 120); GameEvent?.Invoke(GameEventType.GoalHome); ResetAfterScore(homeScored: true); return; }
+                if (_rightGoal.Contains(BallPos)) { ScoreHome++; SetStatusOverride("MÅL! 🎉", 120); GameEvent?.Invoke(GameEventType.GoalHome); ResetAfterScore(homeScored: true); return; }
 
                 var awayKeeper = AwayPlayers[0];
-                bool keeperSave = IsShotNearKeeperLine(_shootStart, _shootEnd, awayKeeper.Position) && Random.Shared.NextDouble() < 0.80;
+                // Distance-based save chance: closer shots are harder to save
+                double shotDist = Distance(_shootStart, _shootEnd);
+                double distFactor = Math.Clamp(shotDist / MaxShotDistance, 0, 1);
+                double saveChance = 0.60 + distFactor * 0.25 - (shotDist < 200 ? CloseRangeShotBonus : 0);
+                bool keeperSave = IsShotNearKeeperLine(_shootStart, _shootEnd, awayKeeper.Position) && Random.Shared.NextDouble() < saveChance;
                 if (keeperSave)
                 {
                     GameEvent?.Invoke(GameEventType.Save);
@@ -1129,13 +1198,47 @@ public class GameState
         }
         else if (BallOwnerType == BallOwnershipType.Loose)
         {
-            Actor nearest = HomePlayers[1]; double best = Distance(BallPos, nearest.Position);
+            // Both teams compete for loose ball
+            Actor? nearestHome = null; double bestHomeDist = double.MaxValue;
+            int nearestHomeIdx = -1;
             for (int i = 1; i < HomePlayers.Length; i++)
             {
-                var d = Distance(BallPos, HomePlayers[i].Position); if (d < best) { best = d; nearest = HomePlayers[i]; }
+                if (HomePlayers[i].IsSuspended) continue;
+                var d = Distance(BallPos, HomePlayers[i].Position);
+                if (d < bestHomeDist) { bestHomeDist = d; nearestHome = HomePlayers[i]; nearestHomeIdx = i; }
             }
-            BallPos = LerpPoint(BallPos, nearest.Position, 0.08);
-            if (best < 18) { BallOwnerType = BallOwnershipType.Player; BallOwnerPlayerIndex = Array.IndexOf(HomePlayers, nearest); }
+
+            Actor? nearestAway = null; double bestAwayDist = double.MaxValue;
+            int nearestAwayIdx = -1;
+            for (int i = 1; i < AwayPlayers.Length; i++)
+            {
+                if (AwayPlayers[i].IsSuspended) continue;
+                var d = Distance(BallPos, AwayPlayers[i].Position);
+                if (d < bestAwayDist) { bestAwayDist = d; nearestAway = AwayPlayers[i]; nearestAwayIdx = i; }
+            }
+
+            // Move ball toward whichever player is closer
+            double pickupDist = 18;
+            if (nearestHome != null && bestHomeDist <= bestAwayDist)
+            {
+                BallPos = LerpPoint(BallPos, nearestHome.Position, 0.08);
+                if (bestHomeDist < pickupDist)
+                {
+                    BallOwnerType = BallOwnershipType.Player;
+                    BallOwnerPlayerIndex = nearestHomeIdx;
+                }
+            }
+            else if (nearestAway != null)
+            {
+                BallPos = LerpPoint(BallPos, nearestAway.Position, 0.08);
+                if (bestAwayDist < pickupDist)
+                {
+                    BallOwnerType = BallOwnershipType.Opponent;
+                    BallOwnerAwayIndex = nearestAwayIdx;
+                    BallOwnerPlayerIndex = -1;
+                    _awayPassCooldownTicks = 30;
+                }
+            }
         }
     }
 
@@ -1275,6 +1378,8 @@ public class GameState
         // Fast break for away team on turnover
         _awayFastBreakTicks = FastBreakDurationTicks;
         _homeFastBreakTicks = 0;
+        // Auto-switch to nearest non-suspended defender
+        AutoSwitchDefender(AwayPlayers[awayIndex].Position);
         SetStatusOverride(reason);
     }
 
@@ -1296,6 +1401,20 @@ public class GameState
         _homeFastBreakTicks = FastBreakDurationTicks;
         _awayFastBreakTicks = 0;
         SetStatusOverride(reason);
+    }
+
+    void AutoSwitchDefender(Point ballCarrierPos)
+    {
+        int bestIdx = -1;
+        double bestDist = double.MaxValue;
+        for (int i = 1; i < HomePlayers.Length; i++)
+        {
+            if (HomePlayers[i].IsSuspended) continue;
+            var d = Distance(HomePlayers[i].Position, ballCarrierPos);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        if (bestIdx > 0)
+            ControlledDefenderIndex = bestIdx;
     }
 
     void StartAwayPass(int ownerIndex)
@@ -1455,6 +1574,13 @@ public class GameState
                 if (nearGoalArea && Random.Shared.NextDouble() < PenaltyAwardChance)
                 {
                     // 7-meter penalty awarded to home team
+                    // The defending player may also receive a suspension
+                    if (Random.Shared.NextDouble() < SuspensionChance)
+                    {
+                        defender.SuspensionTicks = SuspensionDurationTicks;
+                        SetStatusOverride("7-meterstraff + 2 min utvisning!", 120);
+                        GameEvent?.Invoke(GameEventType.Suspension);
+                    }
                     StartPenalty(isHome: true);
                     return true;
                 }
@@ -1462,6 +1588,18 @@ public class GameState
                 // Clear all boost states on collision
                 _advanceBoost = false;
                 _attackDiagonalBoostY = 0;
+
+                // Chance of 2-minute suspension on regular foul
+                if (Random.Shared.NextDouble() < SuspensionChance)
+                {
+                    defender.SuspensionTicks = SuspensionDurationTicks;
+                    var freeThrowX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
+                    owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
+                    BallPos = owner.Position;
+                    SetStatusOverride("2 min utvisning + frikast!", 120);
+                    GameEvent?.Invoke(GameEventType.Suspension);
+                    return true;
+                }
 
                 if (Random.Shared.NextDouble() < 0.5)
                 {
@@ -1565,7 +1703,10 @@ public class GameState
         SetTeamBasePositions(AwayPlayers, awayFieldBase, false);
         foreach (var team in new[] { HomePlayers, AwayPlayers })
             foreach (var a in team)
+            {
                 a.Position = new Point(a.BaseX, a.BaseY);
+                a.SuspensionTicks = 0;
+            }
 
         BallOwnerType = BallOwnershipType.Player;
         BallOwnerPlayerIndex = 1;
