@@ -1,0 +1,81 @@
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="HKA_Handball.MainMenuPage"
+             BackgroundColor="#2C1B0E"
+             NavigationPage.HasNavigationBar="False">
+
+    <Grid RowDefinitions="*,Auto,*">
+
+        <!-- Top area: Title and animated graphics -->
+        <Grid Grid.Row="0" VerticalOptions="Center" HorizontalOptions="Center"
+              RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+
+            <!-- Animated ball icon -->
+            <Border x:Name="BallFrame"
+                    Grid.Row="0"
+                    BackgroundColor="#FF8C00"
+                    StrokeShape="RoundRectangle 30"
+                    Stroke="Transparent"
+                    WidthRequest="60" HeightRequest="60"
+                    HorizontalOptions="Center" Padding="0">
+                <Border.Shadow>
+                    <Shadow Brush="Black" Offset="2,2" Radius="6" Opacity="0.4" />
+                </Border.Shadow>
+                <Label Text="🤾" FontSize="28" HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
+
+            <!-- Game title -->
+            <Label Grid.Row="1"
+                   Text="HKA HANDBALL"
+                   FontSize="36" FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center"
+                   CharacterSpacing="4" />
+
+            <!-- Subtitle -->
+            <Label Grid.Row="2"
+                   Text="Handboll på riktigt"
+                   FontSize="14" FontAttributes="Italic"
+                   TextColor="#99FFFFFF"
+                   HorizontalOptions="Center" />
+        </Grid>
+
+        <!-- Center area: Menu buttons -->
+        <VerticalStackLayout Grid.Row="1" Spacing="16" Padding="40,0"
+                              HorizontalOptions="Center" VerticalOptions="Center">
+
+            <Button x:Name="SinglePlayerButton"
+                    Text="🏐  1 Spelare"
+                    FontSize="20" FontAttributes="Bold"
+                    BackgroundColor="#003DA5" TextColor="White"
+                    CornerRadius="16" HeightRequest="60"
+                    MinimumWidthRequest="260"
+                    Clicked="OnSinglePlayer" />
+
+            <Button x:Name="TwoPlayerButton"
+                    Text="👥  2 Spelare (Lokal)"
+                    FontSize="20" FontAttributes="Bold"
+                    BackgroundColor="#1B5E20" TextColor="White"
+                    CornerRadius="16" HeightRequest="60"
+                    MinimumWidthRequest="260"
+                    Clicked="OnTwoPlayerLocal" />
+
+            <!-- Sound toggle -->
+            <Grid ColumnDefinitions="*,Auto" HeightRequest="40" Padding="20,0">
+                <Label Text="Ljud" FontSize="14" TextColor="#AAFFFFFF"
+                       VerticalOptions="Center" />
+                <Switch x:Name="SoundSwitch" Grid.Column="1"
+                        IsToggled="True"
+                        OnColor="#003DA5"
+                        Toggled="OnSoundToggled" />
+            </Grid>
+        </VerticalStackLayout>
+
+        <!-- Bottom: Version / credits -->
+        <Label Grid.Row="2"
+               Text="v1.0.0  •  HK Aranäs  •  Open Source"
+               FontSize="10" TextColor="#55FFFFFF"
+               HorizontalOptions="Center" VerticalOptions="End"
+               Margin="0,0,0,12" />
+    </Grid>
+</ContentPage>
