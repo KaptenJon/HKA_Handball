@@ -180,8 +180,9 @@ public class GameState
     // Away pass state
     bool _awayPassActive;
     int _awayPassTargetIndex = -1;
-    int _awayPassesRemaining;
     int _awayPassCooldownTicks;
+    int _awayBuildupPasses;       // total passes completed in this possession
+    bool _awayBreakthrough;       // an attacker is breaking through to shoot
 
     // Retreat state
     bool _retreatingFormerOwner;
@@ -550,48 +551,86 @@ public class GameState
 
         bool awayAttacking = (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 0) || _awayPassActive || _awayShootActive;
 
-        // Away movement
+        // Away attack: handball build-up around the free-throw arc
+        double arcCenterX = GoalCenterInset;
+        double arcRadius = FreeThrowRadius + 30;
+
         for (int i = 0; i < AwayPlayers.Length; i++)
         {
             var a = AwayPlayers[i];
+            if (a.IsGoalkeeper)
+            {
+                // handled separately above
+                ClampActor(a);
+                continue;
+            }
+
+            if (!awayAttacking)
+            {
+                // Idle: gentle sway at base position
+                var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
+                a.Position = new Point(a.BaseX, a.BaseY + swing);
+                ClampActor(a);
+                continue;
+            }
+
             if (awayAttacking && i == BallOwnerAwayIndex)
             {
-                double attackStopX = GoalCenterInset + GoalAreaRadius + 30;
-                double newX = a.Position.X;
-                if (a.Position.X > attackStopX)
-                    newX -= 120 * dt;
-                double targetY = ViewSize.Height / 2 + Math.Sin(Environment.TickCount / 500.0) * 70;
-                double newY = a.Position.Y + (targetY - a.Position.Y) * 0.05;
-                a.Position = new Point(newX, newY);
-
-                if (_awayPassesRemaining > 0 && !_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= ViewSize.Width * 0.72)
+                if (_awayBreakthrough)
                 {
-                    StartAwayPass(i);
-                }
+                    // Breaking through: charge toward goal area
+                    double attackStopX = GoalCenterInset + GoalAreaRadius + 30;
+                    double newX = a.Position.X;
+                    if (a.Position.X > attackStopX)
+                        newX -= 160 * dt;
+                    double targetY = ViewSize.Height / 2 + (a.Position.Y > ViewSize.Height / 2 ? 30 : -30);
+                    double newY = Lerp(a.Position.Y, targetY, 0.08);
+                    a.Position = new Point(newX, newY);
 
-                var awayShootLineX = attackStopX + 4;
-                if (!_awayPassActive && !_awayShootActive && !_shootActive && a.Position.X <= awayShootLineX)
-                    StartAwayShoot(a.Position);
-            }
-            else if (awayAttacking && !a.IsGoalkeeper)
-            {
-                var carrierPos = BallOwnerAwayIndex >= 0 ? AwayPlayers[BallOwnerAwayIndex].Position : BallPos;
-                double supportX = Math.Clamp(carrierPos.X + 60 + i * 4, 70, ViewSize.Width - 60);
-                double supportY = a.BaseY + (carrierPos.Y - a.BaseY) * 0.25;
-                double newX = a.Position.X + (supportX - a.Position.X) * 0.10;
-                double newY = a.Position.Y + (supportY - a.Position.Y) * 0.08;
-                a.Position = new Point(newX, newY);
-            }
-            else if (a.IsGoalkeeper)
-            {
-                // Away GK: just gentle sway (reactive movement handled separately)
-                var gSwing = Math.Sin(Environment.TickCount / 700.0) * 50;
-                a.Position = new Point(a.BaseX, Lerp(a.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+                    var awayShootLineX = attackStopX + 4;
+                    if (!_awayShootActive && a.Position.X <= awayShootLineX)
+                        StartAwayShoot(a.Position);
+                }
+                else
+                {
+                    // Build-up: hold position on the arc, move laterally
+                    var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
+                    a.Position = new Point(
+                        Lerp(a.Position.X, arcPos.X, 0.06),
+                        Lerp(a.Position.Y, arcPos.Y, 0.06));
+
+                    // Pass or breakthrough decision
+                    if (!_awayPassActive && _awayPassCooldownTicks == 0)
+                    {
+                        // After enough passes, chance to break through
+                        double breakChance = _awayBuildupPasses >= 3 ? 0.015 : 0.0;
+                        if (_awayBuildupPasses >= 6) breakChance = 0.04;
+
+                        if (Random.Shared.NextDouble() < breakChance)
+                        {
+                            _awayBreakthrough = true;
+                            SetStatusOverride("Genombrott!", 50);
+                        }
+                        else
+                        {
+                            StartAwayPass(i);
+                        }
+                    }
+                }
             }
             else
             {
-                var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
-                a.Position = new Point(a.BaseX, a.BaseY + swing);
+                // Support: hold arc formation position, shift toward ball carrier
+                var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
+                double shiftY = 0;
+                if (BallOwnerAwayIndex >= 0)
+                {
+                    var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
+                    shiftY = (carrierY - arcPos.Y) * 0.15;
+                }
+                a.Position = new Point(
+                    Lerp(a.Position.X, arcPos.X, 0.05),
+                    Lerp(a.Position.Y, arcPos.Y + shiftY, 0.05));
             }
             ClampActor(a);
         }
@@ -723,7 +762,7 @@ public class GameState
         SetTeamBasePositions(HomePlayers, 100, true);
         SetTeamBasePositions(AwayPlayers, ViewSize.Width - 100, false);
         ControlledDefenderIndex = 1;
-        _passActive = false; _shootActive = false; _awayShootActive = false; _awayPassActive = false; _awayPassTargetIndex = -1; _awayPassesRemaining = 0; _retreatingFormerOwner = false; _formerOwnerIndex = -1;
+        _passActive = false; _shootActive = false; _awayShootActive = false; _awayPassActive = false; _awayPassTargetIndex = -1; _awayBuildupPasses = 0; _awayBreakthrough = false; _retreatingFormerOwner = false; _formerOwnerIndex = -1;
         _defenderSideBoostY = 0;
         _defenderDiagBoostY = 0;
         _attackDiagonalBoostY = 0;
@@ -737,7 +776,8 @@ public class GameState
             BallOwnerType = BallOwnershipType.Opponent;
             BallOwnerAwayIndex = 1;
             BallOwnerPlayerIndex = -1;
-            _awayPassesRemaining = Random.Shared.Next(1, 4);
+            _awayBuildupPasses = 0;
+            _awayBreakthrough = false;
             _awayPassCooldownTicks = 120;
         }
         else
@@ -832,8 +872,9 @@ public class GameState
         _passActive = false;
         _awayPassActive = false;
         _awayPassTargetIndex = -1;
-        _awayPassesRemaining = Random.Shared.Next(1, 4);
-        _awayPassCooldownTicks = 25;
+        _awayBuildupPasses = 0;
+        _awayBreakthrough = false;
+        _awayPassCooldownTicks = 40;
         _attackDiagonalBoostY = 0;
         SetStatusOverride(reason);
     }
@@ -847,26 +888,46 @@ public class GameState
         _passActive = false;
         _awayPassActive = false;
         _awayPassTargetIndex = -1;
-        _awayPassesRemaining = 0;
+        _awayBuildupPasses = 0;
+        _awayBreakthrough = false;
         _defenderSideBoostY = 0;
         SetStatusOverride(reason);
     }
 
     void StartAwayPass(int ownerIndex)
     {
-        if (_awayPassesRemaining <= 0) return;
-
         var candidates = Enumerable.Range(1, AwayPlayers.Length - 1).Where(i => i != ownerIndex).ToArray();
         if (candidates.Length == 0) return;
 
         _awayPassTargetIndex = candidates[Random.Shared.Next(candidates.Length)];
         _awayPassActive = true;
-        _awayPassesRemaining--;
-        _awayPassCooldownTicks = 35;
+        _awayPassCooldownTicks = 30 + Random.Shared.Next(20);
+        _awayBuildupPasses++;
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerAwayIndex = -1;
         BallOwnerPlayerIndex = -1;
-        SetStatusOverride("Motståndaren passar", 40);
+    }
+
+    /// <summary>
+    /// Returns the attacking arc position for field player index i (1-6).
+    /// Positions are spread in a semicircle to the left of the home goal.
+    /// </summary>
+    Point GetArcPosition(int playerIndex, double arcCenterX, double arcRadius)
+    {
+        int fieldCount = AwayPlayers.Length - 1; // exclude GK
+        int slot = playerIndex - 1; // 0-based field slot
+        // Spread from ~-70° to +70° (top to bottom)
+        double angleRange = 140.0;
+        double startAngle = -angleRange / 2;
+        double angleDeg = startAngle + slot * (angleRange / (fieldCount - 1));
+        double angleRad = angleDeg * Math.PI / 180.0;
+
+        double x = arcCenterX + arcRadius * Math.Cos(angleRad);
+        double y = ViewSize.Height / 2 + arcRadius * Math.Sin(angleRad);
+
+        // Add subtle lateral drift for realism
+        double drift = Math.Sin(Environment.TickCount / 800.0 + playerIndex * 1.5) * 18;
+        return new Point(x, y + drift);
     }
 
     void StartAwayShoot(Point from)
