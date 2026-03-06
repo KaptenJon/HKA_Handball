@@ -13,7 +13,7 @@ Only the latest release receives security updates.
 If you discover a security vulnerability in HKA Handball, please report it responsibly:
 
 1. **Do not** open a public issue.
-2. Use [GitHub's private vulnerability reporting](https://github.com/KaptenJon/HKA_Handball/security/advisories/new) to submit the report.
+2. Use [GitHub's private vulnerability reporting](/security/advisories/new) to submit the report.
 3. Include a clear description of the vulnerability, steps to reproduce, and any potential impact.
 
 You should receive an acknowledgment within 7 days. Once the vulnerability is confirmed, a fix will be released as soon as possible.
