@@ -397,7 +397,8 @@ public class GameState
             var dy = HomePlayers[i].Position.Y - owner.Position.Y;
             if (dirY < 0 && dy >= 0) continue;
             if (dirY > 0 && dy <= 0) continue;
-            var metric = Math.Abs(dy);
+            // Use full distance (not just Y) so passes go to the closest teammate
+            var metric = Distance(owner.Position, HomePlayers[i].Position);
             if (metric < bestMetric) { bestMetric = metric; best = (i, HomePlayers[i]); }
         }
         if (best is null) return;
@@ -612,13 +613,26 @@ public class GameState
         }
         else if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 0)
         {
+            // Opponent attacking: stay near goal and track ball carrier
             var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
-            homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, carrierY, 0.06));
+            homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, carrierY, 0.08));
+        }
+        else if (BallOwnerType == BallOwnershipType.Player)
+        {
+            // Home team attacking: advance forward to act as outlet pass option
+            double advancedX = GoalCenterInset + GoalAreaRadius + 40;
+            var gSwing = Math.Sin(Environment.TickCount / 700.0) * 30;
+            homeGK.Position = new Point(
+                Lerp(homeGK.Position.X, advancedX, 0.03),
+                Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.04));
         }
         else
         {
+            // Neutral / loose ball: retreat toward goal
             var gSwing = Math.Sin(Environment.TickCount / 700.0) * 50;
-            homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+            homeGK.Position = new Point(
+                Lerp(homeGK.Position.X, homeGK.BaseX, 0.06),
+                Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
         }
         ClampActor(homeGK);
 
@@ -630,13 +644,28 @@ public class GameState
         }
         else if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
         {
+            // Home team attacking: stay near goal and track ball carrier
             var carrierY = HomePlayers[BallOwnerPlayerIndex].Position.Y;
-            awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, carrierY, 0.06));
+            awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, carrierY, 0.08));
+        }
+        else if (BallOwnerType == BallOwnershipType.Opponent)
+        {
+            // Away team attacking: advance forward from goal
+            double advancedX = ViewSize.Width > 0
+                ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 40
+                : awayGK.BaseX;
+            var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 30;
+            awayGK.Position = new Point(
+                Lerp(awayGK.Position.X, advancedX, 0.03),
+                Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.04));
         }
         else
         {
+            // Neutral / loose ball: retreat toward goal
             var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 50;
-            awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+            awayGK.Position = new Point(
+                Lerp(awayGK.Position.X, awayGK.BaseX, 0.06),
+                Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
         }
         ClampActor(awayGK);
 
@@ -673,9 +702,40 @@ public class GameState
 
             if (!awayAttacking)
             {
-                // Idle: gentle sway at base position
-                var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
-                a.Position = new Point(a.BaseX, a.BaseY + swing);
+                // Defending: actively mark nearest home attacker instead of idle sway
+                if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
+                {
+                    // Find nearest home field player to mark (excluding goalkeeper)
+                    int markTarget = -1;
+                    double markDist = double.MaxValue;
+                    for (int h = 1; h < HomePlayers.Length; h++)
+                    {
+                        var d = Distance(a.Position, HomePlayers[h].Position);
+                        if (d < markDist) { markDist = d; markTarget = h; }
+                    }
+                    if (markTarget >= 0)
+                    {
+                        var target = HomePlayers[markTarget].Position;
+                        // Position between the attacker and the goal they're attacking (right goal)
+                        double goalX = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset : a.BaseX;
+                        double markX = target.X + (goalX - target.X) * 0.15;
+                        double markY = target.Y;
+                        a.Position = new Point(
+                            Lerp(a.Position.X, markX, 0.04),
+                            Lerp(a.Position.Y, markY, 0.04));
+                    }
+                    else
+                    {
+                        var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
+                        a.Position = new Point(a.BaseX, a.BaseY + swing);
+                    }
+                }
+                else
+                {
+                    // No specific attacker: gentle sway at base position
+                    var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
+                    a.Position = new Point(a.BaseX, a.BaseY + swing);
+                }
                 ClampActor(a);
                 continue;
             }
@@ -750,6 +810,20 @@ public class GameState
         {
             var target = AwayPlayers[_awayPassTargetIndex].Position;
             BallPos = LerpPoint(BallPos, target, 0.32);
+
+            // Home defenders can intercept away passes
+            for (int i = 1; i < HomePlayers.Length; i++)
+            {
+                if (Distance(BallPos, HomePlayers[i].Position) < 22 && Random.Shared.NextDouble() < 0.06)
+                {
+                    _awayPassActive = false;
+                    _awayPassTargetIndex = -1;
+                    GameEvent?.Invoke(GameEventType.Interception);
+                    GiveBallToPlayer(i, "Passbrytning!");
+                    return;
+                }
+            }
+
             if (Distance(BallPos, target) < 14)
             {
                 BallOwnerType = BallOwnershipType.Opponent;
@@ -788,7 +862,7 @@ public class GameState
                     return;
                 }
 
-                var interceptor = TryGetInterception(HomePlayers, 1, _awayShootStart, _awayShootEnd, 0.10);
+                var interceptor = TryGetInterception(HomePlayers, 1, _awayShootStart, _awayShootEnd, 0.25);
                 if (interceptor >= 1)
                 {
                     GameEvent?.Invoke(GameEventType.Interception);
@@ -822,7 +896,7 @@ public class GameState
                     return;
                 }
 
-                var interceptor = TryGetInterception(AwayPlayers, 1, _shootStart, _shootEnd, 0.10);
+                var interceptor = TryGetInterception(AwayPlayers, 1, _shootStart, _shootEnd, 0.25);
                 if (interceptor >= 1)
                 {
                     GameEvent?.Invoke(GameEventType.Interception);
@@ -839,6 +913,20 @@ public class GameState
         {
             var target = HomePlayers[_passTargetHomeIndex].Position;
             BallPos = LerpPoint(BallPos, target, 0.35);
+
+            // Away defenders can intercept home passes
+            for (int i = 1; i < AwayPlayers.Length; i++)
+            {
+                if (Distance(BallPos, AwayPlayers[i].Position) < 22 && Random.Shared.NextDouble() < 0.06)
+                {
+                    _passActive = false;
+                    _passTargetHomeIndex = -1;
+                    GameEvent?.Invoke(GameEventType.Interception);
+                    GiveBallToOpponent(i, "Passbrytning!");
+                    return;
+                }
+            }
+
             if (Distance(BallPos, target) < 14)
             {
                 BallOwnerType = BallOwnershipType.Player;
@@ -1013,7 +1101,18 @@ public class GameState
         var candidates = Enumerable.Range(1, AwayPlayers.Length - 1).Where(i => i != ownerIndex).ToArray();
         if (candidates.Length == 0) return;
 
-        _awayPassTargetIndex = candidates[Random.Shared.Next(candidates.Length)];
+        // Prefer closest teammates: sort by distance then pick from the nearest
+        // with a small chance to pick a further player for variety
+        var ownerPos = AwayPlayers[ownerIndex].Position;
+        var sorted = candidates.OrderBy(i => Distance(ownerPos, AwayPlayers[i].Position)).ToArray();
+        // 70% chance to pass to the closest, 25% second closest, 5% random
+        double roll = Random.Shared.NextDouble();
+        if (roll < 0.70 || sorted.Length == 1)
+            _awayPassTargetIndex = sorted[0];
+        else if (roll < 0.95 && sorted.Length >= 2)
+            _awayPassTargetIndex = sorted[1];
+        else
+            _awayPassTargetIndex = sorted[Random.Shared.Next(sorted.Length)];
         _awayPassActive = true;
         _awayPassCooldownTicks = 30 + Random.Shared.Next(20);
         _awayBuildupPasses++;
