@@ -1,16 +1,26 @@
-﻿namespace HKA_Handball
+﻿using HKA_Handball.Services;
+using Plugin.Maui.Audio;
+
+namespace HKA_Handball
 {
     public partial class App : Application
     {
-        public App()
+        public App(SoundManager soundManager)
         {
             InitializeComponent();
+            _soundManager = soundManager;
         }
+
+        readonly SoundManager _soundManager;
 
         protected override Window CreateWindow(IActivationState? activationState)
         {
-            // Start the game page directly
-            return new Window(new GamePage()) { Title = "HKA Handball" };
+            return new Window(new NavigationPage(new MainMenuPage(_soundManager))
+            {
+                BarBackgroundColor = Color.FromArgb("#2C1B0E"),
+                BarTextColor = Colors.White
+            })
+            { Title = "HKA Handball" };
         }
     }
 }

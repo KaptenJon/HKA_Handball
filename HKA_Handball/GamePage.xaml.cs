@@ -1,6 +1,7 @@
 using Microsoft.Maui;
 using Microsoft.Maui.Graphics;
 using HKA_Handball.Controls;
+using HKA_Handball.Services;
 using ControlsApplication = Microsoft.Maui.Controls.Application;
 using G = Microsoft.Maui.Graphics;
 #if WINDOWS
@@ -13,19 +14,29 @@ namespace HKA_Handball;
 
 public partial class GamePage : ContentPage
 {
-    readonly GameState _state = new();
+    readonly GameState _state;
     readonly GameDrawable _drawable;
     readonly IDispatcherTimer _timer;
+    readonly SoundManager? _soundManager;
+    readonly GameMode _gameMode;
 #if WINDOWS
     HashSet<VirtualKey> _keysDown = new();
 #endif
     bool _advanceHeld;
 
-    public GamePage()
+    public GamePage() : this(GameMode.SinglePlayer, null) { }
+
+    public GamePage(GameMode mode, SoundManager? soundManager)
     {
+        _gameMode = mode;
+        _soundManager = soundManager;
+        _state = new GameState(mode);
+
         InitializeComponent();
         _drawable = new GameDrawable(_state);
         GameView.Drawable = _drawable;
+
+        _state.GameEvent += OnGameEvent;
 
         SizeChanged += (_, __) => _state.ViewSize = new Size(Width, Height);
 
@@ -119,6 +130,33 @@ public partial class GamePage : ContentPage
         if (_keysDown.Contains(VirtualKey.Space)) _advanceHeld = true; else _advanceHeld = false;
     }
 #endif
+
+    void OnGameEvent(GameEventType eventType)
+    {
+        if (_soundManager is null) return;
+        switch (eventType)
+        {
+            case GameEventType.GoalHome:
+            case GameEventType.GoalAway:
+                _soundManager.PlayGoal();
+                break;
+            case GameEventType.Shoot:
+            case GameEventType.AwayShoot:
+                _soundManager.PlayShoot();
+                break;
+            case GameEventType.Pass:
+            case GameEventType.AwayPass:
+                _soundManager.PlayPass();
+                break;
+            case GameEventType.Save:
+            case GameEventType.Interception:
+                _soundManager.PlayWhistle();
+                break;
+            case GameEventType.Whistle:
+                _soundManager.PlayWhistle();
+                break;
+        }
+    }
 }
 
 public enum BallOwnershipType { Player, Teammate, Opponent, Loose }
@@ -142,6 +180,10 @@ public class GameState
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
     public readonly Actor[] AwayPlayers = new Actor[7];
+    public readonly GameMode Mode;
+
+    /// <summary>Raised when a notable game event occurs (goal, shot, pass, etc.).</summary>
+    public event Action<GameEventType>? GameEvent;
 
     // Ownership
     public int BallOwnerPlayerIndex { get; private set; } = 1;
@@ -207,8 +249,9 @@ public class GameState
     bool _resettingAfterGoal;
     bool _viewInitialized;
 
-    public GameState()
+    public GameState(GameMode mode = GameMode.SinglePlayer)
     {
+        Mode = mode;
         InitTeam(HomePlayers, 100, true);
         InitTeam(AwayPlayers, 700, false);
         BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
@@ -331,6 +374,7 @@ public class GameState
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerPlayerIndex = -1;
         BallOwnerAwayIndex = -1;
+        GameEvent?.Invoke(GameEventType.Pass);
     }
 
     public void QueueShoot()
@@ -347,6 +391,7 @@ public class GameState
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerPlayerIndex = -1;
         BallOwnerAwayIndex = -1;
+        GameEvent?.Invoke(GameEventType.Shoot);
     }
 
     public void AdvanceHeld()
@@ -668,6 +713,7 @@ public class GameState
                 {
                     ScoreAway++;
                     SetStatusOverride("Motståndaren skjuter och gör mål", 120);
+                    GameEvent?.Invoke(GameEventType.GoalAway);
                     ResetAfterScore(homeScored: false);
                     return;
                 }
@@ -676,6 +722,7 @@ public class GameState
                 bool keeperSave = IsShotNearKeeperLine(_awayShootStart, _awayShootEnd, homeKeeper.Position) && Random.Shared.NextDouble() < 0.80;
                 if (keeperSave)
                 {
+                    GameEvent?.Invoke(GameEventType.Save);
                     GiveBallToPlayer(1, "Målvaktsräddning");
                     return;
                 }
@@ -683,6 +730,7 @@ public class GameState
                 var interceptor = TryGetInterception(HomePlayers, 1, _awayShootStart, _awayShootEnd, 0.10);
                 if (interceptor >= 1)
                 {
+                    GameEvent?.Invoke(GameEventType.Interception);
                     GiveBallToPlayer(interceptor, "Brytning av försvarare");
                     return;
                 }
@@ -702,12 +750,13 @@ public class GameState
             {
                 _shootActive = false;
 
-                if (_rightGoal.Contains(BallPos)) { ScoreHome++; SetStatusOverride("MÅL!", 120); ResetAfterScore(homeScored: true); return; }
+                if (_rightGoal.Contains(BallPos)) { ScoreHome++; SetStatusOverride("MÅL!", 120); GameEvent?.Invoke(GameEventType.GoalHome); ResetAfterScore(homeScored: true); return; }
 
                 var awayKeeper = AwayPlayers[0];
                 bool keeperSave = IsShotNearKeeperLine(_shootStart, _shootEnd, awayKeeper.Position) && Random.Shared.NextDouble() < 0.80;
                 if (keeperSave)
                 {
+                    GameEvent?.Invoke(GameEventType.Save);
                     GiveBallToOpponent(1, "Målvaktsräddning");
                     return;
                 }
@@ -715,6 +764,7 @@ public class GameState
                 var interceptor = TryGetInterception(AwayPlayers, 1, _shootStart, _shootEnd, 0.10);
                 if (interceptor >= 1)
                 {
+                    GameEvent?.Invoke(GameEventType.Interception);
                     GiveBallToOpponent(interceptor, "Brytning av försvarare");
                     return;
                 }
@@ -906,6 +956,7 @@ public class GameState
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerAwayIndex = -1;
         BallOwnerPlayerIndex = -1;
+        GameEvent?.Invoke(GameEventType.AwayPass);
     }
 
     /// <summary>
@@ -942,6 +993,7 @@ public class GameState
         BallOwnerAwayIndex = -1;
         BallOwnerPlayerIndex = -1;
         SetStatusOverride("Motståndaren skjuter", 60);
+        GameEvent?.Invoke(GameEventType.AwayShoot);
     }
 
     int TryGetInterception(Actor[] team, int startIndex, Point from, Point to, double chance)
