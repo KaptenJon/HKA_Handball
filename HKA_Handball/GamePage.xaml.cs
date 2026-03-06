@@ -162,7 +162,8 @@ public partial class GamePage : ContentPage
         _state.ActiveMoveInput = new Point(x * maxSpeed, y * maxSpeed);
         if (_keysDown.Contains(VirtualKey.Space)) _advanceHeld = true; else _advanceHeld = false;
 
-        // Keyboard actions (trigger once on press)
+        // Keyboard actions: Remove key from set after triggering to ensure single-fire per press.
+        // Keys re-enter the set only via OnWinKeyDown (new key press event).
         if (_keysDown.Contains(VirtualKey.Q)) { _keysDown.Remove(VirtualKey.Q); _state.QueuePassVertical(-1); }
         if (_keysDown.Contains(VirtualKey.E)) { _keysDown.Remove(VirtualKey.E); _state.QueuePassVertical(1); }
         if (_keysDown.Contains(VirtualKey.F)) { _keysDown.Remove(VirtualKey.F); _state.QueueShoot(); }
@@ -250,8 +251,8 @@ public class GameState
     const double PenaltySaveChance = 0.45; // 45% GK save on penalties
     const double PenaltyAwardChance = 0.4; // 40% chance foul near goal area awards penalty
 
-    // 2-minute suspension constants
-    const int SuspensionDurationTicks = 7200; // ~2 real minutes at 60fps
+    // 2-minute suspension constants (approximate at ~62.5fps from 0.016f dt)
+    const int SuspensionDurationTicks = 7500; // ~2 real minutes at ~62.5fps
     const double SuspensionChance = 0.15; // 15% chance a collision results in a suspension
 
     // Shot distance factor constants
@@ -800,11 +801,21 @@ public class GameState
             else
             {
                 // Attacking: spread evenly based on field index, shift with ball carrier
-                int fieldIdx = i - 1; // 0-based among field players
-                int fieldCount = HomePlayers.Length - 1;
+                // Only count non-suspended active field players for spacing
+                int activeFieldCount = 0;
+                int activeFieldIdx = 0;
+                for (int j = 1; j < HomePlayers.Length; j++)
+                {
+                    if (HomePlayers[j].IsSuspended) continue;
+                    if (BallOwnerType == BallOwnershipType.Player && j == BallOwnerPlayerIndex) continue;
+                    if (j == i) activeFieldIdx = activeFieldCount;
+                    activeFieldCount++;
+                }
+                if (activeFieldCount == 0) activeFieldCount = 1;
+
                 double topY = 80;
                 double bottomY = ViewSize.Height > 0 ? ViewSize.Height - 80 : 520;
-                double slotY = topY + fieldIdx * ((bottomY - topY) / Math.Max(fieldCount - 1, 1));
+                double slotY = topY + activeFieldIdx * ((bottomY - topY) / Math.Max(activeFieldCount - 1, 1));
 
                 // Shift toward ball carrier Y position
                 double carrierY = BallOwnerPlayerIndex >= 0 ? HomePlayers[BallOwnerPlayerIndex].Position.Y : ViewSize.Height / 2;
@@ -927,8 +938,17 @@ public class GameState
                 // Defending: 6-0 formation — defenders form an arc along the free-throw line
                 if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
                 {
-                    int fieldIdx = i - 1; // 0-based field index (0-5)
-                    int fieldCount = AwayPlayers.Length - 1;
+                    // Count non-suspended field defenders for proper arc spacing
+                    int activeDefCount = 0;
+                    int activeDefIdx = 0;
+                    for (int j = 1; j < AwayPlayers.Length; j++)
+                    {
+                        if (AwayPlayers[j].IsSuspended) continue;
+                        if (j == i) activeDefIdx = activeDefCount;
+                        activeDefCount++;
+                    }
+                    if (activeDefCount == 0) activeDefCount = 1;
+
                     double defArcCenterX = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset : 700;
                     double defArcRadius = GoalAreaRadius + 25;
 
@@ -939,7 +959,7 @@ public class GameState
 
                     double angleRange = 120.0;
                     double startAngle = 180.0 - angleRange / 2; // face left (toward home goal)
-                    double angleDeg = startAngle + fieldIdx * (angleRange / Math.Max(fieldCount - 1, 1));
+                    double angleDeg = startAngle + activeDefIdx * (angleRange / Math.Max(activeDefCount - 1, 1));
                     double angleRad = angleDeg * Math.PI / 180.0;
 
                     double defX = defArcCenterX + defArcRadius * Math.Cos(angleRad);
@@ -1141,7 +1161,14 @@ public class GameState
             {
                 _shootActive = false;
 
-                if (_rightGoal.Contains(BallPos)) { ScoreHome++; SetStatusOverride("MÅL! 🎉", 120); GameEvent?.Invoke(GameEventType.GoalHome); ResetAfterScore(homeScored: true); return; }
+                if (_rightGoal.Contains(BallPos))
+                {
+                    ScoreHome++;
+                    SetStatusOverride("MÅL! 🎉", 120);
+                    GameEvent?.Invoke(GameEventType.GoalHome);
+                    ResetAfterScore(homeScored: true);
+                    return;
+                }
 
                 var awayKeeper = AwayPlayers[0];
                 // Distance-based save chance: closer shots are harder to save
@@ -2041,9 +2068,9 @@ public class GameDrawable : IDrawable
             float sy = (float)pos.Y;
             canvas.FillColor = jerseyColor.WithAlpha(0.3f);
             canvas.FillRoundedRectangle(sx - 6, sy - 4, 12, 8, 3);
-            canvas.FontColor = Colors.White.WithAlpha(0.5f);
+            canvas.FontColor = Colors.Red.WithAlpha(0.7f);
             canvas.FontSize = 7;
-            canvas.DrawString("⏱", sx - 5, sy - 8, 10, 10,
+            canvas.DrawString("UT", sx - 5, sy - 8, 10, 10,
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
             return;
         }
@@ -2400,14 +2427,14 @@ public class GameDrawable : IDrawable
         if (homeSus > 0)
         {
             canvas.FontColor = AranasBlue;
-            canvas.DrawString($"⏱ HEM -{homeSus}",
+            canvas.DrawString($"HEM -{homeSus}",
                 new RectF(pillX + 4, indicatorY, pillW / 2 - 4, pillH),
                 G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
         }
         if (awaySus > 0)
         {
             canvas.FontColor = AwayRed;
-            canvas.DrawString($"⏱ BOR -{awaySus}",
+            canvas.DrawString($"BOR -{awaySus}",
                 new RectF(pillX + pillW / 2, indicatorY, pillW / 2 - 4, pillH),
                 G.HorizontalAlignment.Right, G.VerticalAlignment.Center);
         }
