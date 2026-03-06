@@ -29,7 +29,7 @@ jobs:
       run: dotnet build HKA_Handball/HKA_Handball.csproj -f net10.0-android -c Debug --no-restore
 
     - name: Upload APK artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: android-debug-apk
         path: HKA_Handball/bin/Debug/net10.0-android/*.apk
