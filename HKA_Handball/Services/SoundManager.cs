@@ -11,6 +11,7 @@ public sealed class SoundManager
     readonly IAudioManager _audioManager;
     readonly Dictionary<string, IAudioPlayer> _players = new();
     bool _enabled = true;
+    bool _preloaded;
 
     /// <summary>Whether sound effects are enabled.</summary>
     public bool Enabled
@@ -30,6 +31,9 @@ public sealed class SoundManager
     /// </summary>
     public async Task PreloadAsync()
     {
+        if (_preloaded) return;
+        _preloaded = true;
+
         string[] sounds = ["whistle", "goal", "shoot", "pass", "crowd", "click"];
         foreach (var name in sounds)
         {
@@ -37,6 +41,11 @@ public sealed class SoundManager
             {
                 var stream = await FileSystem.OpenAppPackageFileAsync($"Sounds/{name}.wav");
                 var player = _audioManager.CreatePlayer(stream);
+
+                // Dispose any previously loaded player for this name
+                if (_players.TryGetValue(name, out var old))
+                    old.Dispose();
+
                 _players[name] = player;
             }
             catch (FileNotFoundException)

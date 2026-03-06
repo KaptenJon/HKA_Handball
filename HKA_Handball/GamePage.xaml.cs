@@ -61,22 +61,44 @@ public partial class GamePage : ContentPage
 
         _timer = Dispatcher.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(16);
-        _timer.Tick += (_, __) =>
-        {
-            if (_advanceHeld)
-                _state.AdvanceHeld();
-            var defending = _state.IsHomeDefending;
-            PassUpButton.IsVisible = !defending;
-            PassDownButton.IsVisible = !defending;
-            ShootButton.IsVisible = !defending;
-            SwitchDefenderButton.IsVisible = defending;
-            DefenderSideButtons.IsVisible = defending;
-            AttackDiagonalButtons.IsVisible = !defending;
-            StatusLabel.Text = _state.StatusText;
-            _state.Update(0.016f);
-            GameView.Invalidate();
-        };
+        _timer.Tick += OnTimerTick;
         _timer.Start();
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        if (!_timer.IsRunning)
+            _timer.Start();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _timer.Stop();
+#if WINDOWS
+        if (GameView?.Handler?.PlatformView is UIElement element)
+        {
+            element.KeyDown -= OnWinKeyDown;
+            element.KeyUp -= OnWinKeyUp;
+        }
+#endif
+    }
+
+    void OnTimerTick(object? sender, EventArgs e)
+    {
+        if (_advanceHeld)
+            _state.AdvanceHeld();
+        var defending = _state.IsHomeDefending;
+        PassUpButton.IsVisible = !defending;
+        PassDownButton.IsVisible = !defending;
+        ShootButton.IsVisible = !defending;
+        SwitchDefenderButton.IsVisible = defending;
+        DefenderSideButtons.IsVisible = defending;
+        AttackDiagonalButtons.IsVisible = !defending;
+        StatusLabel.Text = _state.StatusText;
+        _state.Update(0.016f);
+        GameView.Invalidate();
     }
 
     void OnTapped(object? sender, TappedEventArgs e)

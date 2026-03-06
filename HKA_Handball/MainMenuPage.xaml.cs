@@ -6,6 +6,7 @@ public partial class MainMenuPage : ContentPage
 {
     readonly SoundManager _soundManager;
     CancellationTokenSource? _animationCts;
+    bool _initialized;
 
     public MainMenuPage(SoundManager soundManager)
     {
@@ -17,7 +18,13 @@ public partial class MainMenuPage : ContentPage
 
     async void OnPageLoaded(object? sender, EventArgs e)
     {
-        // Preload sounds in background
+        // Guard against multiple Loaded fires (hot reload, reattachment)
+        if (_initialized)
+            return;
+        _initialized = true;
+        Loaded -= OnPageLoaded;
+
+        // Preload sounds
         await _soundManager.PreloadAsync();
 
         // Animate the ball icon with a gentle bounce
