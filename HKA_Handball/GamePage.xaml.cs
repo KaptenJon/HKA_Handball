@@ -196,9 +196,9 @@ public class Actor
 
 public class GameState
 {
-    const double GoalCenterInset = 20;
-    const double GoalAreaRadius = 120;
-    const double FreeThrowRadius = 168;
+    public const double GoalCenterInset = 20;
+    public const double GoalAreaRadius = 160;
+    public const double FreeThrowRadius = 240;
 
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
@@ -270,12 +270,13 @@ public class GameState
     double _defenderDiagBoostY;
     double _attackDiagonalBoostY;
     bool _resettingAfterGoal;
+    int _resetCountdown;
     bool _viewInitialized;
 
     public GameState(GameMode mode = GameMode.SinglePlayer)
     {
         Mode = mode;
-        InitTeam(HomePlayers, 100, true);
+        InitTeam(HomePlayers, GoalCenterInset + GoalAreaRadius + 30, true);
         InitTeam(AwayPlayers, 700, false);
         BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
         UpdateStatus();
@@ -292,14 +293,20 @@ public class GameState
             var laneY = i == 0
                 ? (ViewSize.Height > 0 ? ViewSize.Height / 2 : 300)
                 : topY + (i - 1) * ((bottomY - topY) / (team.Length - 2));
-            var offsetX = (i == 0 ? (leftToRight ? -40 : 40) : 0);
+            double posX;
+            if (i == 0) // Goalkeeper: close to goal line
+                posX = leftToRight
+                    ? GoalCenterInset + 20
+                    : (ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - 20 : startX);
+            else
+                posX = startX;
             team[i] = new Actor
             {
-                Position = new Point(startX + offsetX, laneY),
+                Position = new Point(posX, laneY),
                 Velocity = Point.Zero,
                 IsGoalkeeper = i == 0,
                 BaseY = laneY,
-                BaseX = startX + offsetX,
+                BaseX = posX,
                 WasAdvancing = false
             };
         }
@@ -316,8 +323,14 @@ public class GameState
             var laneY = i == 0
                 ? (ViewSize.Height > 0 ? ViewSize.Height / 2 : 300)
                 : topY + (i - 1) * ((bottomY - topY) / (team.Length - 2));
-            var offsetX = (i == 0 ? (leftToRight ? -40 : 40) : 0);
-            team[i].BaseX = startX + offsetX;
+            double posX;
+            if (i == 0) // Goalkeeper: close to goal line
+                posX = leftToRight
+                    ? GoalCenterInset + 20
+                    : (ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - 20 : startX);
+            else
+                posX = startX;
+            team[i].BaseX = posX;
             team[i].BaseY = laneY;
             team[i].WasAdvancing = false;
         }
@@ -449,8 +462,8 @@ public class GameState
             _leftGoal = new Rect(8, centerY, _leftGoal.Width, _leftGoal.Height);
             if (!_viewInitialized)
             {
-                InitTeam(HomePlayers, 100, true);
-                InitTeam(AwayPlayers, ViewSize.Width - 100, false);
+                InitTeam(HomePlayers, GoalCenterInset + GoalAreaRadius + 30, true);
+                InitTeam(AwayPlayers, ViewSize.Width - GoalCenterInset - GoalAreaRadius - 30, false);
                 if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
                     BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
                 _viewInitialized = true;
@@ -465,7 +478,8 @@ public class GameState
     {
         if (_resettingAfterGoal)
         {
-            const double resetSpeed = 200;
+            _resetCountdown--;
+            const double resetSpeed = 500;
             bool allArrived = true;
             foreach (var team in new[] { HomePlayers, AwayPlayers })
             {
@@ -494,8 +508,20 @@ public class GameState
             else if (BallOwnerAwayIndex >= 0)
                 BallPos = AwayPlayers[BallOwnerAwayIndex].Position;
 
-            if (allArrived)
+            if (allArrived || _resetCountdown <= 0)
+            {
                 _resettingAfterGoal = false;
+                if (!allArrived)
+                {
+                    foreach (var team in new[] { HomePlayers, AwayPlayers })
+                        foreach (var a in team)
+                            a.Position = new Point(a.BaseX, a.BaseY);
+                    if (BallOwnerPlayerIndex >= 0)
+                        BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
+                    else if (BallOwnerAwayIndex >= 0)
+                        BallPos = AwayPlayers[BallOwnerAwayIndex].Position;
+                }
+            }
 
             return;
         }
@@ -557,12 +583,24 @@ public class GameState
                 }
             }
             var p = HomePlayers[i];
-            double desiredX = Math.Min(pressLineX - (i * 18), ViewSize.Width - 200);
-            desiredX = Math.Max(p.BaseX + 30, desiredX);
             bool groupRetreat = (BallOwnerType == BallOwnershipType.Opponent) || (BallOwnerType == BallOwnershipType.Loose && !_passActive) || _shootActive;
-            if (groupRetreat) desiredX = p.BaseX;
-            double newX = p.Position.X + (desiredX - p.Position.X) * 0.02;
-            p.Position = new Point(newX, Lerp(p.Position.Y, p.BaseY, 0.05));
+            double desiredX, desiredY;
+            if (groupRetreat)
+            {
+                // Form defensive arc just outside the goal area, between attackers and goalkeeper
+                var defPos = GetDefensiveArcPosition(i - 1, HomePlayers.Length - 1);
+                desiredX = defPos.X;
+                desiredY = defPos.Y;
+            }
+            else
+            {
+                desiredX = Math.Min(pressLineX - (i * 18), ViewSize.Width - 200);
+                desiredX = Math.Max(p.BaseX + 30, desiredX);
+                desiredY = p.BaseY;
+            }
+            double newX = p.Position.X + (desiredX - p.Position.X) * 0.04;
+            double newY = p.Position.Y + (desiredY - p.Position.Y) * 0.04;
+            p.Position = new Point(newX, newY);
             ClampActor(p);
         }
 
@@ -832,8 +870,10 @@ public class GameState
 
     void ResetAfterScore(bool homeScored)
     {
-        SetTeamBasePositions(HomePlayers, 100, true);
-        SetTeamBasePositions(AwayPlayers, ViewSize.Width - 100, false);
+        double homeFieldBase = GoalCenterInset + GoalAreaRadius + 30;
+        double awayFieldBase = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 30 : 700;
+        SetTeamBasePositions(HomePlayers, homeFieldBase, true);
+        SetTeamBasePositions(AwayPlayers, awayFieldBase, false);
         ControlledDefenderIndex = 1;
         _passActive = false; _shootActive = false; _awayShootActive = false; _awayPassActive = false; _awayPassTargetIndex = -1; _awayBuildupPasses = 0; _awayBreakthrough = false; _retreatingFormerOwner = false; _formerOwnerIndex = -1;
         _defenderSideBoostY = 0;
@@ -843,6 +883,7 @@ public class GameState
         _defenderAdvanceBoost = false;
         _viewInitialized = true;
         _resettingAfterGoal = true;
+        _resetCountdown = 60;
 
         if (homeScored)
         {
@@ -851,7 +892,7 @@ public class GameState
             BallOwnerPlayerIndex = -1;
             _awayBuildupPasses = 0;
             _awayBreakthrough = false;
-            _awayPassCooldownTicks = 120;
+            _awayPassCooldownTicks = 40;
         }
         else
         {
@@ -1001,6 +1042,32 @@ public class GameState
 
         // Add subtle lateral drift for realism
         double drift = Math.Sin(Environment.TickCount / 800.0 + playerIndex * 1.5) * 18;
+        return new Point(x, y + drift);
+    }
+
+    /// <summary>
+    /// Returns the defensive arc position for home field player at the given slot.
+    /// Defenders form a semicircle just outside the goal area, shifted toward the ball.
+    /// </summary>
+    Point GetDefensiveArcPosition(int fieldIndex, int fieldCount)
+    {
+        double defArcCenterX = GoalCenterInset;
+        double defArcRadius = GoalAreaRadius + 25;
+
+        // Shift arc center toward ball carrier vertically
+        double arcCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+        arcCenterY += (BallPos.Y - arcCenterY) * 0.3;
+
+        double angleRange = 120.0;
+        double startAngle = -angleRange / 2;
+        double angleDeg = startAngle + fieldIndex * (angleRange / Math.Max(fieldCount - 1, 1));
+        double angleRad = angleDeg * Math.PI / 180.0;
+
+        double x = defArcCenterX + defArcRadius * Math.Cos(angleRad);
+        double y = arcCenterY + defArcRadius * Math.Sin(angleRad);
+
+        // Subtle defensive sway
+        double drift = Math.Sin(Environment.TickCount / 600.0 + fieldIndex * 1.2) * 12;
         return new Point(x, y + drift);
     }
 
@@ -1192,10 +1259,10 @@ public class GameDrawable : IDrawable
         canvas.FillCircle(centerX, centerY, 4);
 
         // Goal area (6m) — solid, colored fill + line
-        var goalAreaRadius = 120f;
-        var freeThrowRadius = 168f;
-        var leftGoalCenterX = 20f;
-        var rightGoalCenterX = dirtyRect.Width - 20f;
+        var goalAreaRadius = (float)GameState.GoalAreaRadius;
+        var freeThrowRadius = (float)GameState.FreeThrowRadius;
+        var leftGoalCenterX = (float)GameState.GoalCenterInset;
+        var rightGoalCenterX = dirtyRect.Width - (float)GameState.GoalCenterInset;
 
         // Goal area fill (light tint)
         canvas.FillColor = Color.FromArgb("#22003DA5");
