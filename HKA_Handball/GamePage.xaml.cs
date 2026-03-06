@@ -200,6 +200,14 @@ public class GameState
     public const double GoalAreaRadius = 160;
     public const double FreeThrowRadius = 240;
 
+    // Gameplay tuning constants
+    const double PassInterceptDistance = 22;
+    const double PassInterceptChance = 0.06;
+    const double ShotInterceptChance = 0.25;
+    const double GoalkeeperAdvanceOffset = 40;
+    const double AwayPassClosestChance = 0.70;
+    const double AwayPassSecondClosestChance = 0.95; // cumulative (25% for second closest)
+
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
     public readonly Actor[] AwayPlayers = new Actor[7];
@@ -620,7 +628,7 @@ public class GameState
         else if (BallOwnerType == BallOwnershipType.Player)
         {
             // Home team attacking: advance forward to act as outlet pass option
-            double advancedX = GoalCenterInset + GoalAreaRadius + 40;
+            double advancedX = GoalCenterInset + GoalAreaRadius + GoalkeeperAdvanceOffset;
             var gSwing = Math.Sin(Environment.TickCount / 700.0) * 30;
             homeGK.Position = new Point(
                 Lerp(homeGK.Position.X, advancedX, 0.03),
@@ -652,7 +660,7 @@ public class GameState
         {
             // Away team attacking: advance forward from goal
             double advancedX = ViewSize.Width > 0
-                ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 40
+                ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - GoalkeeperAdvanceOffset
                 : awayGK.BaseX;
             var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 30;
             awayGK.Position = new Point(
@@ -814,7 +822,7 @@ public class GameState
             // Home defenders can intercept away passes
             for (int i = 1; i < HomePlayers.Length; i++)
             {
-                if (Distance(BallPos, HomePlayers[i].Position) < 22 && Random.Shared.NextDouble() < 0.06)
+                if (Distance(BallPos, HomePlayers[i].Position) < PassInterceptDistance && Random.Shared.NextDouble() < PassInterceptChance)
                 {
                     _awayPassActive = false;
                     _awayPassTargetIndex = -1;
@@ -862,7 +870,7 @@ public class GameState
                     return;
                 }
 
-                var interceptor = TryGetInterception(HomePlayers, 1, _awayShootStart, _awayShootEnd, 0.25);
+                var interceptor = TryGetInterception(HomePlayers, 1, _awayShootStart, _awayShootEnd, ShotInterceptChance);
                 if (interceptor >= 1)
                 {
                     GameEvent?.Invoke(GameEventType.Interception);
@@ -896,7 +904,7 @@ public class GameState
                     return;
                 }
 
-                var interceptor = TryGetInterception(AwayPlayers, 1, _shootStart, _shootEnd, 0.25);
+                var interceptor = TryGetInterception(AwayPlayers, 1, _shootStart, _shootEnd, ShotInterceptChance);
                 if (interceptor >= 1)
                 {
                     GameEvent?.Invoke(GameEventType.Interception);
@@ -917,7 +925,7 @@ public class GameState
             // Away defenders can intercept home passes
             for (int i = 1; i < AwayPlayers.Length; i++)
             {
-                if (Distance(BallPos, AwayPlayers[i].Position) < 22 && Random.Shared.NextDouble() < 0.06)
+                if (Distance(BallPos, AwayPlayers[i].Position) < PassInterceptDistance && Random.Shared.NextDouble() < PassInterceptChance)
                 {
                     _passActive = false;
                     _passTargetHomeIndex = -1;
@@ -1101,15 +1109,13 @@ public class GameState
         var candidates = Enumerable.Range(1, AwayPlayers.Length - 1).Where(i => i != ownerIndex).ToArray();
         if (candidates.Length == 0) return;
 
-        // Prefer closest teammates: sort by distance then pick from the nearest
-        // with a small chance to pick a further player for variety
+        // Prefer closest teammates with a small chance to pick a further player for variety
         var ownerPos = AwayPlayers[ownerIndex].Position;
         var sorted = candidates.OrderBy(i => Distance(ownerPos, AwayPlayers[i].Position)).ToArray();
-        // 70% chance to pass to the closest, 25% second closest, 5% random
         double roll = Random.Shared.NextDouble();
-        if (roll < 0.70 || sorted.Length == 1)
+        if (roll < AwayPassClosestChance || sorted.Length == 1)
             _awayPassTargetIndex = sorted[0];
-        else if (roll < 0.95 && sorted.Length >= 2)
+        else if (roll < AwayPassSecondClosestChance && sorted.Length >= 2)
             _awayPassTargetIndex = sorted[1];
         else
             _awayPassTargetIndex = sorted[Random.Shared.Next(sorted.Length)];
