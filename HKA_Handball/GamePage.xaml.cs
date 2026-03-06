@@ -105,7 +105,15 @@ public partial class GamePage : ContentPage
     {
         var pos = e.GetPosition(GameView);
         if (pos is Point p)
+        {
+            // If match is over, restart on tap
+            if (_state.IsMatchOver)
+            {
+                _state.RestartMatch();
+                return;
+            }
             _state.TargetPoint = p;
+        }
     }
 
     void OnPassUp(object? sender, EventArgs e)
@@ -176,6 +184,9 @@ public partial class GamePage : ContentPage
                 _soundManager.PlayWhistle();
                 break;
             case GameEventType.Whistle:
+            case GameEventType.HalfTime:
+            case GameEventType.FullTime:
+            case GameEventType.PenaltyAwarded:
                 _soundManager.PlayWhistle();
                 break;
         }
@@ -208,6 +219,25 @@ public class GameState
     const double AwayPassClosestChance = 0.70;
     const double AwayPassSecondClosestChance = 0.95; // cumulative (25% for second closest)
 
+    // Match clock constants (game-time seconds per half)
+    public const double HalfDurationSeconds = 180; // 3 min per half (scaled from 30 real min)
+    const double GameTimeMultiplier = 10.0; // 1 real second = 10 game seconds (so 3 min = 30 game-min)
+    const int HalfTimeDisplayTicks = 180; // ~3 seconds display at 60fps
+    const int FullTimeDisplayTicks = 300; // ~5 seconds display
+
+    // Passive play constants
+    const double PassivePlayWarningSeconds = 35; // warn after 35 game-seconds of possession
+    const double PassivePlayTurnoverSeconds = 45; // turnover after 45 game-seconds
+
+    // Fast break constants
+    const int FastBreakDurationTicks = 90; // ~1.5 seconds of speed boost
+    const double FastBreakSpeedMultiplier = 1.6;
+
+    // Penalty (7m) constants
+    const double PenaltyFoulZoneRadius = 50; // foul within this distance of goal area triggers 7m
+    const double PenaltyShotDuration = 0.7f;
+    const double PenaltySaveChance = 0.45; // 45% GK save on penalties
+
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
     public readonly Actor[] AwayPlayers = new Actor[7];
@@ -221,7 +251,7 @@ public class GameState
     public BallOwnershipType BallOwnerType { get; private set; } = BallOwnershipType.Player;
     public int BallOwnerAwayIndex { get; private set; } = -1;
     public int ControlledDefenderIndex { get; private set; } = 1;
-    public bool IsHomeDefending => BallOwnerType != BallOwnershipType.Player;
+    public bool IsHomeDefending => BallOwnerType != BallOwnershipType.Player && !IsMatchOver;
     public Point BallPos { get; private set; } = new(100, 300);
 
     // Input
@@ -269,8 +299,8 @@ public class GameState
     string _statusOverrideText = "";
 
     // Goals
-    Rect _rightGoal = new(0,0,12,160);
-    Rect _leftGoal = new(8,200,12,160);
+    Rect _rightGoal;
+    Rect _leftGoal;
 
     bool _advanceBoost; // internal flag for held advance
     bool _defenderAdvanceBoost;
@@ -281,9 +311,45 @@ public class GameState
     int _resetCountdown;
     bool _viewInitialized;
 
+    // Match clock state
+    public int CurrentHalf { get; private set; } = 1; // 1 or 2
+    public double MatchClockSeconds { get; private set; } // game-time elapsed in current half
+    public bool IsHalfTime { get; private set; }
+    public bool IsMatchOver { get; private set; }
+    int _halfTimeCountdown;
+
+    // Passive play state
+    double _possessionTimer; // game-time seconds since last ownership change
+    public bool PassivePlayWarningActive { get; private set; }
+
+    // Fast break state
+    int _homeFastBreakTicks;
+    int _awayFastBreakTicks;
+    public bool IsHomeFastBreak => _homeFastBreakTicks > 0;
+    public bool IsAwayFastBreak => _awayFastBreakTicks > 0;
+
+    // Penalty (7m) state
+    bool _penaltyActive;
+    bool _penaltyIsHome; // true = home team shoots penalty
+    float _penaltyTime;
+    Point _penaltyStart;
+    Point _penaltyEnd;
+    public bool IsPenaltyActive => _penaltyActive;
+    public bool PenaltyIsHome => _penaltyIsHome;
+
+    // Ball height simulation for visual arcs
+    public double BallHeight { get; private set; } // 0 = ground, 1 = max height
+
+    // Goal celebration
+    int _goalCelebrationTicks;
+    public bool IsGoalCelebration => _goalCelebrationTicks > 0;
+    public string GoalCelebrationText { get; private set; } = "";
+
     public GameState(GameMode mode = GameMode.SinglePlayer)
     {
         Mode = mode;
+        _rightGoal = new Rect(0, 0, 12, 160);
+        _leftGoal = new Rect(8, 0, 12, 160);
         InitTeam(HomePlayers, GoalCenterInset + GoalAreaRadius + 30, true);
         InitTeam(AwayPlayers, 700, false);
         BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
@@ -397,9 +463,11 @@ public class GameState
     public void QueuePassVertical(int dirY)
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
+        if (IsMatchOver || IsHalfTime) return;
         var owner = HomePlayers[BallOwnerPlayerIndex];
         (int idx, Actor actor)? best = null; double bestMetric = double.MaxValue;
-        for (int i = 1; i < HomePlayers.Length; i++)
+        // Allow passing to any teammate including goalkeeper (index 0)
+        for (int i = 0; i < HomePlayers.Length; i++)
         {
             if (i == BallOwnerPlayerIndex) continue;
             var dy = HomePlayers[i].Position.Y - owner.Position.Y;
@@ -419,23 +487,28 @@ public class GameState
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerPlayerIndex = -1;
         BallOwnerAwayIndex = -1;
+        _possessionTimer = 0; // reset passive play on pass attempt
         GameEvent?.Invoke(GameEventType.Pass);
     }
 
     public void QueueShoot()
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
+        if (IsMatchOver || IsHalfTime) return;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
         _advanceBoost = false;
         _shootStart = BallPos;
-        var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 120;
+        // Wider shot spread: use ±75px (was ±60) to cover more of the 160px goal
+        var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 150;
         _shootEnd = new Point(ViewSize.Width - 14, ViewSize.Height / 2 + shootOffsetY);
         _shootTime = 0f;
         _shootActive = true;
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerPlayerIndex = -1;
         BallOwnerAwayIndex = -1;
+        _possessionTimer = 0;
+        PassivePlayWarningActive = false;
         GameEvent?.Invoke(GameEventType.Shoot);
     }
 
@@ -454,15 +527,92 @@ public class GameState
     {
         _advanceBoost = false;
         _defenderAdvanceBoost = false;
-        _defenderSideBoostY = 0;
-        _defenderDiagBoostY = 0;
-        _attackDiagonalBoostY = 0;
+        // Only clear side/diag boosts that belong to the advance button, not unrelated diagonal buttons
     }
 
     public void Update(double dt)
     {
         if (_awayPassCooldownTicks > 0)
             _awayPassCooldownTicks--;
+
+        // Match clock
+        if (!IsMatchOver && !IsHalfTime && !_resettingAfterGoal)
+        {
+            MatchClockSeconds += dt * GameTimeMultiplier;
+            if (MatchClockSeconds >= HalfDurationSeconds)
+            {
+                MatchClockSeconds = HalfDurationSeconds;
+                if (CurrentHalf == 1)
+                {
+                    IsHalfTime = true;
+                    _halfTimeCountdown = HalfTimeDisplayTicks;
+                    SetStatusOverride("HALVTID", HalfTimeDisplayTicks);
+                    GameEvent?.Invoke(GameEventType.HalfTime);
+                    ClearAllActiveActions();
+                }
+                else
+                {
+                    IsMatchOver = true;
+                    SetStatusOverride("SLUTSIGNAL", FullTimeDisplayTicks);
+                    GameEvent?.Invoke(GameEventType.FullTime);
+                    ClearAllActiveActions();
+                }
+            }
+        }
+
+        // Half-time countdown
+        if (IsHalfTime)
+        {
+            _halfTimeCountdown--;
+            if (_halfTimeCountdown <= 0)
+            {
+                IsHalfTime = false;
+                StartSecondHalf();
+            }
+            return;
+        }
+
+        // Full-time: stop the game
+        if (IsMatchOver) return;
+
+        // Goal celebration pause
+        if (_goalCelebrationTicks > 0)
+        {
+            _goalCelebrationTicks--;
+            return;
+        }
+
+        // Fast break timers
+        if (_homeFastBreakTicks > 0) _homeFastBreakTicks--;
+        if (_awayFastBreakTicks > 0) _awayFastBreakTicks--;
+
+        // Passive play tracking
+        if (BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive)
+        {
+            _possessionTimer += dt * GameTimeMultiplier;
+            if (_possessionTimer >= PassivePlayTurnoverSeconds)
+            {
+                // Passive play turnover
+                _possessionTimer = 0;
+                PassivePlayWarningActive = false;
+                GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarboll");
+                GameEvent?.Invoke(GameEventType.Whistle);
+                return;
+            }
+            else if (_possessionTimer >= PassivePlayWarningSeconds && !PassivePlayWarningActive)
+            {
+                PassivePlayWarningActive = true;
+                SetStatusOverride("⚠ Passivt spel - varning!", 90);
+                GameEvent?.Invoke(GameEventType.Whistle);
+            }
+        }
+
+        // Penalty shot processing
+        if (_penaltyActive)
+        {
+            UpdatePenalty(dt);
+            return;
+        }
 
         if (ViewSize.Width > 0)
         {
@@ -480,6 +630,7 @@ public class GameState
         }
         UpdatePlayers(dt);
         UpdateBall(dt);
+        UpdateBallHeight(dt);
         UpdateStatus();
     }
 
@@ -542,11 +693,12 @@ public class GameState
         if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
         {
             var owner = HomePlayers[BallOwnerPlayerIndex];
+            double fastBreakMult = _homeFastBreakTicks > 0 ? FastBreakSpeedMultiplier : 1.0;
             double forwardExtra = _advanceBoost ? 220 : 0;
             double diagonalForwardExtra = _attackDiagonalBoostY == 0 ? 0 : 140;
             var nextPos = new Point(
-                owner.Position.X + (ActiveMoveInput.X + forwardExtra + diagonalForwardExtra) * dt,
-                owner.Position.Y + (ActiveMoveInput.Y + _attackDiagonalBoostY) * dt);
+                owner.Position.X + (ActiveMoveInput.X + forwardExtra + diagonalForwardExtra) * dt * fastBreakMult,
+                owner.Position.Y + (ActiveMoveInput.Y + _attackDiagonalBoostY) * dt * fastBreakMult);
 
             owner.Position = nextPos;
 
@@ -750,14 +902,29 @@ public class GameState
 
             if (awayAttacking && i == BallOwnerAwayIndex)
             {
+                double fastBreakMult = _awayFastBreakTicks > 0 ? FastBreakSpeedMultiplier : 1.0;
                 if (_awayBreakthrough)
                 {
-                    // Breaking through: charge toward goal area
+                    // Breaking through: charge toward goal area with varied angles
                     double attackStopX = GoalCenterInset + GoalAreaRadius + 30;
                     double newX = a.Position.X;
                     if (a.Position.X > attackStopX)
-                        newX -= 160 * dt;
-                    double targetY = ViewSize.Height / 2 + (a.Position.Y > ViewSize.Height / 2 ? 30 : -30);
+                        newX -= 160 * dt * fastBreakMult;
+                    // Varied breakthrough angles: wings go wide, backs cut inside
+                    bool isWing = (i == 1 || i == 6); // top/bottom wing
+                    double targetY;
+                    if (isWing)
+                    {
+                        // Wing attacks from wide angle
+                        double wingY = i == 1 ? ViewSize.Height * 0.2 : ViewSize.Height * 0.8;
+                        targetY = Lerp(wingY, ViewSize.Height / 2, 0.3);
+                    }
+                    else
+                    {
+                        // Backs cut toward center with slight offset
+                        double offset = (a.Position.Y > ViewSize.Height / 2 ? 40 : -40);
+                        targetY = ViewSize.Height / 2 + offset;
+                    }
                     double newY = Lerp(a.Position.Y, targetY, 0.08);
                     a.Position = new Point(newX, newY);
 
@@ -779,11 +946,16 @@ public class GameState
                         // After enough passes, chance to break through
                         double breakChance = _awayBuildupPasses >= 3 ? 0.015 : 0.0;
                         if (_awayBuildupPasses >= 6) breakChance = 0.04;
+                        // Fast break: higher breakthrough chance when on fast break
+                        if (_awayFastBreakTicks > 0) breakChance = 0.08;
 
                         if (Random.Shared.NextDouble() < breakChance)
                         {
                             _awayBreakthrough = true;
-                            SetStatusOverride("Genombrott!", 50);
+                            if (_awayFastBreakTicks > 0)
+                                SetStatusOverride("Kontring!", 50);
+                            else
+                                SetStatusOverride("Genombrott!", 50);
                         }
                         else
                         {
@@ -966,21 +1138,23 @@ public class GameState
 
     void ResetAfterScore(bool homeScored)
     {
+        // Goal celebration pause
+        _goalCelebrationTicks = 60; // ~1 second celebration
+        GoalCelebrationText = homeScored ? "MÅL! 🎉" : "Motståndaren gör mål!";
+
         double homeFieldBase = GoalCenterInset + GoalAreaRadius + 30;
         double awayFieldBase = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 30 : 700;
         SetTeamBasePositions(HomePlayers, homeFieldBase, true);
         SetTeamBasePositions(AwayPlayers, awayFieldBase, false);
         ControlledDefenderIndex = 1;
-        _passActive = false; _shootActive = false; _awayShootActive = false; _awayPassActive = false; _awayPassTargetIndex = -1; _awayBuildupPasses = 0; _awayBreakthrough = false; _retreatingFormerOwner = false; _formerOwnerIndex = -1;
-        _defenderSideBoostY = 0;
-        _defenderDiagBoostY = 0;
-        _attackDiagonalBoostY = 0;
-        _advanceBoost = false;
-        _defenderAdvanceBoost = false;
+        ClearAllActiveActions();
         _viewInitialized = true;
         _resettingAfterGoal = true;
         _resetCountdown = 60;
+        _possessionTimer = 0;
+        PassivePlayWarningActive = false;
 
+        // Throw-off: opposite team gets ball at center (symmetric cooldown)
         if (homeScored)
         {
             BallOwnerType = BallOwnershipType.Opponent;
@@ -1007,13 +1181,20 @@ public class GameState
             return;
         }
 
-        if (_shootActive) { StatusText = "Shooting"; return; }
-        if (_passActive) { StatusText = "Pass in air"; return; }
+        if (IsMatchOver) { StatusText = ScoreHome > ScoreAway ? "Seger!" : ScoreHome < ScoreAway ? "Förlust" : "Oavgjort"; return; }
+        if (IsHalfTime) { StatusText = "HALVTID"; return; }
+        if (_penaltyActive) { StatusText = _penaltyIsHome ? "Straffskytte - Hemma" : "Straffskytte - Borta"; return; }
+        if (_shootActive) { StatusText = "Skott!"; return; }
+        if (_awayShootActive) { StatusText = "Motståndaren skjuter!"; return; }
+        if (_passActive) { StatusText = "Pass i luften"; return; }
+        if (PassivePlayWarningActive) { StatusText = "⚠ Passivt spel - skjut!"; return; }
+
+        string fastBreakIndicator = _homeFastBreakTicks > 0 ? " ⚡ Kontring!" : "";
         StatusText = BallOwnerType switch
         {
-            BallOwnershipType.Player => $"Owner: Home #{BallOwnerPlayerIndex}",
-            BallOwnershipType.Opponent => $"Försvarar med #{ControlledDefenderIndex} | Borta #{BallOwnerAwayIndex}",
-            _ => "Loose ball"
+            BallOwnershipType.Player => $"Boll: Hemma #{BallOwnerPlayerIndex}{fastBreakIndicator}",
+            BallOwnershipType.Opponent => $"Försvarar med #{ControlledDefenderIndex} | Borta #{BallOwnerAwayIndex}" + (_awayFastBreakTicks > 0 ? " ⚡" : ""),
+            _ => "Lös boll"
         };
     }
 
@@ -1086,6 +1267,11 @@ public class GameState
         _awayBreakthrough = false;
         _awayPassCooldownTicks = 40;
         _attackDiagonalBoostY = 0;
+        _possessionTimer = 0;
+        PassivePlayWarningActive = false;
+        // Fast break for away team on turnover
+        _awayFastBreakTicks = FastBreakDurationTicks;
+        _homeFastBreakTicks = 0;
         SetStatusOverride(reason);
     }
 
@@ -1101,6 +1287,11 @@ public class GameState
         _awayBuildupPasses = 0;
         _awayBreakthrough = false;
         _defenderSideBoostY = 0;
+        _possessionTimer = 0;
+        PassivePlayWarningActive = false;
+        // Fast break for home team on turnover
+        _homeFastBreakTicks = FastBreakDurationTicks;
+        _awayFastBreakTicks = 0;
         SetStatusOverride(reason);
     }
 
@@ -1181,13 +1372,14 @@ public class GameState
         _awayShootActive = true;
         _awayShootTime = 0f;
         _awayShootStart = from;
-        var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 120;
+        // Wider shot spread matching home team (±75px)
+        var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 150;
         _awayShootEnd = new Point(14, ViewSize.Height / 2 + shootOffsetY);
         _awayPassActive = false;
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerAwayIndex = -1;
         BallOwnerPlayerIndex = -1;
-        SetStatusOverride("Motståndaren skjuter", 60);
+        SetStatusOverride("Motståndaren skjuter!", 60);
         GameEvent?.Invoke(GameEventType.AwayShoot);
     }
 
@@ -1252,13 +1444,27 @@ public class GameState
                     BallPos = owner.Position;
                 }
 
+                // Check if foul is near goal area → 7-meter penalty
+                var rightGoalCenter = new Point(ViewSize.Width - GoalCenterInset, ViewSize.Height / 2);
+                double distToGoalArea = Distance(owner.Position, rightGoalCenter) - GoalAreaRadius;
+                bool nearGoalArea = distToGoalArea < PenaltyFoulZoneRadius && distToGoalArea >= 0;
+
+                if (nearGoalArea && Random.Shared.NextDouble() < 0.4)
+                {
+                    // 7-meter penalty awarded to home team
+                    StartPenalty(isHome: true);
+                    return true;
+                }
+
+                // Clear all boost states on collision
+                _advanceBoost = false;
+                _attackDiagonalBoostY = 0;
+
                 if (Random.Shared.NextDouble() < 0.5)
                 {
                     var freeThrowX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
                     owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
                     BallPos = owner.Position;
-                    _advanceBoost = false;
-                    _attackDiagonalBoostY = 0;
                     SetStatusOverride("Frikast - börja om utanför");
                 }
                 else
@@ -1285,6 +1491,252 @@ public class GameState
         var s = minRadius / dist;
         return new Point(center.X + dx * s, center.Y + dy * s);
     }
+
+    // ── New helper methods ──
+
+    void ClearAllActiveActions()
+    {
+        _passActive = false;
+        _shootActive = false;
+        _awayShootActive = false;
+        _awayPassActive = false;
+        _awayPassTargetIndex = -1;
+        _awayBuildupPasses = 0;
+        _awayBreakthrough = false;
+        _retreatingFormerOwner = false;
+        _formerOwnerIndex = -1;
+        _defenderSideBoostY = 0;
+        _defenderDiagBoostY = 0;
+        _attackDiagonalBoostY = 0;
+        _advanceBoost = false;
+        _defenderAdvanceBoost = false;
+        _penaltyActive = false;
+        _possessionTimer = 0;
+        PassivePlayWarningActive = false;
+        BallHeight = 0;
+    }
+
+    void StartSecondHalf()
+    {
+        CurrentHalf = 2;
+        MatchClockSeconds = 0;
+
+        // Center throw-off for second half: away team starts
+        double homeFieldBase = GoalCenterInset + GoalAreaRadius + 30;
+        double awayFieldBase = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 30 : 700;
+        SetTeamBasePositions(HomePlayers, homeFieldBase, true);
+        SetTeamBasePositions(AwayPlayers, awayFieldBase, false);
+
+        // Place players at their base positions
+        foreach (var team in new[] { HomePlayers, AwayPlayers })
+            foreach (var a in team)
+                a.Position = new Point(a.BaseX, a.BaseY);
+
+        BallOwnerType = BallOwnershipType.Opponent;
+        BallOwnerAwayIndex = 1;
+        BallOwnerPlayerIndex = -1;
+        ControlledDefenderIndex = 1;
+        ClearAllActiveActions();
+        _awayPassCooldownTicks = 40;
+        _viewInitialized = true;
+        BallPos = AwayPlayers[1].Position;
+        SetStatusOverride("Andra halvlek", 90);
+    }
+
+    /// <summary>Restart the match (e.g. after full time).</summary>
+    public void RestartMatch()
+    {
+        ScoreHome = 0;
+        ScoreAway = 0;
+        CurrentHalf = 1;
+        MatchClockSeconds = 0;
+        IsHalfTime = false;
+        IsMatchOver = false;
+        _goalCelebrationTicks = 0;
+        _homeFastBreakTicks = 0;
+        _awayFastBreakTicks = 0;
+
+        double homeFieldBase = GoalCenterInset + GoalAreaRadius + 30;
+        double awayFieldBase = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 30 : 700;
+        SetTeamBasePositions(HomePlayers, homeFieldBase, true);
+        SetTeamBasePositions(AwayPlayers, awayFieldBase, false);
+        foreach (var team in new[] { HomePlayers, AwayPlayers })
+            foreach (var a in team)
+                a.Position = new Point(a.BaseX, a.BaseY);
+
+        BallOwnerType = BallOwnershipType.Player;
+        BallOwnerPlayerIndex = 1;
+        BallOwnerAwayIndex = -1;
+        ControlledDefenderIndex = 1;
+        ClearAllActiveActions();
+        _viewInitialized = true;
+        BallPos = HomePlayers[1].Position;
+        SetStatusOverride("Ny match!", 90);
+    }
+
+    void StartPenalty(bool isHome)
+    {
+        ClearAllActiveActions();
+        _penaltyActive = true;
+        _penaltyIsHome = isHome;
+        _penaltyTime = 0f;
+
+        double penaltyX, goalX;
+        if (isHome)
+        {
+            // Home shoots at right goal
+            penaltyX = ViewSize.Width - GoalCenterInset - GoalAreaRadius - 48;
+            goalX = ViewSize.Width - 14;
+            var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 140;
+            _penaltyStart = new Point(penaltyX, ViewSize.Height / 2);
+            _penaltyEnd = new Point(goalX, ViewSize.Height / 2 + shootOffsetY);
+        }
+        else
+        {
+            // Away shoots at left goal
+            penaltyX = GoalCenterInset + GoalAreaRadius + 48;
+            goalX = 14;
+            var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 140;
+            _penaltyStart = new Point(penaltyX, ViewSize.Height / 2);
+            _penaltyEnd = new Point(goalX, ViewSize.Height / 2 + shootOffsetY);
+        }
+
+        BallPos = _penaltyStart;
+        BallOwnerType = BallOwnershipType.Loose;
+        BallOwnerPlayerIndex = -1;
+        BallOwnerAwayIndex = -1;
+        SetStatusOverride(_penaltyIsHome ? "7-meterstraff! Hemma skjuter" : "7-meterstraff! Borta skjuter", 90);
+        GameEvent?.Invoke(GameEventType.PenaltyAwarded);
+        GameEvent?.Invoke(GameEventType.Whistle);
+    }
+
+    void UpdatePenalty(double dt)
+    {
+        _penaltyTime += (float)dt;
+
+        // Short delay before shot fires
+        if (_penaltyTime < 0.5f)
+        {
+            BallPos = _penaltyStart;
+            return;
+        }
+
+        float shotProgress = (_penaltyTime - 0.5f) / (float)PenaltyShotDuration;
+        shotProgress = Math.Clamp(shotProgress, 0f, 1f);
+        var ease = shotProgress * shotProgress * (3 - 2 * shotProgress);
+        BallPos = LerpPoint(_penaltyStart, _penaltyEnd, ease);
+        BallHeight = Math.Sin(shotProgress * Math.PI) * 0.8;
+
+        if (shotProgress >= 1f)
+        {
+            _penaltyActive = false;
+            BallHeight = 0;
+
+            if (_penaltyIsHome)
+            {
+                // Home shot at right goal
+                if (_rightGoal.Contains(BallPos))
+                {
+                    bool keeperSave = Random.Shared.NextDouble() < PenaltySaveChance;
+                    if (keeperSave)
+                    {
+                        GameEvent?.Invoke(GameEventType.Save);
+                        GiveBallToOpponent(1, "Straffskytte: Målvaktsräddning!");
+                    }
+                    else
+                    {
+                        ScoreHome++;
+                        SetStatusOverride("STRAFFMÅL! 🎉", 120);
+                        GameEvent?.Invoke(GameEventType.GoalHome);
+                        ResetAfterScore(homeScored: true);
+                    }
+                }
+                else
+                {
+                    GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Straff missat");
+                }
+            }
+            else
+            {
+                // Away shot at left goal
+                if (_leftGoal.Contains(BallPos))
+                {
+                    bool keeperSave = Random.Shared.NextDouble() < PenaltySaveChance;
+                    if (keeperSave)
+                    {
+                        GameEvent?.Invoke(GameEventType.Save);
+                        GiveBallToPlayer(1, "Straffskytte: Målvaktsräddning!");
+                    }
+                    else
+                    {
+                        ScoreAway++;
+                        SetStatusOverride("Borta straffmål!", 120);
+                        GameEvent?.Invoke(GameEventType.GoalAway);
+                        ResetAfterScore(homeScored: false);
+                    }
+                }
+                else
+                {
+                    GiveBallToPlayer(GetNearestHomeIndex(BallPos), "Straff missat");
+                }
+            }
+        }
+    }
+
+    void UpdateBallHeight(double dt)
+    {
+        // Simulate ball height for visual arc during shots and passes
+        if (_shootActive)
+        {
+            var t = Math.Clamp(_shootTime / 0.6f, 0f, 1f);
+            BallHeight = Math.Sin(t * Math.PI) * 0.7;
+        }
+        else if (_awayShootActive)
+        {
+            var t = Math.Clamp(_awayShootTime / 0.55f, 0f, 1f);
+            BallHeight = Math.Sin(t * Math.PI) * 0.7;
+        }
+        else if (_passActive || _awayPassActive)
+        {
+            // Passes have a lower arc
+            BallHeight = Math.Max(0, BallHeight - dt * 3);
+            if (_passActive && _passTargetHomeIndex >= 0)
+            {
+                var target = HomePlayers[_passTargetHomeIndex].Position;
+                var total = Distance(_shootStart == Point.Zero ? BallPos : _shootStart, target);
+                if (total > 0)
+                {
+                    var current = Distance(BallPos, target);
+                    var progress = 1.0 - (current / Math.Max(total, 1));
+                    BallHeight = Math.Sin(Math.Clamp(progress, 0, 1) * Math.PI) * 0.4;
+                }
+            }
+            else if (_awayPassActive && _awayPassTargetIndex >= 0)
+            {
+                BallHeight = 0.3; // simpler arc for away passes
+            }
+        }
+        else
+        {
+            // Decay height to 0 when ball is held
+            BallHeight = Math.Max(0, BallHeight - dt * 5);
+        }
+    }
+
+    /// <summary>
+    /// Returns the match clock formatted as MM:SS for display.
+    /// </summary>
+    public string GetMatchClockDisplay()
+    {
+        double gameMinutes = MatchClockSeconds / 60.0 * (30.0 / (HalfDurationSeconds / 60.0));
+        double displayMinutes = (CurrentHalf - 1) * 30 + gameMinutes;
+        int mins = (int)displayMinutes;
+        int secs = (int)((displayMinutes - mins) * 60);
+        return $"{mins:D2}:{secs:D2}";
+    }
+
+    /// <summary>Returns a short half indicator string.</summary>
+    public string GetHalfDisplay() => CurrentHalf == 1 ? "1:a" : "2:a";
 }
 
 public class GameDrawable : IDrawable
@@ -1310,6 +1762,9 @@ public class GameDrawable : IDrawable
         DrawBall(canvas);
         DrawPassIndicator(canvas);
         DrawScore(canvas, dirtyRect);
+        DrawPassivePlayIndicator(canvas, dirtyRect);
+        DrawGoalCelebration(canvas, dirtyRect);
+        DrawMatchOverlay(canvas, dirtyRect);
     }
 
     void DrawField(ICanvas canvas, RectF dirtyRect)
@@ -1480,25 +1935,39 @@ public class GameDrawable : IDrawable
     {
         float bx = (float)_state.BallPos.X;
         float by = (float)_state.BallPos.Y;
+        float height = (float)_state.BallHeight;
 
-        // Ball shadow
+        // Ball shadow on ground (offset increases with height)
+        float shadowOffset = height * 12;
+        float shadowScale = 1f + height * 0.3f;
         canvas.FillColor = Color.FromArgb("#33000000");
-        canvas.FillCircle(bx + 1, by + 2, 7);
+        canvas.FillEllipse(bx - 5 * shadowScale + 1, by + 2 + shadowOffset, 10 * shadowScale, 6 * shadowScale);
+
+        // Lift ball visually based on height
+        float visualBy = by - height * 20;
+        float ballRadius = 7f + height * 2f; // ball appears slightly larger when high
 
         // Ball glow during shots
-        if (_state.IsShootActive || _state.IsAwayShootActive)
+        if (_state.IsShootActive || _state.IsAwayShootActive || _state.IsPenaltyActive)
         {
             canvas.FillColor = Colors.Yellow.WithAlpha(0.25f);
-            canvas.FillCircle(bx, by, 14);
+            canvas.FillCircle(bx, visualBy, ballRadius + 7);
+        }
+
+        // Fast break indicator glow
+        if (_state.IsHomeFastBreak || _state.IsAwayFastBreak)
+        {
+            canvas.FillColor = Colors.Cyan.WithAlpha(0.15f);
+            canvas.FillCircle(bx, visualBy, ballRadius + 5);
         }
 
         // Ball
         canvas.FillColor = Color.FromArgb("#FF8C00");
-        canvas.FillCircle(bx, by, 7);
+        canvas.FillCircle(bx, visualBy, ballRadius);
 
         // Highlight
         canvas.FillColor = Colors.White.WithAlpha(0.4f);
-        canvas.FillCircle(bx - 2, by - 2, 3);
+        canvas.FillCircle(bx - 2, visualBy - 2, 3);
     }
 
     void DrawPassIndicator(ICanvas canvas)
@@ -1515,16 +1984,140 @@ public class GameDrawable : IDrawable
 
     void DrawScore(ICanvas canvas, RectF dirtyRect)
     {
-        float pillW = 100, pillH = 28;
+        // Enhanced score display with team names, clock, and half indicator
+        float pillW = 200, pillH = 36;
         float pillX = dirtyRect.Center.X - pillW / 2;
-        canvas.FillColor = Color.FromArgb("#CC2C1B0E");
-        canvas.FillRoundedRectangle(pillX, 6, pillW, pillH, 14);
+        canvas.FillColor = Color.FromArgb("#DD2C1B0E");
+        canvas.FillRoundedRectangle(pillX, 4, pillW, pillH, 18);
 
+        // Score with team names
+        canvas.FontColor = AranasBlue;
+        canvas.FontSize = 12;
+        canvas.DrawString("HEM",
+            new RectF(pillX + 8, 8, 40, 16),
+            G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
+
+        canvas.FontColor = AwayRed;
+        canvas.DrawString("BOR",
+            new RectF(pillX + pillW - 48, 8, 40, 16),
+            G.HorizontalAlignment.Right, G.VerticalAlignment.Center);
+
+        // Score numbers
         canvas.FontColor = AranasWhite;
-        canvas.FontSize = 18;
+        canvas.FontSize = 20;
         canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
-            new RectF(0, 8, dirtyRect.Width, 24),
-            G.HorizontalAlignment.Center, G.VerticalAlignment.Top);
+            new RectF(pillX, 6, pillW, 22),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Match clock below score
+        canvas.FontSize = 10;
+        canvas.FontColor = Color.FromArgb("#AAFFFFFF");
+        string clockText = $"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}";
+        canvas.DrawString(clockText,
+            new RectF(pillX, 24, pillW, 14),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+    }
+
+    void DrawPassivePlayIndicator(ICanvas canvas, RectF dirtyRect)
+    {
+        if (!_state.PassivePlayWarningActive) return;
+
+        // Flashing warning border
+        float alpha = (float)(0.3 + 0.3 * Math.Sin(Environment.TickCount / 200.0));
+        canvas.StrokeColor = Colors.Orange.WithAlpha(alpha);
+        canvas.StrokeSize = 4;
+        canvas.DrawRoundedRectangle(16, 16, dirtyRect.Width - 32, dirtyRect.Height - 32, 4);
+    }
+
+    void DrawGoalCelebration(ICanvas canvas, RectF dirtyRect)
+    {
+        if (!_state.IsGoalCelebration) return;
+
+        // Semi-transparent overlay flash
+        canvas.FillColor = Colors.White.WithAlpha(0.15f);
+        canvas.FillRectangle(dirtyRect);
+
+        // Large celebration text
+        canvas.FontColor = Colors.Gold;
+        canvas.FontSize = 36;
+        canvas.DrawString(_state.GoalCelebrationText,
+            new RectF(0, dirtyRect.Height * 0.35f, dirtyRect.Width, 50),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+    }
+
+    void DrawMatchOverlay(ICanvas canvas, RectF dirtyRect)
+    {
+        if (_state.IsHalfTime)
+        {
+            // Half-time overlay
+            canvas.FillColor = Color.FromArgb("#CC2C1B0E");
+            canvas.FillRectangle(dirtyRect);
+
+            canvas.FontColor = Colors.Gold;
+            canvas.FontSize = 32;
+            canvas.DrawString("HALVTID",
+                new RectF(0, dirtyRect.Height * 0.3f, dirtyRect.Width, 40),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            canvas.FontColor = AranasWhite;
+            canvas.FontSize = 24;
+            canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
+                new RectF(0, dirtyRect.Height * 0.45f, dirtyRect.Width, 36),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            canvas.FontSize = 14;
+            canvas.FontColor = Color.FromArgb("#AAFFFFFF");
+            canvas.DrawString("Andra halvlek börjar snart...",
+                new RectF(0, dirtyRect.Height * 0.55f, dirtyRect.Width, 24),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+        }
+
+        if (_state.IsMatchOver)
+        {
+            // Full-time overlay
+            canvas.FillColor = Color.FromArgb("#DD2C1B0E");
+            canvas.FillRectangle(dirtyRect);
+
+            canvas.FontColor = Colors.Gold;
+            canvas.FontSize = 32;
+            canvas.DrawString("SLUTSIGNAL",
+                new RectF(0, dirtyRect.Height * 0.2f, dirtyRect.Width, 40),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // Result
+            string result = _state.ScoreHome > _state.ScoreAway ? "SEGER!" :
+                            _state.ScoreHome < _state.ScoreAway ? "FÖRLUST" : "OAVGJORT";
+            canvas.FontColor = _state.ScoreHome >= _state.ScoreAway ? Colors.Gold : Colors.White;
+            canvas.FontSize = 28;
+            canvas.DrawString(result,
+                new RectF(0, dirtyRect.Height * 0.33f, dirtyRect.Width, 36),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // Final score large
+            canvas.FontColor = AranasWhite;
+            canvas.FontSize = 48;
+            canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
+                new RectF(0, dirtyRect.Height * 0.45f, dirtyRect.Width, 56),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // Team labels
+            canvas.FontSize = 16;
+            canvas.FontColor = AranasBlue;
+            canvas.DrawString("Hemma",
+                new RectF(0, dirtyRect.Height * 0.58f, dirtyRect.Width / 2, 24),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+            canvas.FontColor = AwayRed;
+            canvas.DrawString("Borta",
+                new RectF(dirtyRect.Width / 2, dirtyRect.Height * 0.58f, dirtyRect.Width / 2, 24),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // Restart hint
+            canvas.FontSize = 14;
+            canvas.FontColor = Color.FromArgb("#AAFFFFFF");
+            canvas.DrawString("Tryck för ny match",
+                new RectF(0, dirtyRect.Height * 0.72f, dirtyRect.Width, 24),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+        }
     }
 
     void DrawGoal(ICanvas canvas, RectF rect, Color color)

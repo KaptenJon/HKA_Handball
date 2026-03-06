@@ -13,5 +13,8 @@ public enum GameEventType
     AwayPass,
     Save,
     Whistle,
-    Interception
+    Interception,
+    HalfTime,
+    FullTime,
+    PenaltyAwarded
 }
