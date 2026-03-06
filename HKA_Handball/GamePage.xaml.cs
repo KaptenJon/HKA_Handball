@@ -237,6 +237,7 @@ public class GameState
     const double PenaltyFoulZoneRadius = 50; // foul within this distance of goal area triggers 7m
     const double PenaltyShotDuration = 0.7f;
     const double PenaltySaveChance = 0.45; // 45% GK save on penalties
+    const double PenaltyAwardChance = 0.4; // 40% chance foul near goal area awards penalty
 
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
@@ -261,6 +262,7 @@ public class GameState
     // Pass state
     bool _passActive;
     int _passTargetHomeIndex = -1;
+    Point _passStartPos; // position where pass originated
     public bool IsPassActive => _passActive;
     public int PassTargetTeammateIndex => _passTargetHomeIndex; // expose for drawable
 
@@ -348,8 +350,8 @@ public class GameState
     public GameState(GameMode mode = GameMode.SinglePlayer)
     {
         Mode = mode;
-        _rightGoal = new Rect(0, 0, 12, 160);
-        _leftGoal = new Rect(8, 0, 12, 160);
+        _rightGoal = new Rect(0, 120, 12, 160);
+        _leftGoal = new Rect(8, 120, 12, 160);
         InitTeam(HomePlayers, GoalCenterInset + GoalAreaRadius + 30, true);
         InitTeam(AwayPlayers, 700, false);
         BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
@@ -480,6 +482,7 @@ public class GameState
         if (best is null) return;
         _passActive = true;
         _passTargetHomeIndex = best.Value.idx;
+        _passStartPos = BallPos;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
         _advanceBoost = false; // stop boost on pass
@@ -1449,7 +1452,7 @@ public class GameState
                 double distToGoalArea = Distance(owner.Position, rightGoalCenter) - GoalAreaRadius;
                 bool nearGoalArea = distToGoalArea < PenaltyFoulZoneRadius && distToGoalArea >= 0;
 
-                if (nearGoalArea && Random.Shared.NextDouble() < 0.4)
+                if (nearGoalArea && Random.Shared.NextDouble() < PenaltyAwardChance)
                 {
                     // 7-meter penalty awarded to home team
                     StartPenalty(isHome: true);
@@ -1703,11 +1706,11 @@ public class GameState
             if (_passActive && _passTargetHomeIndex >= 0)
             {
                 var target = HomePlayers[_passTargetHomeIndex].Position;
-                var total = Distance(_shootStart == Point.Zero ? BallPos : _shootStart, target);
-                if (total > 0)
+                var total = Distance(_passStartPos, target);
+                if (total > 1)
                 {
                     var current = Distance(BallPos, target);
-                    var progress = 1.0 - (current / Math.Max(total, 1));
+                    var progress = 1.0 - (current / total);
                     BallHeight = Math.Sin(Math.Clamp(progress, 0, 1) * Math.PI) * 0.4;
                 }
             }
@@ -1728,8 +1731,7 @@ public class GameState
     /// </summary>
     public string GetMatchClockDisplay()
     {
-        double gameMinutes = MatchClockSeconds / 60.0 * (30.0 / (HalfDurationSeconds / 60.0));
-        double displayMinutes = (CurrentHalf - 1) * 30 + gameMinutes;
+        double displayMinutes = (CurrentHalf - 1) * 30 + MatchClockSeconds * GameTimeMultiplier / 60.0;
         int mins = (int)displayMinutes;
         int secs = (int)((displayMinutes - mins) * 60);
         return $"{mins:D2}:{secs:D2}";
