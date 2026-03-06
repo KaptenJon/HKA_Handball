@@ -24,12 +24,11 @@ public partial class MainMenuPage : ContentPage
         _initialized = true;
         Loaded -= OnPageLoaded;
 
-        // Preload sounds
-        await _soundManager.PreloadAsync();
-
-        // Animate the ball icon with a gentle bounce
+        // Run preload and entrance animation concurrently
         _animationCts = new CancellationTokenSource();
-        await AnimateBallAsync(_animationCts.Token);
+        var preloadTask = _soundManager.PreloadAsync();
+        var animateTask = AnimateBallAsync(_animationCts.Token);
+        await Task.WhenAll(preloadTask, animateTask);
     }
 
     async Task AnimateBallAsync(CancellationToken ct)
@@ -54,6 +53,8 @@ public partial class MainMenuPage : ContentPage
     {
         base.OnDisappearing();
         _animationCts?.Cancel();
+        _animationCts?.Dispose();
+        _animationCts = null;
     }
 
     async void OnSinglePlayer(object? sender, EventArgs e)
