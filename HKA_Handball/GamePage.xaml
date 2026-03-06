@@ -3,7 +3,7 @@
              xmlns:controls="clr-namespace:HKA_Handball.Controls"
              x:Class="HKA_Handball.GamePage"
              Title="HKA Handball"
-             NavigationBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
              BackgroundColor="#2C1B0E">
     <Grid>
         <GraphicsView x:Name="GameView"
