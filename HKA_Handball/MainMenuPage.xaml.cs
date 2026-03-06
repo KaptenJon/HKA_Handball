@@ -5,6 +5,7 @@ namespace HKA_Handball;
 public partial class MainMenuPage : ContentPage
 {
     readonly SoundManager _soundManager;
+    CancellationTokenSource? _animationCts;
 
     public MainMenuPage(SoundManager soundManager)
     {
@@ -20,10 +21,11 @@ public partial class MainMenuPage : ContentPage
         await _soundManager.PreloadAsync();
 
         // Animate the ball icon with a gentle bounce
-        await AnimateBallAsync();
+        _animationCts = new CancellationTokenSource();
+        await AnimateBallAsync(_animationCts.Token);
     }
 
-    async Task AnimateBallAsync()
+    async Task AnimateBallAsync(CancellationToken ct)
     {
         // Initial entrance animation
         BallFrame.Opacity = 0;
@@ -34,11 +36,17 @@ public partial class MainMenuPage : ContentPage
         );
 
         // Continuous gentle bounce
-        while (IsVisible && BallFrame.IsVisible)
+        while (!ct.IsCancellationRequested)
         {
             await BallFrame.TranslateToAsync(0, -8, 800, Easing.SinInOut);
             await BallFrame.TranslateToAsync(0, 0, 800, Easing.SinInOut);
         }
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _animationCts?.Cancel();
     }
 
     async void OnSinglePlayer(object? sender, EventArgs e)

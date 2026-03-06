@@ -39,9 +39,15 @@ public sealed class SoundManager
                 var player = _audioManager.CreatePlayer(stream);
                 _players[name] = player;
             }
-            catch
+            catch (FileNotFoundException)
             {
-                // Sound file missing or unsupported – continue without it
+                // Sound file not bundled – continue without it
+                System.Diagnostics.Debug.WriteLine($"[SoundManager] Sound file not found: Sounds/{name}.wav");
+            }
+            catch (Exception ex)
+            {
+                // Unsupported format or platform issue – continue without it
+                System.Diagnostics.Debug.WriteLine($"[SoundManager] Failed to load Sounds/{name}.wav: {ex.Message}");
             }
         }
     }

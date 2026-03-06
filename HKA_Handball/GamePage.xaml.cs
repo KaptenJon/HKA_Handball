@@ -24,6 +24,7 @@ public partial class GamePage : ContentPage
 #endif
     bool _advanceHeld;
 
+    /// <summary>Parameterless constructor for XAML previewer. Sound effects are disabled.</summary>
     public GamePage() : this(GameMode.SinglePlayer, null) { }
 
     public GamePage(GameMode mode, SoundManager? soundManager)
