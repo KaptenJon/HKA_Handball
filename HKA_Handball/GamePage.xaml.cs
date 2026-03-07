@@ -223,6 +223,9 @@ public class GameState
     public const double GoalAreaRadius = 160;
     public const double FreeThrowRadius = 240;
 
+    // Goalkeeper vertical range: half the goal-mouth height (goal is 160px tall)
+    const double GoalMouthHalf = 80;
+
     // Gameplay tuning constants
     const double PassInterceptDistance = 22;
     const double PassInterceptChance = 0.06;
@@ -874,35 +877,41 @@ public class GameState
         // Home goalkeeper reacts to shots and ball carrier
         // (skip AI movement when GK has the ball — player controls movement)
         var homeGK = HomePlayers[0];
+        double gkCenterY = ViewSize.Height / 2;
+        double gkMinY = gkCenterY - GoalMouthHalf;
+        double gkMaxY = gkCenterY + GoalMouthHalf;
         bool homeGKHasBall = BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex == 0;
         if (!homeGKHasBall)
         {
             if (_awayShootActive)
             {
-                homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, _awayShootEnd.Y, 0.18));
+                double targetY = Math.Clamp(_awayShootEnd.Y, gkMinY, gkMaxY);
+                homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, targetY, 0.18));
             }
             else if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 0)
             {
-                // Opponent attacking: stay near goal and track ball carrier
-                var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
-                homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, carrierY, 0.08));
+                // Opponent attacking: stay near goal and track ball carrier within goal mouth
+                double targetY = Math.Clamp(AwayPlayers[BallOwnerAwayIndex].Position.Y, gkMinY, gkMaxY);
+                homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, targetY, 0.08));
             }
             else if (BallOwnerType == BallOwnershipType.Player)
             {
                 // Home team attacking: advance forward to act as outlet pass option
                 double advancedX = GoalCenterInset + GoalAreaRadius + GoalkeeperAdvanceOffset;
                 var gSwing = Math.Sin(Environment.TickCount / 700.0) * 30;
+                double targetY = Math.Clamp(gkCenterY + gSwing, gkMinY, gkMaxY);
                 homeGK.Position = new Point(
                     Lerp(homeGK.Position.X, advancedX, 0.03),
-                    Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.04));
+                    Lerp(homeGK.Position.Y, targetY, 0.04));
             }
             else
             {
                 // Neutral / loose ball: retreat toward goal
-                var gSwing = Math.Sin(Environment.TickCount / 700.0) * 50;
+                var gSwing = Math.Sin(Environment.TickCount / 700.0) * 30;
+                double targetY = Math.Clamp(gkCenterY + gSwing, gkMinY, gkMaxY);
                 homeGK.Position = new Point(
                     Lerp(homeGK.Position.X, homeGK.BaseX, 0.06),
-                    Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+                    Lerp(homeGK.Position.Y, targetY, 0.05));
             }
         }
         ClampActor(homeGK);
@@ -915,13 +924,14 @@ public class GameState
         {
             if (_shootActive)
             {
-                awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, _shootEnd.Y, 0.18));
+                double targetY = Math.Clamp(_shootEnd.Y, gkMinY, gkMaxY);
+                awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, targetY, 0.18));
             }
             else if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
             {
-                // Home team attacking: stay near goal and track ball carrier
-                var carrierY = HomePlayers[BallOwnerPlayerIndex].Position.Y;
-                awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, carrierY, 0.08));
+                // Home team attacking: stay near goal and track ball carrier within goal mouth
+                double targetY = Math.Clamp(HomePlayers[BallOwnerPlayerIndex].Position.Y, gkMinY, gkMaxY);
+                awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, targetY, 0.08));
             }
             else if (BallOwnerType == BallOwnershipType.Opponent)
             {
@@ -930,17 +940,19 @@ public class GameState
                     ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - GoalkeeperAdvanceOffset
                     : awayGK.BaseX;
                 var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 30;
+                double targetY = Math.Clamp(gkCenterY + gSwing, gkMinY, gkMaxY);
                 awayGK.Position = new Point(
                     Lerp(awayGK.Position.X, advancedX, 0.03),
-                    Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.04));
+                    Lerp(awayGK.Position.Y, targetY, 0.04));
             }
             else
             {
                 // Neutral / loose ball: retreat toward goal
-                var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 50;
+                var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 30;
+                double targetY = Math.Clamp(gkCenterY + gSwing, gkMinY, gkMaxY);
                 awayGK.Position = new Point(
                     Lerp(awayGK.Position.X, awayGK.BaseX, 0.06),
-                    Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+                    Lerp(awayGK.Position.Y, targetY, 0.05));
             }
         }
         ClampActor(awayGK);
@@ -1419,7 +1431,13 @@ public class GameState
         if (ViewSize.Width <= 0) return;
         a.Position = new Point(Math.Clamp(a.Position.X, 20, ViewSize.Width - 20), Math.Clamp(a.Position.Y, 40, ViewSize.Height - 40));
 
-        if (!a.IsGoalkeeper)
+        if (a.IsGoalkeeper)
+        {
+            // Keep goalkeeper vertically within the goal-mouth range
+            double centerY = ViewSize.Height / 2;
+            a.Position = new Point(a.Position.X, Math.Clamp(a.Position.Y, centerY - GoalMouthHalf, centerY + GoalMouthHalf));
+        }
+        else
         {
             var leftCenter = new Point(GoalCenterInset, ViewSize.Height / 2);
             var rightCenter = new Point(ViewSize.Width - GoalCenterInset, ViewSize.Height / 2);
