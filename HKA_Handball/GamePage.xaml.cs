@@ -259,6 +259,10 @@ public class GameState
     const double MaxShotDistance = 400; // beyond this distance, shots are very unlikely to score
     const double CloseRangeShotBonus = 0.15; // bonus save reduction for close shots
 
+    // Away AI attack constants
+    const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
+    const int ThrowOffCarrierIndex = 1; // field player index used for throw-off ball carrier
+
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
     public readonly Actor[] AwayPlayers = new Actor[7];
@@ -1078,7 +1082,7 @@ public class GameState
                 {
                     // Build-up: push forward first, then hold arc position
                     var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                    if (a.Position.X > arcPos.X + 40)
+                    if (a.Position.X > arcPos.X + AwayPushForwardThreshold)
                     {
                         // Push forward toward the goal before settling into arc
                         double pushSpeed = 120 * dt * fastBreakMult;
@@ -1096,7 +1100,7 @@ public class GameState
                     }
 
                     // Pass or breakthrough decision (only when near arc)
-                    if (!_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= arcPos.X + 40)
+                    if (!_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
                     {
                         // After enough passes, chance to break through
                         double breakChance = _awayBuildupPasses >= 3 ? 0.015 : 0.0;
@@ -1362,28 +1366,24 @@ public class GameState
         PassivePlayWarningActive = false;
 
         // Throw-off: opposite team gets ball at center (avkast)
-        double centerX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
-        double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+        double throwOffCenterX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
+        double throwOffCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
         if (homeScored)
         {
             BallOwnerType = BallOwnershipType.Opponent;
-            BallOwnerAwayIndex = 1;
+            BallOwnerAwayIndex = ThrowOffCarrierIndex;
             BallOwnerPlayerIndex = -1;
             _awayBuildupPasses = 0;
             _awayBreakthrough = false;
             _awayPassCooldownTicks = 40;
-            // Position ball carrier at center for throw-off
-            AwayPlayers[1].BaseX = centerX;
-            AwayPlayers[1].BaseY = centerY;
+            PositionForThrowOff(AwayPlayers[ThrowOffCarrierIndex], throwOffCenterX, throwOffCenterY);
         }
         else
         {
             BallOwnerType = BallOwnershipType.Player;
-            BallOwnerPlayerIndex = 1;
+            BallOwnerPlayerIndex = ThrowOffCarrierIndex;
             BallOwnerAwayIndex = -1;
-            // Position ball carrier at center for throw-off
-            HomePlayers[1].BaseX = centerX;
-            HomePlayers[1].BaseY = centerY;
+            PositionForThrowOff(HomePlayers[ThrowOffCarrierIndex], throwOffCenterX, throwOffCenterY);
         }
         SetStatusOverride("Avkast", 60);
     }
@@ -1768,6 +1768,12 @@ public class GameState
         _keeperHoldTicks = 0;
     }
 
+    /// <summary>Sets a player's base position to center court for a throw-off.</summary>
+    static void PositionForThrowOff(Actor player, double centerX, double centerY)
+    {
+        player.BaseX = centerX;
+        player.BaseY = centerY;
+    }
     void StartSecondHalf()
     {
         CurrentHalf = 2;
@@ -1785,7 +1791,7 @@ public class GameState
                 a.Position = new Point(a.BaseX, a.BaseY);
 
         BallOwnerType = BallOwnershipType.Opponent;
-        BallOwnerAwayIndex = 1;
+        BallOwnerAwayIndex = ThrowOffCarrierIndex;
         BallOwnerPlayerIndex = -1;
         ControlledDefenderIndex = 1;
         ClearAllActiveActions();
@@ -1794,10 +1800,9 @@ public class GameState
         // Throw-off: away team starts at center
         double centerX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
         double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
-        AwayPlayers[1].BaseX = centerX;
-        AwayPlayers[1].BaseY = centerY;
-        AwayPlayers[1].Position = new Point(centerX, centerY);
-        BallPos = AwayPlayers[1].Position;
+        PositionForThrowOff(AwayPlayers[ThrowOffCarrierIndex], centerX, centerY);
+        AwayPlayers[ThrowOffCarrierIndex].Position = new Point(centerX, centerY);
+        BallPos = AwayPlayers[ThrowOffCarrierIndex].Position;
         SetStatusOverride("Avkast - Andra halvlek", 90);
     }
 
@@ -1826,7 +1831,7 @@ public class GameState
             }
 
         BallOwnerType = BallOwnershipType.Player;
-        BallOwnerPlayerIndex = 1;
+        BallOwnerPlayerIndex = ThrowOffCarrierIndex;
         BallOwnerAwayIndex = -1;
         ControlledDefenderIndex = 1;
         ClearAllActiveActions();
@@ -1834,10 +1839,9 @@ public class GameState
         // Center throw-off: home team starts at center
         double centerX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
         double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
-        HomePlayers[1].BaseX = centerX;
-        HomePlayers[1].BaseY = centerY;
-        HomePlayers[1].Position = new Point(centerX, centerY);
-        BallPos = HomePlayers[1].Position;
+        PositionForThrowOff(HomePlayers[ThrowOffCarrierIndex], centerX, centerY);
+        HomePlayers[ThrowOffCarrierIndex].Position = new Point(centerX, centerY);
+        BallPos = HomePlayers[ThrowOffCarrierIndex].Position;
         SetStatusOverride("Avkast - Ny match!", 90);
     }
 
