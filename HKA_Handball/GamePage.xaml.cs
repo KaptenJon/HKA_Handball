@@ -232,8 +232,8 @@ public class GameState
     const double AwayPassSecondClosestChance = 0.95; // cumulative (25% for second closest)
 
     // Match clock constants (game-time seconds per half)
-    public const double HalfDurationSeconds = 180; // 3 min per half (scaled from 30 real min)
-    const double GameTimeMultiplier = 10.0; // 1 real second = 10 game seconds (so 3 min = 30 game-min)
+    public const double HalfDurationSeconds = 300; // 5 min per half (scaled from 30 real min)
+    const double GameTimeMultiplier = 6.0; // 1 real second = 6 game seconds (so 5 min = 30 game-min)
     const int HalfTimeDisplayTicks = 180; // ~3 seconds display at 60fps
     const int FullTimeDisplayTicks = 300; // ~5 seconds display
 
@@ -258,6 +258,10 @@ public class GameState
     // Shot distance factor constants
     const double MaxShotDistance = 400; // beyond this distance, shots are very unlikely to score
     const double CloseRangeShotBonus = 0.15; // bonus save reduction for close shots
+
+    // Away AI attack constants
+    const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
+    const int ThrowOffCarrierIndex = 1; // field player index used for throw-off ball carrier
 
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
@@ -361,6 +365,9 @@ public class GameState
 
     // Ball height simulation for visual arcs
     public double BallHeight { get; private set; } // 0 = ground, 1 = max height
+
+    // Goalkeeper hold after save
+    int _keeperHoldTicks; // ticks remaining for keeper to hold ball before auto-throw
 
     // Goal celebration
     int _goalCelebrationTicks;
@@ -568,6 +575,26 @@ public class GameState
     {
         if (_awayPassCooldownTicks > 0)
             _awayPassCooldownTicks--;
+
+        // Away goalkeeper hold: auto-throw to nearest field player after hold expires
+        if (_keeperHoldTicks > 0)
+        {
+            _keeperHoldTicks--;
+            if (_keeperHoldTicks == 0 && BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex == 0)
+            {
+                int nearestField = GetNearestAwayIndex(AwayPlayers[0].Position);
+                if (nearestField >= 1)
+                {
+                    _awayPassTargetIndex = nearestField;
+                    _awayPassActive = true;
+                    _awayPassCooldownTicks = 30;
+                    BallOwnerType = BallOwnershipType.Loose;
+                    BallOwnerAwayIndex = -1;
+                    BallOwnerPlayerIndex = -1;
+                    GameEvent?.Invoke(GameEventType.AwayPass);
+                }
+            }
+        }
 
         // Match clock
         if (!IsMatchOver && !IsHalfTime && !_resettingAfterGoal)
@@ -821,8 +848,21 @@ public class GameState
                 double carrierY = BallOwnerPlayerIndex >= 0 ? HomePlayers[BallOwnerPlayerIndex].Position.Y : ViewSize.Height / 2;
                 slotY = Lerp(slotY, carrierY, 0.2);
 
-                desiredX = Math.Min(pressLineX - 20, ViewSize.Width - 200);
-                desiredX = Math.Max(p.BaseX + 30, desiredX);
+                // Differentiate run-up: 6m players (wings 1,5 + pivot 6) go all the way,
+                // 9m players (backs 2,3,4) stay approximately with the ball carrier
+                bool is6mPlayer = (i == 1 || i == 5 || i == 6);
+                double carrierX = BallOwnerPlayerIndex >= 0 ? HomePlayers[BallOwnerPlayerIndex].Position.X : ViewSize.Width / 2;
+                if (is6mPlayer)
+                {
+                    desiredX = Math.Min(pressLineX - 20, ViewSize.Width - 200);
+                    desiredX = Math.Max(p.BaseX + 30, desiredX);
+                }
+                else
+                {
+                    // Backs: advance roughly with the ball carrier, slightly ahead
+                    double backMaxX = Math.Min(carrierX + 40, ViewSize.Width - 200);
+                    desiredX = Math.Max(p.BaseX + 20, backMaxX);
+                }
                 desiredY = slotY;
             }
             double newX = p.Position.X + (desiredX - p.Position.X) * 0.04;
@@ -832,66 +872,76 @@ public class GameState
         }
 
         // Home goalkeeper reacts to shots and ball carrier
+        // (skip AI movement when GK has the ball — player controls movement)
         var homeGK = HomePlayers[0];
-        if (_awayShootActive)
+        bool homeGKHasBall = BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex == 0;
+        if (!homeGKHasBall)
         {
-            homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, _awayShootEnd.Y, 0.18));
-        }
-        else if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 0)
-        {
-            // Opponent attacking: stay near goal and track ball carrier
-            var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
-            homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, carrierY, 0.08));
-        }
-        else if (BallOwnerType == BallOwnershipType.Player)
-        {
-            // Home team attacking: advance forward to act as outlet pass option
-            double advancedX = GoalCenterInset + GoalAreaRadius + GoalkeeperAdvanceOffset;
-            var gSwing = Math.Sin(Environment.TickCount / 700.0) * 30;
-            homeGK.Position = new Point(
-                Lerp(homeGK.Position.X, advancedX, 0.03),
-                Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.04));
-        }
-        else
-        {
-            // Neutral / loose ball: retreat toward goal
-            var gSwing = Math.Sin(Environment.TickCount / 700.0) * 50;
-            homeGK.Position = new Point(
-                Lerp(homeGK.Position.X, homeGK.BaseX, 0.06),
-                Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+            if (_awayShootActive)
+            {
+                homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, _awayShootEnd.Y, 0.18));
+            }
+            else if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 0)
+            {
+                // Opponent attacking: stay near goal and track ball carrier
+                var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
+                homeGK.Position = new Point(homeGK.BaseX, Lerp(homeGK.Position.Y, carrierY, 0.08));
+            }
+            else if (BallOwnerType == BallOwnershipType.Player)
+            {
+                // Home team attacking: advance forward to act as outlet pass option
+                double advancedX = GoalCenterInset + GoalAreaRadius + GoalkeeperAdvanceOffset;
+                var gSwing = Math.Sin(Environment.TickCount / 700.0) * 30;
+                homeGK.Position = new Point(
+                    Lerp(homeGK.Position.X, advancedX, 0.03),
+                    Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.04));
+            }
+            else
+            {
+                // Neutral / loose ball: retreat toward goal
+                var gSwing = Math.Sin(Environment.TickCount / 700.0) * 50;
+                homeGK.Position = new Point(
+                    Lerp(homeGK.Position.X, homeGK.BaseX, 0.06),
+                    Lerp(homeGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+            }
         }
         ClampActor(homeGK);
 
         // Away goalkeeper reacts to home shots
+        // (skip AI movement when GK has the ball — auto-throw handles transition)
         var awayGK = AwayPlayers[0];
-        if (_shootActive)
+        bool awayGKHasBall = BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex == 0;
+        if (!awayGKHasBall)
         {
-            awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, _shootEnd.Y, 0.18));
-        }
-        else if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
-        {
-            // Home team attacking: stay near goal and track ball carrier
-            var carrierY = HomePlayers[BallOwnerPlayerIndex].Position.Y;
-            awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, carrierY, 0.08));
-        }
-        else if (BallOwnerType == BallOwnershipType.Opponent)
-        {
-            // Away team attacking: advance forward from goal
-            double advancedX = ViewSize.Width > 0
-                ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - GoalkeeperAdvanceOffset
-                : awayGK.BaseX;
-            var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 30;
-            awayGK.Position = new Point(
-                Lerp(awayGK.Position.X, advancedX, 0.03),
-                Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.04));
-        }
-        else
-        {
-            // Neutral / loose ball: retreat toward goal
-            var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 50;
-            awayGK.Position = new Point(
-                Lerp(awayGK.Position.X, awayGK.BaseX, 0.06),
-                Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+            if (_shootActive)
+            {
+                awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, _shootEnd.Y, 0.18));
+            }
+            else if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
+            {
+                // Home team attacking: stay near goal and track ball carrier
+                var carrierY = HomePlayers[BallOwnerPlayerIndex].Position.Y;
+                awayGK.Position = new Point(awayGK.BaseX, Lerp(awayGK.Position.Y, carrierY, 0.08));
+            }
+            else if (BallOwnerType == BallOwnershipType.Opponent)
+            {
+                // Away team attacking: advance forward from goal
+                double advancedX = ViewSize.Width > 0
+                    ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - GoalkeeperAdvanceOffset
+                    : awayGK.BaseX;
+                var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 30;
+                awayGK.Position = new Point(
+                    Lerp(awayGK.Position.X, advancedX, 0.03),
+                    Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.04));
+            }
+            else
+            {
+                // Neutral / loose ball: retreat toward goal
+                var gSwing = Math.Sin(Environment.TickCount / 700.0 + 3) * 50;
+                awayGK.Position = new Point(
+                    Lerp(awayGK.Position.X, awayGK.BaseX, 0.06),
+                    Lerp(awayGK.Position.Y, ViewSize.Height / 2 + gSwing, 0.05));
+            }
         }
         ClampActor(awayGK);
 
@@ -936,7 +986,11 @@ public class GameState
                 }
 
                 // Defending: 6-0 formation — defenders form an arc along the free-throw line
-                if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
+                // Track the ball carrier, or during a home pass, track the pass target
+                bool trackingPlayer = (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
+                    || (_passActive && _passTargetHomeIndex >= 0);
+                int trackedIdx = BallOwnerPlayerIndex >= 0 ? BallOwnerPlayerIndex : _passTargetHomeIndex;
+                if (trackingPlayer && trackedIdx >= 0 && trackedIdx < HomePlayers.Length)
                 {
                     // Count non-suspended field defenders for proper arc spacing
                     int activeDefCount = 0;
@@ -952,9 +1006,9 @@ public class GameState
                     double defArcCenterX = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset : 700;
                     double defArcRadius = GoalAreaRadius + 25;
 
-                    // Shift arc toward ball carrier
+                    // Shift arc toward tracked player
                     double arcCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
-                    double carrierY = HomePlayers[BallOwnerPlayerIndex].Position.Y;
+                    double carrierY = HomePlayers[trackedIdx].Position.Y;
                     arcCenterY += (carrierY - arcCenterY) * 0.35;
 
                     double angleRange = 120.0;
@@ -966,8 +1020,8 @@ public class GameState
                     double defY = arcCenterY + defArcRadius * Math.Sin(angleRad);
 
                     // Step out to pressure ball carrier when nearby
-                    double carrierX = HomePlayers[BallOwnerPlayerIndex].Position.X;
-                    double distToCarrier = Distance(a.Position, HomePlayers[BallOwnerPlayerIndex].Position);
+                    double carrierX = HomePlayers[trackedIdx].Position.X;
+                    double distToCarrier = Distance(a.Position, HomePlayers[trackedIdx].Position);
                     if (distToCarrier < 100)
                     {
                         // Pressure: move toward carrier
@@ -1026,14 +1080,27 @@ public class GameState
                 }
                 else
                 {
-                    // Build-up: hold position on the arc, move laterally
+                    // Build-up: push forward first, then hold arc position
                     var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                    a.Position = new Point(
-                        Lerp(a.Position.X, arcPos.X, 0.06),
-                        Lerp(a.Position.Y, arcPos.Y, 0.06));
+                    if (a.Position.X > arcPos.X + AwayPushForwardThreshold)
+                    {
+                        // Push forward toward the goal before settling into arc
+                        double pushSpeed = 120 * dt * fastBreakMult;
+                        double pushTargetY = Lerp(a.Position.Y, arcPos.Y, 0.04);
+                        a.Position = new Point(
+                            a.Position.X - pushSpeed,
+                            pushTargetY);
+                    }
+                    else
+                    {
+                        // Near arc: hold position and move laterally
+                        a.Position = new Point(
+                            Lerp(a.Position.X, arcPos.X, 0.06),
+                            Lerp(a.Position.Y, arcPos.Y, 0.06));
+                    }
 
-                    // Pass or breakthrough decision
-                    if (!_awayPassActive && _awayPassCooldownTicks == 0)
+                    // Pass or breakthrough decision (only when near arc)
+                    if (!_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
                     {
                         // After enough passes, chance to break through
                         double breakChance = _awayBuildupPasses >= 3 ? 0.015 : 0.0;
@@ -1134,7 +1201,8 @@ public class GameState
                 if (keeperSave)
                 {
                     GameEvent?.Invoke(GameEventType.Save);
-                    GiveBallToPlayer(1, "Målvaktsräddning");
+                    BallPos = homeKeeper.Position;
+                    GiveBallToPlayer(0, "Målvaktsräddning");
                     return;
                 }
 
@@ -1179,7 +1247,9 @@ public class GameState
                 if (keeperSave)
                 {
                     GameEvent?.Invoke(GameEventType.Save);
-                    GiveBallToOpponent(1, "Målvaktsräddning");
+                    BallPos = awayKeeper.Position;
+                    GiveBallToOpponent(0, "Målvaktsräddning");
+                    _keeperHoldTicks = 40; // keeper holds ball briefly
                     return;
                 }
 
@@ -1295,22 +1365,27 @@ public class GameState
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
 
-        // Throw-off: opposite team gets ball at center (symmetric cooldown)
+        // Throw-off: opposite team gets ball at center (avkast)
+        double throwOffCenterX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
+        double throwOffCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
         if (homeScored)
         {
             BallOwnerType = BallOwnershipType.Opponent;
-            BallOwnerAwayIndex = 1;
+            BallOwnerAwayIndex = ThrowOffCarrierIndex;
             BallOwnerPlayerIndex = -1;
             _awayBuildupPasses = 0;
             _awayBreakthrough = false;
             _awayPassCooldownTicks = 40;
+            PositionForThrowOff(AwayPlayers[ThrowOffCarrierIndex], throwOffCenterX, throwOffCenterY);
         }
         else
         {
             BallOwnerType = BallOwnershipType.Player;
-            BallOwnerPlayerIndex = 1;
+            BallOwnerPlayerIndex = ThrowOffCarrierIndex;
             BallOwnerAwayIndex = -1;
+            PositionForThrowOff(HomePlayers[ThrowOffCarrierIndex], throwOffCenterX, throwOffCenterY);
         }
+        SetStatusOverride("Avkast", 60);
     }
 
     void UpdateStatus()
@@ -1690,8 +1765,15 @@ public class GameState
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
         BallHeight = 0;
+        _keeperHoldTicks = 0;
     }
 
+    /// <summary>Sets a player's base position to center court for a throw-off.</summary>
+    static void PositionForThrowOff(Actor player, double centerX, double centerY)
+    {
+        player.BaseX = centerX;
+        player.BaseY = centerY;
+    }
     void StartSecondHalf()
     {
         CurrentHalf = 2;
@@ -1709,14 +1791,19 @@ public class GameState
                 a.Position = new Point(a.BaseX, a.BaseY);
 
         BallOwnerType = BallOwnershipType.Opponent;
-        BallOwnerAwayIndex = 1;
+        BallOwnerAwayIndex = ThrowOffCarrierIndex;
         BallOwnerPlayerIndex = -1;
         ControlledDefenderIndex = 1;
         ClearAllActiveActions();
         _awayPassCooldownTicks = 40;
         _viewInitialized = true;
-        BallPos = AwayPlayers[1].Position;
-        SetStatusOverride("Andra halvlek", 90);
+        // Throw-off: away team starts at center
+        double centerX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
+        double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+        PositionForThrowOff(AwayPlayers[ThrowOffCarrierIndex], centerX, centerY);
+        AwayPlayers[ThrowOffCarrierIndex].Position = new Point(centerX, centerY);
+        BallPos = AwayPlayers[ThrowOffCarrierIndex].Position;
+        SetStatusOverride("Avkast - Andra halvlek", 90);
     }
 
     /// <summary>Restart the match (e.g. after full time).</summary>
@@ -1744,13 +1831,18 @@ public class GameState
             }
 
         BallOwnerType = BallOwnershipType.Player;
-        BallOwnerPlayerIndex = 1;
+        BallOwnerPlayerIndex = ThrowOffCarrierIndex;
         BallOwnerAwayIndex = -1;
         ControlledDefenderIndex = 1;
         ClearAllActiveActions();
         _viewInitialized = true;
-        BallPos = HomePlayers[1].Position;
-        SetStatusOverride("Ny match!", 90);
+        // Center throw-off: home team starts at center
+        double centerX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
+        double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+        PositionForThrowOff(HomePlayers[ThrowOffCarrierIndex], centerX, centerY);
+        HomePlayers[ThrowOffCarrierIndex].Position = new Point(centerX, centerY);
+        BallPos = HomePlayers[ThrowOffCarrierIndex].Position;
+        SetStatusOverride("Avkast - Ny match!", 90);
     }
 
     void StartPenalty(bool isHome)
@@ -1820,7 +1912,9 @@ public class GameState
                     if (keeperSave)
                     {
                         GameEvent?.Invoke(GameEventType.Save);
-                        GiveBallToOpponent(1, "Straffskytte: Målvaktsräddning!");
+                        BallPos = AwayPlayers[0].Position;
+                        GiveBallToOpponent(0, "Straffskytte: Målvaktsräddning!");
+                        _keeperHoldTicks = 40;
                     }
                     else
                     {
@@ -1844,7 +1938,8 @@ public class GameState
                     if (keeperSave)
                     {
                         GameEvent?.Invoke(GameEventType.Save);
-                        GiveBallToPlayer(1, "Straffskytte: Målvaktsräddning!");
+                        BallPos = HomePlayers[0].Position;
+                        GiveBallToPlayer(0, "Straffskytte: Målvaktsräddning!");
                     }
                     else
                     {
