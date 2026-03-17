@@ -28,8 +28,12 @@ secure.
 pwsh generate-keystore.ps1
 ```
 
-Edit the script first to replace `REPLACE_WITH_SECURE_PASSWORD` with your chosen
-password, **or** run `keytool` manually:
+The script will prompt you for a strong password at runtime. Do **not** hard‑code
+the password into the script file.
+
+Alternatively, you can run `keytool` manually (omitting `-storepass`/`-keypass`
+so it prompts you securely for the passwords instead of taking them on the
+command line):
 
 ```bash
 keytool -genkeypair \
