@@ -71,6 +71,10 @@ jobs:
         SIGNING_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         SIGNING_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
       run: |
+        if [ -z "$SIGNING_KEY_PASS" ]; then
+          echo "::error::ANDROID_KEY_PASSWORD secret is not set"
+          exit 1
+        fi
         dotnet publish HKA_Handball/HKA_Handball.csproj \
           -f net10.0-android \
           -c Release \
