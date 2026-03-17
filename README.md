@@ -27,8 +27,12 @@ dotnet publish -f net10.0-android -c Release \
 
 ### First-time setup
 
-1. Generate a signing keystore: `pwsh generate-keystore.ps1`
+1. Generate a signing keystore: `bash generate-keystore.sh` (or `pwsh generate-keystore.ps1`)
 2. Keep the `.keystore` file safe – you need it for every Play Store update
+
+See **[RELEASING.md](RELEASING.md)** for the full step-by-step guide to sign,
+build, and publish to Google Play (including how to add the signing key to
+GitHub Actions).
 
 ## Privacy
 
