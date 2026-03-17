@@ -2,6 +2,10 @@
 # Run this ONCE, then keep the .keystore file safe (back it up!)
 # Never commit the keystore or passwords to git.
 
+$password = Read-Host -Prompt "Enter keystore password" -AsSecureString
+$plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($password))
+
 keytool -genkeypair `
   -v `
   -keystore HKA_Handball/hkahandball.keystore `
@@ -9,8 +13,8 @@ keytool -genkeypair `
   -keyalg RSA `
   -keysize 2048 `
   -validity 10000 `
-  -storepass REPLACE_WITH_SECURE_PASSWORD `
-  -keypass REPLACE_WITH_SECURE_PASSWORD `
+  -storepass $plainPassword `
+  -keypass $plainPassword `
   -dname "CN=HKA Handball, O=KaptenJon, L=Sweden, C=SE"
 
 Write-Host ""
