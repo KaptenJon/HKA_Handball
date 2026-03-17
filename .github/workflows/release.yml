@@ -28,7 +28,15 @@ jobs:
       env:
         KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       run: |
-        printf '%s' "$KEYSTORE_BASE64" | base64 -d > HKA_Handball/hkahandball.keystore
+        if [ -z "$KEYSTORE_BASE64" ]; then
+          echo "::error::ANDROID_KEYSTORE_BASE64 secret is not set"
+          exit 1
+        fi
+        printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > HKA_Handball/hkahandball.keystore
+        if [ ! -s HKA_Handball/hkahandball.keystore ]; then
+          echo "::error::Decoded keystore file is empty"
+          exit 1
+        fi
         chmod 600 HKA_Handball/hkahandball.keystore
 
     - name: Restore
