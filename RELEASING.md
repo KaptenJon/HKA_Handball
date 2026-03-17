@@ -62,8 +62,11 @@ three repository **secrets**. Add them in your GitHub repo under
 ### How to Base64-encode the keystore
 
 ```bash
-# macOS / Linux
+# Linux (GNU coreutils)
 base64 -w 0 HKA_Handball/hkahandball.keystore
+
+# macOS
+base64 HKA_Handball/hkahandball.keystore | tr -d '\n'
 
 # Windows PowerShell
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("HKA_Handball\hkahandball.keystore"))
