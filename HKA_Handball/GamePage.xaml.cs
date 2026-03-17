@@ -168,6 +168,7 @@ public partial class GamePage : ContentPage
         if (_keysDown.Contains(VirtualKey.E)) { _keysDown.Remove(VirtualKey.E); _state.QueuePassVertical(1); }
         if (_keysDown.Contains(VirtualKey.F)) { _keysDown.Remove(VirtualKey.F); _state.QueueShoot(); }
         if (_keysDown.Contains(VirtualKey.R)) { _keysDown.Remove(VirtualKey.R); _state.SwitchControlledDefender(); }
+        if (_keysDown.Contains(VirtualKey.H)) { _keysDown.Remove(VirtualKey.H); _state.ShowKeyboardHelp = !_state.ShowKeyboardHelp; }
     }
 #endif
 
@@ -359,6 +360,7 @@ public class GameState
     public double MatchClockSeconds { get; private set; } // game-time elapsed in current half
     public bool IsHalfTime { get; private set; }
     public bool IsMatchOver { get; private set; }
+    public bool ShowKeyboardHelp { get; set; }
     int _halfTimeCountdown;
 
     // Passive play state
@@ -2221,6 +2223,7 @@ public class GameDrawable : IDrawable
         DrawPassivePlayIndicator(canvas, dirtyRect);
         DrawGoalCelebration(canvas, dirtyRect);
         DrawMatchOverlay(canvas, dirtyRect);
+        DrawKeyboardHelp(canvas, dirtyRect);
     }
 
     void DrawField(ICanvas canvas, RectF dirtyRect)
@@ -2744,4 +2747,112 @@ public class GameDrawable : IDrawable
         canvas.FillColor = Colors.Yellow.WithAlpha(0.3f);
         canvas.FillCircle(spotX, centerY, 6);
     }
+
+    void DrawKeyboardHelp(ICanvas canvas, RectF dirtyRect)
+    {
+#if WINDOWS
+        if (!_state.ShowKeyboardHelp) return;
+
+        // Semi-transparent backdrop
+        canvas.FillColor = Color.FromArgb("#CC1A1A2E");
+        canvas.FillRectangle(dirtyRect);
+
+        float panelW = 320, panelH = 340;
+        float px = dirtyRect.Center.X - panelW / 2;
+        float py = dirtyRect.Center.Y - panelH / 2;
+
+        // Panel background
+        canvas.FillColor = Color.FromArgb("#EE1E1E3A");
+        canvas.FillRoundedRectangle(px, py, panelW, panelH, 16);
+
+        // Panel border
+        canvas.StrokeColor = Colors.Gold.WithAlpha(0.6f);
+        canvas.StrokeSize = 2;
+        canvas.DrawRoundedRectangle(px, py, panelW, panelH, 16);
+
+        // Title
+        canvas.FontColor = Colors.Gold;
+        canvas.FontSize = 20;
+        canvas.DrawString("TANGENTBORD",
+            new RectF(px, py + 12, panelW, 28),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        float lineY = py + 48;
+        float lineH = 22;
+        float keyX = px + 20;
+        float descX = px + 110;
+        float keyW = 80;
+        float descW = panelW - 120;
+
+        // Section: Alla lägen
+        canvas.FontColor = Colors.CornflowerBlue;
+        canvas.FontSize = 12;
+        canvas.DrawString("Alla lägen",
+            new RectF(keyX, lineY, panelW - 40, lineH),
+            G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
+        lineY += lineH + 2;
+
+        DrawHelpLine(canvas, keyX, descX, ref lineY, lineH, keyW, descW, "W A S D", "Rörelse");
+        DrawHelpLine(canvas, keyX, descX, ref lineY, lineH, keyW, descW, "Pilar", "Rörelse (alt)");
+        DrawHelpLine(canvas, keyX, descX, ref lineY, lineH, keyW, descW, "Mellanslag", "Framryckning");
+        DrawHelpLine(canvas, keyX, descX, ref lineY, lineH, keyW, descW, "H", "Visa/dölj hjälp");
+
+        lineY += 8;
+
+        // Section: Anfall
+        canvas.FontColor = Colors.LimeGreen;
+        canvas.FontSize = 12;
+        canvas.DrawString("Anfall",
+            new RectF(keyX, lineY, panelW - 40, lineH),
+            G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
+        lineY += lineH + 2;
+
+        DrawHelpLine(canvas, keyX, descX, ref lineY, lineH, keyW, descW, "Q", "Passa uppåt");
+        DrawHelpLine(canvas, keyX, descX, ref lineY, lineH, keyW, descW, "E", "Passa nedåt");
+        DrawHelpLine(canvas, keyX, descX, ref lineY, lineH, keyW, descW, "F", "Skjut");
+
+        lineY += 8;
+
+        // Section: Försvar
+        canvas.FontColor = Colors.Orange;
+        canvas.FontSize = 12;
+        canvas.DrawString("Försvar",
+            new RectF(keyX, lineY, panelW - 40, lineH),
+            G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
+        lineY += lineH + 2;
+
+        DrawHelpLine(canvas, keyX, descX, ref lineY, lineH, keyW, descW, "R", "Byt försvarare");
+
+        // Footer
+        canvas.FontColor = Color.FromArgb("#AAFFFFFF");
+        canvas.FontSize = 10;
+        canvas.DrawString("Tryck H för att stänga",
+            new RectF(px, py + panelH - 28, panelW, 20),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+#endif
+    }
+
+    static void DrawHelpLine(ICanvas canvas, float keyX, float descX, ref float y, float h, float keyW, float descW, string key, string desc)
+    {
+        // Key badge
+        canvas.FillColor = Color.FromArgb("#44FFFFFF");
+        float badgeW = Math.Min(keyW, key.Length * 10 + 16);
+        canvas.FillRoundedRectangle(keyX, y + 2, badgeW, h - 4, 6);
+
+        canvas.FontColor = Colors.White;
+        canvas.FontSize = 11;
+        canvas.DrawString(key,
+            new RectF(keyX, y, badgeW, h),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Description
+        canvas.FontColor = Color.FromArgb("#DDFFFFFF");
+        canvas.FontSize = 11;
+        canvas.DrawString(desc,
+            new RectF(descX, y, descW, h),
+            G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
+
+        y += h;
+    }
+
 }
