@@ -40,16 +40,39 @@
                    HorizontalOptions="Center" />
         </Grid>
 
-        <!-- Center area: Menu buttons -->
-        <VerticalStackLayout Grid.Row="1" Spacing="16" Padding="40,0"
+        <!-- Center area: Menu buttons and settings -->
+        <VerticalStackLayout Grid.Row="1" Spacing="14" Padding="40,0"
                               HorizontalOptions="Center" VerticalOptions="Center">
 
+            <!-- Difficulty selector -->
+            <Label Text="Svårighetsgrad" FontSize="12" TextColor="#AAFFFFFF"
+                   HorizontalOptions="Center" Margin="0,0,0,2" />
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8" HorizontalOptions="Center"
+                  MinimumWidthRequest="280">
+                <Button x:Name="EasyButton" Text="Lätt"
+                        FontSize="14" FontAttributes="Bold"
+                        BackgroundColor="#2E7D32" TextColor="White"
+                        CornerRadius="12" HeightRequest="40"
+                        Clicked="OnSelectEasy" />
+                <Button x:Name="MediumButton" Grid.Column="1" Text="Normal"
+                        FontSize="14" FontAttributes="Bold"
+                        BackgroundColor="#003DA5" TextColor="White"
+                        CornerRadius="12" HeightRequest="40"
+                        Clicked="OnSelectMedium" />
+                <Button x:Name="HardButton" Grid.Column="2" Text="Svår"
+                        FontSize="14" FontAttributes="Bold"
+                        BackgroundColor="#37474F" TextColor="White"
+                        CornerRadius="12" HeightRequest="40"
+                        Clicked="OnSelectHard" />
+            </Grid>
+
+            <!-- Play buttons -->
             <Button x:Name="SinglePlayerButton"
-                    Text="🏐  1 Spelare"
+                    Text="🏠 1 Spelare"
                     FontSize="20" FontAttributes="Bold"
                     BackgroundColor="#003DA5" TextColor="White"
                     CornerRadius="16" HeightRequest="60"
-                    MinimumWidthRequest="260"
+                    MinimumWidthRequest="280"
                     Clicked="OnSinglePlayer" />
 
             <Button x:Name="TwoPlayerButton"
@@ -57,7 +80,7 @@
                     FontSize="20" FontAttributes="Bold"
                     BackgroundColor="#1B5E20" TextColor="White"
                     CornerRadius="16" HeightRequest="60"
-                    MinimumWidthRequest="260"
+                    MinimumWidthRequest="280"
                     Clicked="OnTwoPlayerLocal" />
 
             <!-- Sound toggle -->
@@ -73,7 +96,7 @@
 
         <!-- Bottom: Version / credits -->
         <Label Grid.Row="2"
-               Text="v1.0.0  •  HK Aranäs  •  Open Source"
+               Text="v1.1.0  •  HK Aranäs  •  Open Source"
                FontSize="10" TextColor="#55FFFFFF"
                HorizontalOptions="Center" VerticalOptions="End"
                Margin="0,0,0,12" />

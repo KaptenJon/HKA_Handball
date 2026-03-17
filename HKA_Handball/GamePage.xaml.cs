@@ -25,13 +25,13 @@ public partial class GamePage : ContentPage
     bool _advanceHeld;
 
     /// <summary>Parameterless constructor for XAML previewer. Sound effects are disabled.</summary>
-    public GamePage() : this(GameMode.SinglePlayer, null) { }
+    public GamePage() : this(GameMode.SinglePlayer, Difficulty.Medium, null) { }
 
-    public GamePage(GameMode mode, SoundManager? soundManager)
+    public GamePage(GameMode mode, Difficulty difficulty, SoundManager? soundManager)
     {
         _gameMode = mode;
         _soundManager = soundManager;
-        _state = new GameState(mode);
+        _state = new GameState(mode, difficulty);
 
         InitializeComponent();
         _drawable = new GameDrawable(_state);
@@ -218,6 +218,14 @@ public class Actor
     public bool IsSuspended => SuspensionTicks > 0;
 }
 
+// ── Confetti particle for goal celebration ──
+public struct ConfettiParticle
+{
+    public float X, Y, VX, VY;
+    public int ColorIndex;
+    public int LifeTicks;
+}
+
 public class GameState
 {
     public const double GoalCenterInset = 20;
@@ -227,7 +235,7 @@ public class GameState
     // Goalkeeper vertical range: half the goal-mouth height (goal is 160px tall)
     const double GoalMouthHalf = 80;
 
-    // Gameplay tuning constants
+    // Gameplay tuning constants (base values – adjusted by difficulty)
     const double PassInterceptDistance = 34;
     const double PassInterceptChance = 0.12;
     const double ShotInterceptChance = 0.25;
@@ -281,10 +289,33 @@ public class GameState
     const double OnTargetCloseRangePenalty = 0.10;
     const double OnTargetPositionBonus = 0.20;
 
+    // ── Difficulty multipliers (set in constructor) ──
+    readonly double _diffInterceptMult;        // multiplier on AI intercept chances
+    readonly double _diffBreakthroughMult;     // multiplier on AI breakthrough chance
+    readonly int _diffPassCooldownBase;        // base ticks for AI pass cooldown
+    readonly int _diffPassCooldownRange;       // random range added to pass cooldown
+    readonly double _diffHomeGkBonus;          // bonus save chance for player's GK
+    readonly double _diffAwayGkBonus;          // bonus save chance for opponent GK
+    readonly double _diffTackleStealBonus;     // bonus steal chance for player tackles
+
+    // ── Match statistics ──
+    public int ShotsHome { get; private set; }
+    public int ShotsAway { get; private set; }
+    public int SavesHome { get; private set; }  // saves by home GK (against away shots)
+    public int SavesAway { get; private set; }  // saves by away GK (against home shots)
+    public int PassesHome { get; private set; }
+    public int PassesAway { get; private set; }
+
+    // ── Confetti system ──
+    public const int MaxConfetti = 60;
+    public readonly ConfettiParticle[] Confetti = new ConfettiParticle[MaxConfetti];
+    public int ConfettiCount { get; private set; }
+
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
     public readonly Actor[] AwayPlayers = new Actor[7];
     public readonly GameMode Mode;
+    public readonly Difficulty Difficulty;
 
     /// <summary>Raised when a notable game event occurs (goal, shot, pass, etc.).</summary>
     public event Action<GameEventType>? GameEvent;
@@ -339,18 +370,15 @@ public class GameState
     public int ScoreHome { get; private set; }
     public int ScoreAway { get; private set; }
     public string StatusText { get; private set; } = "";
-    int _statusOverrideTicks;
+    bool _advanceBoost;
     string _statusOverrideText = "";
-
-    // Goals
+    int _statusOverrideTicks;
+    double _attackDiagonalBoostY;
     Rect _rightGoal;
     Rect _leftGoal;
-
-    bool _advanceBoost; // internal flag for held advance
-    bool _defenderAdvanceBoost;
     double _defenderSideBoostY;
     double _defenderDiagBoostY;
-    double _attackDiagonalBoostY;
+    bool _defenderAdvanceBoost;
     bool _resettingAfterGoal;
     int _resetCountdown;
     bool _viewInitialized;
@@ -400,9 +428,43 @@ public class GameState
     public int HomeSuspensionCount => HomePlayers.Count(p => p.IsSuspended);
     public int AwaySuspensionCount => AwayPlayers.Count(p => p.IsSuspended);
 
-    public GameState(GameMode mode = GameMode.SinglePlayer)
+    public GameState(GameMode mode = GameMode.SinglePlayer, Difficulty difficulty = Difficulty.Medium)
     {
         Mode = mode;
+        Difficulty = difficulty;
+
+        // Set difficulty multipliers
+        switch (difficulty)
+        {
+            case Difficulty.Easy:
+                _diffInterceptMult = 0.5;
+                _diffBreakthroughMult = 0.5;
+                _diffPassCooldownBase = 50;
+                _diffPassCooldownRange = 30;
+                _diffHomeGkBonus = 0.10;
+                _diffAwayGkBonus = -0.08;
+                _diffTackleStealBonus = 0.10;
+                break;
+            case Difficulty.Hard:
+                _diffInterceptMult = 1.5;
+                _diffBreakthroughMult = 1.5;
+                _diffPassCooldownBase = 20;
+                _diffPassCooldownRange = 15;
+                _diffHomeGkBonus = -0.05;
+                _diffAwayGkBonus = 0.10;
+                _diffTackleStealBonus = -0.08;
+                break;
+            default: // Medium
+                _diffInterceptMult = 1.0;
+                _diffBreakthroughMult = 1.0;
+                _diffPassCooldownBase = 30;
+                _diffPassCooldownRange = 20;
+                _diffHomeGkBonus = 0.0;
+                _diffAwayGkBonus = 0.0;
+                _diffTackleStealBonus = 0.0;
+                break;
+        }
+
         _rightGoal = new Rect(0, 120, 12, 160);
         _leftGoal = new Rect(8, 120, 12, 160);
         InitTeam(HomePlayers, GoalCenterInset + GoalAreaRadius + 30, true);
@@ -551,6 +613,7 @@ public class GameState
         BallOwnerPlayerIndex = -1;
         BallOwnerAwayIndex = -1;
         _possessionTimer = 0; // reset passive play on pass attempt
+        PassesHome++;
         GameEvent?.Invoke(GameEventType.Pass);
     }
 
@@ -572,6 +635,7 @@ public class GameState
         BallOwnerAwayIndex = -1;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
+        ShotsHome++;
         GameEvent?.Invoke(GameEventType.Shoot);
     }
 
@@ -590,7 +654,6 @@ public class GameState
     {
         _advanceBoost = false;
         _defenderAdvanceBoost = false;
-        // Only clear side/diag boosts that belong to the advance button, not unrelated diagonal buttons
     }
 
     public void Update(double dt)
@@ -609,7 +672,7 @@ public class GameState
                 {
                     _awayPassTargetIndex = nearestField;
                     _awayPassActive = true;
-                    _awayPassCooldownTicks = 30;
+                    _awayPassCooldownTicks = _diffPassCooldownBase;
                     BallOwnerType = BallOwnershipType.Loose;
                     BallOwnerAwayIndex = -1;
                     BallOwnerPlayerIndex = -1;
@@ -662,6 +725,7 @@ public class GameState
         if (_goalCelebrationTicks > 0)
         {
             _goalCelebrationTicks--;
+            UpdateConfetti(dt);
             return;
         }
 
@@ -683,7 +747,7 @@ public class GameState
                 // Passive play turnover
                 _possessionTimer = 0;
                 PassivePlayWarningActive = false;
-                GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarboll");
+                GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarbolll");
                 GameEvent?.Invoke(GameEventType.Whistle);
                 return;
             }
@@ -719,6 +783,7 @@ public class GameState
         UpdatePlayers(dt);
         UpdateBall(dt);
         UpdateBallHeight(dt);
+        UpdateConfetti(dt);
         UpdateStatus();
     }
 
@@ -801,7 +866,7 @@ public class GameState
 
             if (IsInsideRightGoalArea(nextPos))
             {
-                GiveBallToOpponent(GetNearestAwayIndex(owner.Position), "Målgård: motståndarboll");
+                GiveBallToOpponent(GetNearestAwayIndex(owner.Position), "Målgård: motståndarbolll");
                 return;
             }
 
@@ -902,12 +967,13 @@ public class GameState
             ClampActor(p);
         }
 
-        // Home goalkeeper reacts to shots and ball carrier
-        // (skip AI movement when GK has the ball — player controls movement)
+        // Goalkeeper AI
         var homeGK = HomePlayers[0];
-        double gkCenterY = ViewSize.Height / 2;
+        double gkCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
         double gkMinY = gkCenterY - GoalMouthHalf;
         double gkMaxY = gkCenterY + GoalMouthHalf;
+
+        // Home goalkeeper reacts to away shots
         bool homeGKHasBall = BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex == 0;
         if (!homeGKHasBall)
         {
@@ -1068,11 +1134,10 @@ public class GameState
                     {
                         // Pressure: move toward carrier
                         defX = Lerp(defX, carrierX + 20, 0.3);
-                        defY = Lerp(defY, carrierY, 0.3);
+                        defY = Lerp(defY, carrierY, 0.2);
                     }
 
-                    // Subtle defensive sway
-                    double drift = Math.Sin(Environment.TickCount / 600.0 + i * 1.2) * 8;
+                    double drift = Math.Sin(Environment.TickCount / 600.0 + i * 1.2) * 10;
 
                     a.Position = new Point(
                         Lerp(a.Position.X, defX, 0.06),
@@ -1141,14 +1206,14 @@ public class GameState
                             Lerp(a.Position.Y, arcPos.Y, 0.06));
                     }
 
-                    // Pass or breakthrough decision (only when near arc)
+                    // Pass or breakthrough decision (only when near arc) — difficulty adjusted
                     if (!_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
                     {
                         // After enough passes, chance to break through
-                        double breakChance = _awayBuildupPasses >= 3 ? 0.015 : 0.0;
-                        if (_awayBuildupPasses >= 6) breakChance = 0.04;
+                        double breakChance = _awayBuildupPasses >= 3 ? 0.015 * _diffBreakthroughMult : 0.0;
+                        if (_awayBuildupPasses >= 6) breakChance = 0.04 * _diffBreakthroughMult;
                         // Fast break: higher breakthrough chance when on fast break
-                        if (_awayFastBreakTicks > 0) breakChance = 0.08;
+                        if (_awayFastBreakTicks > 0) breakChance = 0.08 * _diffBreakthroughMult;
 
                         if (Random.Shared.NextDouble() < breakChance)
                         {
@@ -1199,7 +1264,7 @@ public class GameState
             var target = AwayPlayers[_awayPassTargetIndex].Position;
             BallPos = LerpPoint(BallPos, target, 0.32);
 
-            // Home defenders can intercept away passes
+            // Home defenders can intercept away passes — difficulty adjusted
             for (int i = 1; i < HomePlayers.Length; i++)
             {
                 if (HomePlayers[i].IsSuspended) continue;
@@ -1209,6 +1274,9 @@ public class GameState
                     double chance = PassInterceptChance;
                     if (IsHomeDefending && i == ControlledDefenderIndex)
                         chance += ControlledDefenderInterceptBonus;
+                    // Difficulty: easier = lower chance for AI passes to be intercepted? No – this is
+                    // the player intercepting AI passes, so easier = higher chance
+                    chance += _diffTackleStealBonus * 0.5;
                     if (Random.Shared.NextDouble() < chance)
                     {
                         _awayPassActive = false;
@@ -1241,22 +1309,23 @@ public class GameState
                 _awayShootActive = false;
                 bool onTarget = _leftGoal.Contains(BallPos);
 
-                // GK save check FIRST
+                // GK save check FIRST — difficulty adjusted
                 var homeKeeper = HomePlayers[0];
                 double awayShotDist = Distance(_awayShootStart, _awayShootEnd);
                 double gkDist = DistanceToSegment(homeKeeper.Position, _awayShootStart, _awayShootEnd);
                 if (gkDist < GoalkeeperSaveRadius)
                 {
                     double distFactor = Math.Clamp(awayShotDist / MaxShotDistance, 0, 1);
-                    double saveChance = OnTargetSaveBase + distFactor * OnTargetDistBonus
-                        - (awayShotDist < 200 ? OnTargetCloseRangePenalty : 0);
+                    double saveChance = OnTargetSaveBase + distFactor * OnTargetDistBonus + _diffHomeGkBonus;
+                    saveChance -= (awayShotDist < 200 ? OnTargetCloseRangePenalty : 0);
                     double posBonus = Math.Clamp(1.0 - gkDist / GoalkeeperSaveRadius, 0, 1) * OnTargetPositionBonus;
                     saveChance += posBonus;
                     if (Random.Shared.NextDouble() < saveChance)
                     {
                         GameEvent?.Invoke(GameEventType.Save);
+                        SavesHome++;
                         BallPos = homeKeeper.Position;
-                        GiveBallToPlayer(0, "Målvaktsräddning");
+                        GiveBallToPlayer(0, "Målvaktsräddning!");
                         return;
                     }
                 }
@@ -1265,14 +1334,14 @@ public class GameState
                 if (interceptor >= 1)
                 {
                     GameEvent?.Invoke(GameEventType.Interception);
-                    GiveBallToPlayer(interceptor, "Brytning av försvarare");
+                    GiveBallToPlayer(interceptor, "Brytning av försvarare!");
                     return;
                 }
 
                 if (onTarget)
                 {
                     ScoreAway++;
-                    SetStatusOverride("Motståndaren gör mål!", 120);
+                    SetStatusOverride("Borta gör mål!", 120);
                     GameEvent?.Invoke(GameEventType.GoalAway);
                     ResetAfterScore(homeScored: false);
                 }
@@ -1295,20 +1364,21 @@ public class GameState
                 _shootActive = false;
                 bool onTarget = _rightGoal.Contains(BallPos);
 
-                // GK save check FIRST
+                // Away GK save check — difficulty adjusted
                 var awayKeeper = AwayPlayers[0];
-                double shotDist = Distance(_shootStart, _shootEnd);
+                double homeShotDist = Distance(_shootStart, _shootEnd);
                 double gkDist = DistanceToSegment(awayKeeper.Position, _shootStart, _shootEnd);
                 if (gkDist < GoalkeeperSaveRadius)
                 {
-                    double distFactor = Math.Clamp(shotDist / MaxShotDistance, 0, 1);
-                    double saveChance = OnTargetSaveBase + distFactor * OnTargetDistBonus
-                        - (shotDist < 200 ? OnTargetCloseRangePenalty : 0);
+                    double distFactor = Math.Clamp(homeShotDist / MaxShotDistance, 0, 1);
+                    double saveChance = OnTargetSaveBase + distFactor * OnTargetDistBonus + _diffAwayGkBonus;
+                    saveChance -= (homeShotDist < 200 ? OnTargetCloseRangePenalty : 0);
                     double posBonus = Math.Clamp(1.0 - gkDist / GoalkeeperSaveRadius, 0, 1) * OnTargetPositionBonus;
                     saveChance += posBonus;
                     if (Random.Shared.NextDouble() < saveChance)
                     {
                         GameEvent?.Invoke(GameEventType.Save);
+                        SavesAway++;
                         BallPos = awayKeeper.Position;
                         GiveBallToOpponent(0, "Målvaktsräddning");
                         _keeperHoldTicks = 40;
@@ -1344,16 +1414,16 @@ public class GameState
             var target = HomePlayers[_passTargetHomeIndex].Position;
             BallPos = LerpPoint(BallPos, target, 0.35);
 
-            // Away defenders can intercept home passes
+            // Away defenders can intercept home passes — difficulty adjusted
             for (int i = 1; i < AwayPlayers.Length; i++)
             {
                 if (AwayPlayers[i].IsSuspended) continue;
                 double interceptDist = Distance(BallPos, AwayPlayers[i].Position);
                 if (interceptDist < PassInterceptDistance)
                 {
-                    double chance = PassInterceptChance;
+                    double chance = PassInterceptChance * _diffInterceptMult;
                     if (interceptDist < PassInterceptDistance * 0.6)
-                        chance += 0.08;
+                        chance += 0.08 * _diffInterceptMult;
                     if (Random.Shared.NextDouble() < chance)
                     {
                         _passActive = false;
@@ -1422,7 +1492,7 @@ public class GameState
                     BallOwnerType = BallOwnershipType.Opponent;
                     BallOwnerAwayIndex = nearestAwayIdx;
                     BallOwnerPlayerIndex = -1;
-                    _awayPassCooldownTicks = 30;
+                    _awayPassCooldownTicks = _diffPassCooldownBase;
                 }
             }
         }
@@ -1431,7 +1501,10 @@ public class GameState
     void ResetAfterScore(bool homeScored)
     {
         _goalCelebrationTicks = 75;
-        GoalCelebrationText = homeScored ? "MÅL! 🎉" : "Motståndaren gör mål!";
+        GoalCelebrationText = homeScored ? "MÅL! 🎉" : "Motståndarenmål!";
+
+        // Spawn confetti from the goal area
+        SpawnConfetti(homeScored);
 
         double homeFieldBase = GoalCenterInset + GoalAreaRadius + 30;
         double awayFieldBase = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 30 : 700;
@@ -1578,7 +1651,7 @@ public class GameState
         _awayPassTargetIndex = -1;
         _awayBuildupPasses = 0;
         _awayBreakthrough = false;
-        _awayPassCooldownTicks = 40;
+        _awayPassCooldownTicks = _diffPassCooldownBase + 10;
         _attackDiagonalBoostY = 0;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
@@ -1640,11 +1713,12 @@ public class GameState
         else
             _awayPassTargetIndex = sorted[Random.Shared.Next(sorted.Length)];
         _awayPassActive = true;
-        _awayPassCooldownTicks = 30 + Random.Shared.Next(20);
+        _awayPassCooldownTicks = _diffPassCooldownBase + Random.Shared.Next(_diffPassCooldownRange);
         _awayBuildupPasses++;
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerAwayIndex = -1;
         BallOwnerPlayerIndex = -1;
+        PassesAway++;
         GameEvent?.Invoke(GameEventType.AwayPass);
     }
 
@@ -1708,6 +1782,7 @@ public class GameState
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerAwayIndex = -1;
         BallOwnerPlayerIndex = -1;
+        ShotsAway++;
         SetStatusOverride("Motståndaren skjuter!", 60);
         GameEvent?.Invoke(GameEventType.AwayShoot);
     }
@@ -1781,8 +1856,6 @@ public class GameState
 
                 if (nearGoalArea && Random.Shared.NextDouble() < PenaltyAwardChance)
                 {
-                    // 7-meter penalty awarded to home team
-                    // The defending player may also receive a suspension
                     if (Random.Shared.NextDouble() < SuspensionChance)
                     {
                         defender.SuspensionTicks = SuspensionDurationTicks;
@@ -1797,7 +1870,6 @@ public class GameState
                 _advanceBoost = false;
                 _attackDiagonalBoostY = 0;
 
-                // Chance of 2-minute suspension on regular foul
                 if (Random.Shared.NextDouble() < SuspensionChance)
                 {
                     defender.SuspensionTicks = SuspensionDurationTicks;
@@ -1818,7 +1890,7 @@ public class GameState
                 }
                 else
                 {
-                    GiveBallToOpponent(i, "Tappad boll: motståndarboll");
+                    GiveBallToOpponent(i, "Tappad boll: motståndarbolll");
                 }
                 return true;
             }
@@ -1861,7 +1933,7 @@ public class GameState
             }
 
             double roll = Random.Shared.NextDouble();
-            double stealChance = TackleStealChance;
+            double stealChance = TackleStealChance + _diffTackleStealBonus;
             if (i == ControlledDefenderIndex) stealChance += 0.12;
 
             if (roll < stealChance)
@@ -1880,7 +1952,7 @@ public class GameState
                 }
                 else
                 {
-                    SetStatusOverride("Frikast - motståndarboll");
+                    SetStatusOverride("Frikast - motståndarbolll");
                     GameEvent?.Invoke(GameEventType.Whistle);
                 }
                 var freeThrowX = GoalCenterInset + FreeThrowRadius + 8;
@@ -1924,7 +1996,7 @@ public class GameState
         return new Point(center.X + dx * s, center.Y + dy * s);
     }
 
-    // ── New helper methods ──
+    // ── Helper methods ──
 
     void ClearAllActiveActions()
     {
@@ -1956,6 +2028,7 @@ public class GameState
         player.BaseX = centerX;
         player.BaseY = centerY;
     }
+
     void StartSecondHalf()
     {
         CurrentHalf = 2;
@@ -1977,7 +2050,7 @@ public class GameState
         BallOwnerPlayerIndex = -1;
         ControlledDefenderIndex = 1;
         ClearAllActiveActions();
-        _awayPassCooldownTicks = 40;
+        _awayPassCooldownTicks = _diffPassCooldownBase + 10;
         _viewInitialized = true;
         // Throw-off: away team starts at center
         double centerX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
@@ -2000,6 +2073,11 @@ public class GameState
         _goalCelebrationTicks = 0;
         _homeFastBreakTicks = 0;
         _awayFastBreakTicks = 0;
+        // Reset stats
+        ShotsHome = 0; ShotsAway = 0;
+        SavesHome = 0; SavesAway = 0;
+        PassesHome = 0; PassesAway = 0;
+        ConfettiCount = 0;
 
         double homeFieldBase = GoalCenterInset + GoalAreaRadius + 30;
         double awayFieldBase = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 30 : 700;
@@ -2058,6 +2136,7 @@ public class GameState
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerPlayerIndex = -1;
         BallOwnerAwayIndex = -1;
+        if (isHome) ShotsHome++; else ShotsAway++;
         SetStatusOverride(_penaltyIsHome ? "7-meterstraff! Hemma skjuter" : "7-meterstraff! Borta skjuter", 90);
         GameEvent?.Invoke(GameEventType.PenaltyAwarded);
         GameEvent?.Invoke(GameEventType.Whistle);
@@ -2094,6 +2173,7 @@ public class GameState
                     if (keeperSave)
                     {
                         GameEvent?.Invoke(GameEventType.Save);
+                        SavesAway++;
                         BallPos = AwayPlayers[0].Position;
                         GiveBallToOpponent(0, "Straffskytte: Målvaktsräddning!");
                         _keeperHoldTicks = 40;
@@ -2120,6 +2200,7 @@ public class GameState
                     if (keeperSave)
                     {
                         GameEvent?.Invoke(GameEventType.Save);
+                        SavesHome++;
                         BallPos = HomePlayers[0].Position;
                         GiveBallToPlayer(0, "Straffskytte: Målvaktsräddning!");
                     }
@@ -2179,6 +2260,48 @@ public class GameState
         }
     }
 
+    // ── Confetti system ──
+
+    void SpawnConfetti(bool homeScored)
+    {
+        float goalX = homeScored
+            ? (float)(ViewSize.Width - GoalCenterInset - 10)
+            : (float)(GoalCenterInset + 10);
+        float centerY = ViewSize.Height > 0 ? (float)(ViewSize.Height / 2) : 300f;
+
+        ConfettiCount = MaxConfetti;
+        for (int i = 0; i < MaxConfetti; i++)
+        {
+            float angle = (float)(Random.Shared.NextDouble() * Math.PI * 2);
+            float speed = 60f + (float)(Random.Shared.NextDouble() * 120);
+            Confetti[i] = new ConfettiParticle
+            {
+                X = goalX + (float)(Random.Shared.NextDouble() - 0.5) * 40,
+                Y = centerY + (float)(Random.Shared.NextDouble() - 0.5) * 100,
+                VX = (float)Math.Cos(angle) * speed,
+                VY = (float)Math.Sin(angle) * speed - 60f, // upward bias
+                ColorIndex = Random.Shared.Next(5),
+                LifeTicks = 60 + Random.Shared.Next(60)
+            };
+        }
+    }
+
+    void UpdateConfetti(double dt)
+    {
+        int alive = 0;
+        for (int i = 0; i < ConfettiCount; i++)
+        {
+            if (Confetti[i].LifeTicks <= 0) continue;
+            Confetti[i].LifeTicks--;
+            Confetti[i].X += Confetti[i].VX * (float)dt;
+            Confetti[i].Y += Confetti[i].VY * (float)dt;
+            Confetti[i].VY += 120f * (float)dt; // gravity
+            Confetti[i].VX *= 0.98f; // air resistance
+            if (Confetti[i].LifeTicks > 0) alive++;
+        }
+        if (alive == 0) ConfettiCount = 0;
+    }
+
     /// <summary>
     /// Returns the match clock formatted as MM:SS for display.
     /// </summary>
@@ -2192,6 +2315,14 @@ public class GameState
 
     /// <summary>Returns a short half indicator string.</summary>
     public string GetHalfDisplay() => CurrentHalf == 1 ? "1:a" : "2:a";
+
+    /// <summary>Returns the difficulty label for display.</summary>
+    public string GetDifficultyLabel() => Difficulty switch
+    {
+        Difficulty.Easy => "Lätt",
+        Difficulty.Hard => "Svår",
+        _ => "Normal"
+    };
 }
 
 public class GameDrawable : IDrawable
@@ -2201,6 +2332,16 @@ public class GameDrawable : IDrawable
     readonly Color AranasBlueLight;
     readonly Color AranasWhite;
     readonly Color AwayRed = Colors.Crimson;
+
+    // Confetti colors
+    static readonly Color[] ConfettiColors =
+    [
+        Colors.Gold,
+        Color.FromArgb("#003DA5"),
+        Colors.White,
+        Colors.Crimson,
+        Color.FromArgb("#2E7CF6")
+    ];
 
     public GameDrawable(GameState state)
     {
@@ -2218,6 +2359,7 @@ public class GameDrawable : IDrawable
         DrawBall(canvas);
         DrawPassIndicator(canvas);
         DrawPenaltySpotIndicator(canvas, dirtyRect);
+        DrawConfetti(canvas);
         DrawScore(canvas, dirtyRect);
         DrawSuspensionIndicator(canvas, dirtyRect);
         DrawPassivePlayIndicator(canvas, dirtyRect);
@@ -2395,17 +2537,34 @@ public class GameDrawable : IDrawable
         canvas.DrawString(posLabel, x - 8, y + bodyH / 2 + 3, 16, 8,
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
-        // Selection ring
+        // Selection ring — pulsing for active player
         float ringR = bodyW / 2 + 5;
         if (isActive)
         {
-            canvas.StrokeColor = Colors.White;
+            float pulse = (float)(0.7 + 0.3 * Math.Sin(Environment.TickCount / 150.0));
+            canvas.StrokeColor = Colors.White.WithAlpha(pulse);
             canvas.StrokeSize = 2.5f;
             canvas.DrawCircle(x, y + 2, ringR);
+
+            // Direction arrow showing movement input
+            if (Math.Abs(_state.ActiveMoveInput.X) > 5 || Math.Abs(_state.ActiveMoveInput.Y) > 5)
+            {
+                double len = Math.Sqrt(_state.ActiveMoveInput.X * _state.ActiveMoveInput.X + _state.ActiveMoveInput.Y * _state.ActiveMoveInput.Y);
+                if (len > 0)
+                {
+                    float arrowLen = 16f;
+                    float ax = x + (float)(_state.ActiveMoveInput.X / len) * arrowLen;
+                    float ay = y + 2 + (float)(_state.ActiveMoveInput.Y / len) * arrowLen;
+                    canvas.StrokeColor = Colors.Yellow.WithAlpha(0.7f);
+                    canvas.StrokeSize = 2;
+                    canvas.DrawLine(x, y + 2, ax, ay);
+                }
+            }
         }
         else if (isDefender)
         {
-            canvas.StrokeColor = Colors.Gold;
+            float pulse = (float)(0.7 + 0.3 * Math.Sin(Environment.TickCount / 200.0));
+            canvas.StrokeColor = Colors.Gold.WithAlpha(pulse);
             canvas.StrokeSize = 3;
             canvas.DrawCircle(x, y + 2, ringR);
         }
@@ -2460,6 +2619,12 @@ public class GameDrawable : IDrawable
         canvas.FillColor = Color.FromArgb("#FF8C00");
         canvas.FillCircle(bx, visualBy, ballRadius);
 
+        // Ball seam lines for realism
+        canvas.StrokeColor = Color.FromArgb("#44000000");
+        canvas.StrokeSize = 0.8f;
+        canvas.DrawLine(bx - ballRadius * 0.5f, visualBy - ballRadius * 0.3f,
+                        bx + ballRadius * 0.5f, visualBy + ballRadius * 0.3f);
+
         // Highlight
         canvas.FillColor = Colors.White.WithAlpha(0.4f);
         canvas.FillCircle(bx - 2, visualBy - 2, 3);
@@ -2479,37 +2644,42 @@ public class GameDrawable : IDrawable
 
     void DrawScore(ICanvas canvas, RectF dirtyRect)
     {
-        // Enhanced score display with team names, clock, and half indicator
-        float pillW = 200, pillH = 36;
+        // Enhanced score display with team names, clock, half indicator, and difficulty
+        float pillW = 220, pillH = 42;
         float pillX = dirtyRect.Center.X - pillW / 2;
         canvas.FillColor = Color.FromArgb("#DD2C1B0E");
         canvas.FillRoundedRectangle(pillX, 4, pillW, pillH, 18);
 
+        // Subtle border
+        canvas.StrokeColor = Color.FromArgb("#44FFFFFF");
+        canvas.StrokeSize = 1;
+        canvas.DrawRoundedRectangle(pillX, 4, pillW, pillH, 18);
+
         // Score with team names
         canvas.FontColor = AranasBlue;
-        canvas.FontSize = 12;
+        canvas.FontSize = 11;
         canvas.DrawString("HEM",
-            new RectF(pillX + 8, 8, 40, 16),
+            new RectF(pillX + 8, 8, 40, 14),
             G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
 
         canvas.FontColor = AwayRed;
         canvas.DrawString("BOR",
-            new RectF(pillX + pillW - 48, 8, 40, 16),
+            new RectF(pillX + pillW - 48, 8, 40, 14),
             G.HorizontalAlignment.Right, G.VerticalAlignment.Center);
 
-        // Score numbers
+        // Score numbers (larger and bolder)
         canvas.FontColor = AranasWhite;
-        canvas.FontSize = 20;
+        canvas.FontSize = 22;
         canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
             new RectF(pillX, 6, pillW, 22),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
-        // Match clock below score
-        canvas.FontSize = 10;
+        // Match clock and difficulty below score
+        canvas.FontSize = 9;
         canvas.FontColor = Color.FromArgb("#AAFFFFFF");
-        string clockText = $"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}";
+        string clockText = $"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}  •  {_state.GetDifficultyLabel()}";
         canvas.DrawString(clockText,
-            new RectF(pillX, 24, pillW, 14),
+            new RectF(pillX, 28, pillW, 14),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
     }
 
@@ -2528,16 +2698,41 @@ public class GameDrawable : IDrawable
     {
         if (!_state.IsGoalCelebration) return;
 
-        // Semi-transparent overlay flash
-        canvas.FillColor = Colors.White.WithAlpha(0.15f);
+        // Semi-transparent overlay flash — pulsing
+        float flashAlpha = (float)(0.1 + 0.08 * Math.Sin(Environment.TickCount / 100.0));
+        canvas.FillColor = Colors.Gold.WithAlpha(flashAlpha);
         canvas.FillRectangle(dirtyRect);
 
-        // Large celebration text
+        // Large celebration text with shadow
+        canvas.FontColor = Color.FromArgb("#88000000");
+        canvas.FontSize = 38;
+        canvas.DrawString(_state.GoalCelebrationText,
+            new RectF(2, dirtyRect.Height * 0.35f + 2, dirtyRect.Width, 50),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
         canvas.FontColor = Colors.Gold;
-        canvas.FontSize = 36;
+        canvas.FontSize = 38;
         canvas.DrawString(_state.GoalCelebrationText,
             new RectF(0, dirtyRect.Height * 0.35f, dirtyRect.Width, 50),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+    }
+
+    void DrawConfetti(ICanvas canvas)
+    {
+        if (_state.ConfettiCount == 0) return;
+        for (int i = 0; i < _state.ConfettiCount; i++)
+        {
+            ref readonly var p = ref _state.Confetti[i];
+            if (p.LifeTicks <= 0) continue;
+
+            float alpha = Math.Clamp(p.LifeTicks / 40f, 0f, 1f);
+            var color = ConfettiColors[p.ColorIndex % ConfettiColors.Length].WithAlpha(alpha);
+            canvas.FillColor = color;
+
+            // Rotate confetti pieces slightly based on position
+            float w = 4f + (p.ColorIndex % 3) * 2f;
+            float h = 3f + (p.ColorIndex % 2) * 2f;
+            canvas.FillRoundedRectangle(p.X - w / 2, p.Y - h / 2, w, h, 1);
+        }
     }
 
     void DrawMatchOverlay(ICanvas canvas, RectF dirtyRect)
@@ -2576,7 +2771,7 @@ public class GameDrawable : IDrawable
             canvas.FontColor = Colors.Gold;
             canvas.FontSize = 32;
             canvas.DrawString("SLUTSIGNAL",
-                new RectF(0, dirtyRect.Height * 0.2f, dirtyRect.Width, 40),
+                new RectF(0, dirtyRect.Height * 0.12f, dirtyRect.Width, 40),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
             // Result
@@ -2585,44 +2780,97 @@ public class GameDrawable : IDrawable
             canvas.FontColor = _state.ScoreHome >= _state.ScoreAway ? Colors.Gold : Colors.White;
             canvas.FontSize = 28;
             canvas.DrawString(result,
-                new RectF(0, dirtyRect.Height * 0.33f, dirtyRect.Width, 36),
+                new RectF(0, dirtyRect.Height * 0.22f, dirtyRect.Width, 36),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
             // Final score large
             canvas.FontColor = AranasWhite;
             canvas.FontSize = 48;
             canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
-                new RectF(0, dirtyRect.Height * 0.45f, dirtyRect.Width, 56),
+                new RectF(0, dirtyRect.Height * 0.33f, dirtyRect.Width, 56),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
             // Team labels
             canvas.FontSize = 16;
             canvas.FontColor = AranasBlue;
             canvas.DrawString("Hemma",
-                new RectF(0, dirtyRect.Height * 0.58f, dirtyRect.Width / 2, 24),
+                new RectF(0, dirtyRect.Height * 0.44f, dirtyRect.Width / 2, 24),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
             canvas.FontColor = AwayRed;
             canvas.DrawString("Borta",
-                new RectF(dirtyRect.Width / 2, dirtyRect.Height * 0.58f, dirtyRect.Width / 2, 24),
+                new RectF(dirtyRect.Width / 2, dirtyRect.Height * 0.44f, dirtyRect.Width / 2, 24),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // ── Match statistics table ──
+            float statsY = dirtyRect.Height * 0.52f;
+            float statsH = 18;
+            float leftColX = dirtyRect.Width * 0.2f;
+            float centerColX = dirtyRect.Width * 0.35f;
+            float rightColX = dirtyRect.Width * 0.65f;
+            float colW = dirtyRect.Width * 0.15f;
+            float labelW = dirtyRect.Width * 0.3f;
+
+            // Header
+            canvas.FontSize = 11;
+            canvas.FontColor = Colors.Gold;
+            canvas.DrawString("STATISTIK",
+                new RectF(0, statsY - statsH, dirtyRect.Width, statsH),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // Stats rows
+            DrawStatRow(canvas, leftColX, centerColX, rightColX, colW, labelW, ref statsY, statsH,
+                "Skott", _state.ShotsHome, _state.ShotsAway);
+            DrawStatRow(canvas, leftColX, centerColX, rightColX, colW, labelW, ref statsY, statsH,
+                "Räddningar", _state.SavesAway, _state.SavesHome); // opponent GK saves
+            DrawStatRow(canvas, leftColX, centerColX, rightColX, colW, labelW, ref statsY, statsH,
+                "Passningar", _state.PassesHome, _state.PassesAway);
 
             // Restart hint
             canvas.FontSize = 14;
             canvas.FontColor = Color.FromArgb("#AAFFFFFF");
             canvas.DrawString("Tryck för ny match",
-                new RectF(0, dirtyRect.Height * 0.72f, dirtyRect.Width, 24),
+                new RectF(0, dirtyRect.Height * 0.82f, dirtyRect.Width, 24),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
         }
+    }
+
+    static void DrawStatRow(ICanvas canvas, float leftX, float centerX, float rightX, float colW, float labelW,
+        ref float y, float h, string label, int homeVal, int awayVal)
+    {
+        canvas.FontSize = 12;
+
+        // Home value
+        canvas.FontColor = Color.FromArgb("#DDFFFFFF");
+        canvas.DrawString(homeVal.ToString(),
+            new RectF(leftX, y, colW, h),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Label
+        canvas.FontColor = Color.FromArgb("#AAFFFFFF");
+        canvas.DrawString(label,
+            new RectF(centerX, y, labelW, h),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Away value
+        canvas.FontColor = Color.FromArgb("#DDFFFFFF");
+        canvas.DrawString(awayVal.ToString(),
+            new RectF(rightX, y, colW, h),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        y += h;
     }
 
     void DrawGoal(ICanvas canvas, RectF rect, Color color)
     {
         // Goal depth/net background
+        canvas.FillColor = Color.FromArgb("#55000000");
+        canvas.FillRoundedRectangle(rect.X - 2, rect.Y + 2, rect.Width + 4, rect.Height - 4, 3);
+
         canvas.FillColor = Color.FromArgb("#44000000");
         canvas.FillRoundedRectangle(rect, 2);
 
         // Net pattern (horizontal + vertical lines for mesh effect)
-        canvas.StrokeColor = Colors.White.WithAlpha(0.15f);
+        canvas.StrokeColor = Colors.White.WithAlpha(0.18f);
         canvas.StrokeSize = 1;
         for (float ny = rect.Top + 10; ny < rect.Bottom; ny += 10)
         {
@@ -2636,7 +2884,7 @@ public class GameDrawable : IDrawable
         // Goal celebration flash (net shakes on goal)
         if (_state.IsGoalCelebration)
         {
-            float flash = (float)(0.2 + 0.2 * Math.Sin(Environment.TickCount / 80.0));
+            float flash = (float)(0.25 + 0.25 * Math.Sin(Environment.TickCount / 80.0));
             canvas.FillColor = Colors.Gold.WithAlpha(flash);
             canvas.FillRoundedRectangle(rect, 2);
         }
@@ -2645,6 +2893,11 @@ public class GameDrawable : IDrawable
         canvas.StrokeColor = color;
         canvas.StrokeSize = 4;
         canvas.DrawRoundedRectangle(rect, 2);
+
+        // Inner frame highlight
+        canvas.StrokeColor = Colors.White.WithAlpha(0.15f);
+        canvas.StrokeSize = 1;
+        canvas.DrawRoundedRectangle(rect.X + 2, rect.Y + 2, rect.Width - 4, rect.Height - 4, 1);
     }
 
     void DrawShotTrail(ICanvas canvas)
@@ -2675,13 +2928,13 @@ public class GameDrawable : IDrawable
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
         if (dist < 1) return;
 
-        // Draw 4 trailing dots behind the ball
-        for (int t = 1; t <= 4; t++)
+        // Draw 5 trailing dots behind the ball
+        for (int t = 1; t <= 5; t++)
         {
-            float trailX = bx - (dx / dist) * t * 8;
-            float trailY = by - (dy / dist) * t * 8;
-            float alpha = 0.3f - t * 0.06f;
-            float radius = 4f - t * 0.7f;
+            float trailX = bx - (dx / dist) * t * 7;
+            float trailY = by - (dy / dist) * t * 7;
+            float alpha = 0.35f - t * 0.06f;
+            float radius = 4.5f - t * 0.7f;
             if (alpha <= 0 || radius <= 0) break;
             canvas.FillColor = Color.FromArgb("#FF8C00").WithAlpha(alpha);
             canvas.FillCircle(trailX, trailY, radius);
@@ -2694,7 +2947,7 @@ public class GameDrawable : IDrawable
         int awaySus = _state.AwaySuspensionCount;
         if (homeSus == 0 && awaySus == 0) return;
 
-        float indicatorY = 44;
+        float indicatorY = 50;
         float pillW = 160, pillH = 16;
         float pillX = dirtyRect.Center.X - pillW / 2;
 
