@@ -17,6 +17,8 @@ keytool -genkeypair `
   -keypass $plainPassword `
   -dname "CN=HKA Handball, O=KaptenJon, L=Sweden, C=SE"
 
+$plainPassword = $null
+
 Write-Host ""
 Write-Host "Keystore created: HKA_Handball/hkahandball.keystore"
 Write-Host ""
