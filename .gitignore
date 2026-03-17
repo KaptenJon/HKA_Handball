@@ -365,3 +365,4 @@ FodyWeavers.xsd
 # Android signing keystore - NEVER commit
 *.keystore
 *.jks
+/.vscode/launch.json
