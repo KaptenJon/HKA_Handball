@@ -15,6 +15,12 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
+    - name: Setup JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
       with:
@@ -28,8 +34,34 @@ jobs:
       env:
         KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       run: |
-        printf '%s' "$KEYSTORE_BASE64" | base64 -d > HKA_Handball/hkahandball.keystore
+        if [ -z "$KEYSTORE_BASE64" ]; then
+          echo "::error::ANDROID_KEYSTORE_BASE64 secret is not set"
+          exit 1
+        fi
+        printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > HKA_Handball/hkahandball.keystore
         chmod 600 HKA_Handball/hkahandball.keystore
+        FILE_SIZE=$(stat -c%s HKA_Handball/hkahandball.keystore)
+        if [ "$FILE_SIZE" -lt 100 ]; then
+          echo "::error::Decoded keystore is suspiciously small ($FILE_SIZE bytes)"
+          exit 1
+        fi
+        echo "Keystore decoded successfully ($FILE_SIZE bytes)"
+
+    - name: Validate keystore
+      env:
+        SIGNING_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      run: |
+        if [ -z "$SIGNING_STORE_PASS" ]; then
+          echo "::error::ANDROID_KEYSTORE_PASSWORD secret is not set"
+          exit 1
+        fi
+        keytool -list \
+          -keystore HKA_Handball/hkahandball.keystore \
+          -storepass "$SIGNING_STORE_PASS" \
+          -alias hkahandball 2>&1 || {
+          echo "::error::Keystore validation failed. Check ANDROID_KEYSTORE_PASSWORD and that the alias 'hkahandball' exists."
+          exit 1
+        }
 
     - name: Restore
       run: dotnet restore HKA_Handball/HKA_Handball.csproj
@@ -39,11 +71,16 @@ jobs:
         SIGNING_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         SIGNING_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
       run: |
+        if [ -z "$SIGNING_KEY_PASS" ]; then
+          echo "::error::ANDROID_KEY_PASSWORD secret is not set"
+          exit 1
+        fi
         dotnet publish HKA_Handball/HKA_Handball.csproj \
           -f net10.0-android \
           -c Release \
           -p:AndroidSigningStorePass="$SIGNING_STORE_PASS" \
-          -p:AndroidSigningKeyPass="$SIGNING_KEY_PASS"
+          -p:AndroidSigningKeyPass="$SIGNING_KEY_PASS" \
+          -p:JavaSdkDirectory="$JAVA_HOME"
 
     - name: Upload AAB artifact
       uses: actions/upload-artifact@v7
