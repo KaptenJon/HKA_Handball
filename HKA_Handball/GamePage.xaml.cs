@@ -840,16 +840,8 @@ public class GameState
             if (allArrived || _resetCountdown <= 0)
             {
                 _resettingAfterGoal = false;
-                if (!allArrived)
-                {
-                    foreach (var team in new[] { HomePlayers, AwayPlayers })
-                        foreach (var actor in team)
-                            actor.Position = new Point(actor.BaseX, actor.BaseY);
-                    if (BallOwnerPlayerIndex >= 0)
-                        BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
-                    else if (BallOwnerAwayIndex >= 0)
-                        BallPos = AwayPlayers[BallOwnerAwayIndex].Position;
-                }
+                // No instant snap — remaining players will transition smoothly
+                // via normal game logic (lerp-based movement)
             }
 
             return;
@@ -1152,9 +1144,11 @@ public class GameState
                 }
                 else
                 {
-                    // No specific attacker: gentle sway at base position
+                    // No specific attacker: smoothly sway toward base position
                     var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
-                    a.Position = new Point(a.BaseX, a.BaseY + swing);
+                    a.Position = new Point(
+                        Lerp(a.Position.X, a.BaseX, 0.06),
+                        Lerp(a.Position.Y, a.BaseY + swing, 0.06));
                 }
                 ClampActor(a);
                 continue;
@@ -1521,7 +1515,7 @@ public class GameState
         ClearAllActiveActions();
         _viewInitialized = true;
         _resettingAfterGoal = true;
-        _resetCountdown = 90;
+        _resetCountdown = 150;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
 
