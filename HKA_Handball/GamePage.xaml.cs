@@ -135,8 +135,6 @@ public partial class GamePage : ContentPage
         => _state.QueuePassVertical(1);
 
     void OnSwitchDefender(object? sender, EventArgs e) => _state.SwitchControlledDefender();
-    void OnAdvancePressed(object? sender, EventArgs e) { _advanceHeld = true; }
-    void OnAdvanceReleased(object? sender, EventArgs e) { _advanceHeld = false; _state.AdvanceReleased(); }
     void OnShoot(object? sender, EventArgs e) => _state.QueueShoot();
 
 #if WINDOWS
