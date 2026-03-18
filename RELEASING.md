@@ -172,10 +172,9 @@ The signed AAB will be in
 5. Add release notes.
 6. Click **Review release → Start rollout**.
 
-> **ℹ️ Deobfuscation file:** Google Play may also show a warning about a missing
-> deobfuscation file (mapping.txt). This relates to R8/ProGuard for Java/Kotlin
-> code. Since this is a .NET MAUI app, the managed code is not obfuscated by R8,
-> so you can safely ignore this warning.
+> **ℹ️ Deobfuscation file:** Google Play may show a warning about a missing
+> deobfuscation file (mapping.txt). This is an open-source project, so code
+> obfuscation (R8/ProGuard) is unnecessary. You can safely ignore this warning.
 
 Google will review the app (this can take a few hours to a few days for the
 first submission).
