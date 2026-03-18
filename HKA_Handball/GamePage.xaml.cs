@@ -1,4 +1,4 @@
-using Microsoft.Maui;
+﻿using Microsoft.Maui;
 using Microsoft.Maui.Graphics;
 using HKA_Handball.Controls;
 using HKA_Handball.Services;
@@ -21,6 +21,7 @@ public partial class GamePage : ContentPage
     readonly GameMode _gameMode;
 #if WINDOWS
     HashSet<VirtualKey> _keysDown = new();
+    UIElement? _winKeyTarget;
 #endif
     bool _advanceHeld;
 
@@ -50,11 +51,15 @@ public partial class GamePage : ContentPage
 #if WINDOWS
         Loaded += (_, __) =>
         {
-            if (GameView?.Handler?.PlatformView is UIElement element)
+            // Attach keyboard handlers to the Window content root so key events
+            // are received regardless of which child control has focus.
+            var nativeWindow = (ControlsApplication.Current?.Windows.FirstOrDefault()
+                ?.Handler?.PlatformView as Microsoft.UI.Xaml.Window);
+            if (nativeWindow?.Content is UIElement root)
             {
-                element.KeyDown += OnWinKeyDown;
-                element.KeyUp += OnWinKeyUp;
-                element.Focus(FocusState.Programmatic);
+                _winKeyTarget = root;
+                root.KeyDown += OnWinKeyDown;
+                root.KeyUp += OnWinKeyUp;
             }
         };
 #endif
@@ -77,11 +82,13 @@ public partial class GamePage : ContentPage
         base.OnDisappearing();
         _timer.Stop();
 #if WINDOWS
-        if (GameView?.Handler?.PlatformView is UIElement element)
+        if (_winKeyTarget is not null)
         {
-            element.KeyDown -= OnWinKeyDown;
-            element.KeyUp -= OnWinKeyUp;
+            _winKeyTarget.KeyDown -= OnWinKeyDown;
+            _winKeyTarget.KeyUp -= OnWinKeyUp;
+            _winKeyTarget = null;
         }
+        _keysDown.Clear();
 #endif
     }
 
@@ -218,7 +225,7 @@ public class Actor
     public bool IsSuspended => SuspensionTicks > 0;
 }
 
-// ── Confetti particle for goal celebration ──
+// â”€â”€ Confetti particle for goal celebration â”€â”€
 public struct ConfettiParticle
 {
     public float X, Y, VX, VY;
@@ -235,7 +242,7 @@ public class GameState
     // Goalkeeper vertical range: half the goal-mouth height (goal is 160px tall)
     const double GoalMouthHalf = 80;
 
-    // Gameplay tuning constants (base values – adjusted by difficulty)
+    // Gameplay tuning constants (base values â€“ adjusted by difficulty)
     const double PassInterceptDistance = 34;
     const double PassInterceptChance = 0.12;
     const double ShotInterceptChance = 0.25;
@@ -289,7 +296,7 @@ public class GameState
     const double OnTargetCloseRangePenalty = 0.10;
     const double OnTargetPositionBonus = 0.20;
 
-    // ── Difficulty multipliers (set in constructor) ──
+    // â”€â”€ Difficulty multipliers (set in constructor) â”€â”€
     readonly double _diffInterceptMult;        // multiplier on AI intercept chances
     readonly double _diffBreakthroughMult;     // multiplier on AI breakthrough chance
     readonly int _diffPassCooldownBase;        // base ticks for AI pass cooldown
@@ -298,7 +305,7 @@ public class GameState
     readonly double _diffAwayGkBonus;          // bonus save chance for opponent GK
     readonly double _diffTackleStealBonus;     // bonus steal chance for player tackles
 
-    // ── Match statistics ──
+    // â”€â”€ Match statistics â”€â”€
     public int ShotsHome { get; private set; }
     public int ShotsAway { get; private set; }
     public int SavesHome { get; private set; }  // saves by home GK (against away shots)
@@ -306,7 +313,7 @@ public class GameState
     public int PassesHome { get; private set; }
     public int PassesAway { get; private set; }
 
-    // ── Confetti system ──
+    // â”€â”€ Confetti system â”€â”€
     public const int MaxConfetti = 60;
     public readonly ConfettiParticle[] Confetti = new ConfettiParticle[MaxConfetti];
     public int ConfettiCount { get; private set; }
@@ -625,7 +632,7 @@ public class GameState
         _retreatingFormerOwner = true;
         _advanceBoost = false;
         _shootStart = BallPos;
-        // Wider shot spread: use ±75px (was ±60) to cover more of the 160px goal
+        // Wider shot spread: use Â±75px (was Â±60) to cover more of the 160px goal
         var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 150;
         _shootEnd = new Point(ViewSize.Width - 14, ViewSize.Height / 2 + shootOffsetY);
         _shootTime = 0f;
@@ -754,7 +761,7 @@ public class GameState
             else if (_possessionTimer >= PassivePlayWarningSeconds && !PassivePlayWarningActive)
             {
                 PassivePlayWarningActive = true;
-                SetStatusOverride("⚠ Passivt spel - varning!", 90);
+                SetStatusOverride("âš  Passivt spel - varning!", 90);
                 GameEvent?.Invoke(GameEventType.Whistle);
             }
         }
@@ -1012,7 +1019,7 @@ public class GameState
         ClampActor(homeGK);
 
         // Away goalkeeper reacts to home shots
-        // (skip AI movement when GK has the ball — auto-throw handles transition)
+        // (skip AI movement when GK has the ball â€” auto-throw handles transition)
         var awayGK = AwayPlayers[0];
         bool awayGKHasBall = BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex == 0;
         if (!awayGKHasBall)
@@ -1093,7 +1100,7 @@ public class GameState
                     continue;
                 }
 
-                // Defending: 6-0 formation — defenders form an arc along the free-throw line
+                // Defending: 6-0 formation â€” defenders form an arc along the free-throw line
                 // Track the ball carrier, or during a home pass, track the pass target
                 bool trackingPlayer = (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
                     || (_passActive && _passTargetHomeIndex >= 0);
@@ -1206,7 +1213,7 @@ public class GameState
                             Lerp(a.Position.Y, arcPos.Y, 0.06));
                     }
 
-                    // Pass or breakthrough decision (only when near arc) — difficulty adjusted
+                    // Pass or breakthrough decision (only when near arc) â€” difficulty adjusted
                     if (!_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
                     {
                         // After enough passes, chance to break through
@@ -1264,7 +1271,7 @@ public class GameState
             var target = AwayPlayers[_awayPassTargetIndex].Position;
             BallPos = LerpPoint(BallPos, target, 0.32);
 
-            // Home defenders can intercept away passes — difficulty adjusted
+            // Home defenders can intercept away passes â€” difficulty adjusted
             for (int i = 1; i < HomePlayers.Length; i++)
             {
                 if (HomePlayers[i].IsSuspended) continue;
@@ -1274,7 +1281,7 @@ public class GameState
                     double chance = PassInterceptChance;
                     if (IsHomeDefending && i == ControlledDefenderIndex)
                         chance += ControlledDefenderInterceptBonus;
-                    // Difficulty: easier = lower chance for AI passes to be intercepted? No – this is
+                    // Difficulty: easier = lower chance for AI passes to be intercepted? No â€“ this is
                     // the player intercepting AI passes, so easier = higher chance
                     chance += _diffTackleStealBonus * 0.5;
                     if (Random.Shared.NextDouble() < chance)
@@ -1309,7 +1316,7 @@ public class GameState
                 _awayShootActive = false;
                 bool onTarget = _leftGoal.Contains(BallPos);
 
-                // GK save check FIRST — difficulty adjusted
+                // GK save check FIRST â€” difficulty adjusted
                 var homeKeeper = HomePlayers[0];
                 double awayShotDist = Distance(_awayShootStart, _awayShootEnd);
                 double gkDist = DistanceToSegment(homeKeeper.Position, _awayShootStart, _awayShootEnd);
@@ -1364,7 +1371,7 @@ public class GameState
                 _shootActive = false;
                 bool onTarget = _rightGoal.Contains(BallPos);
 
-                // Away GK save check — difficulty adjusted
+                // Away GK save check â€” difficulty adjusted
                 var awayKeeper = AwayPlayers[0];
                 double homeShotDist = Distance(_shootStart, _shootEnd);
                 double gkDist = DistanceToSegment(awayKeeper.Position, _shootStart, _shootEnd);
@@ -1397,7 +1404,7 @@ public class GameState
                 if (onTarget)
                 {
                     ScoreHome++;
-                    SetStatusOverride("MÅL! 🎉", 120);
+                    SetStatusOverride("MÅL! ðŸŽ‰", 120);
                     GameEvent?.Invoke(GameEventType.GoalHome);
                     ResetAfterScore(homeScored: true);
                 }
@@ -1414,7 +1421,7 @@ public class GameState
             var target = HomePlayers[_passTargetHomeIndex].Position;
             BallPos = LerpPoint(BallPos, target, 0.35);
 
-            // Away defenders can intercept home passes — difficulty adjusted
+            // Away defenders can intercept home passes â€” difficulty adjusted
             for (int i = 1; i < AwayPlayers.Length; i++)
             {
                 if (AwayPlayers[i].IsSuspended) continue;
@@ -1501,7 +1508,7 @@ public class GameState
     void ResetAfterScore(bool homeScored)
     {
         _goalCelebrationTicks = 75;
-        GoalCelebrationText = homeScored ? "MÅL! 🎉" : "Motståndarenmål!";
+        GoalCelebrationText = homeScored ? "MÅL! ðŸŽ‰" : "Motståndarenmål!";
 
         // Spawn confetti from the goal area
         SpawnConfetti(homeScored);
@@ -1567,13 +1574,13 @@ public class GameState
         if (_shootActive) { StatusText = "Skott!"; return; }
         if (_awayShootActive) { StatusText = "Motståndaren skjuter!"; return; }
         if (_passActive) { StatusText = "Pass i luften"; return; }
-        if (PassivePlayWarningActive) { StatusText = "⚠ Passivt spel - skjut!"; return; }
+        if (PassivePlayWarningActive) { StatusText = "âš  Passivt spel - skjut!"; return; }
 
-        string fastBreakIndicator = _homeFastBreakTicks > 0 ? " ⚡ Kontring!" : "";
+        string fastBreakIndicator = _homeFastBreakTicks > 0 ? " âš¡ Kontring!" : "";
         StatusText = BallOwnerType switch
         {
             BallOwnershipType.Player => $"Boll: Hemma #{BallOwnerPlayerIndex}{fastBreakIndicator}",
-            BallOwnershipType.Opponent => $"Försvarar med #{ControlledDefenderIndex} | Borta #{BallOwnerAwayIndex}" + (_awayFastBreakTicks > 0 ? " ⚡" : ""),
+            BallOwnershipType.Opponent => $"Försvarar med #{ControlledDefenderIndex} | Borta #{BallOwnerAwayIndex}" + (_awayFastBreakTicks > 0 ? " âš¡" : ""),
             _ => "Lös boll"
         };
     }
@@ -1730,7 +1737,7 @@ public class GameState
     {
         int fieldCount = AwayPlayers.Length - 1; // exclude GK
         int slot = playerIndex - 1; // 0-based field slot
-        // Spread from ~-70° to +70° (top to bottom)
+        // Spread from ~-70Â° to +70Â° (top to bottom)
         double angleRange = 140.0;
         double startAngle = -angleRange / 2;
         double angleDeg = startAngle + slot * (angleRange / (fieldCount - 1));
@@ -1775,7 +1782,7 @@ public class GameState
         _awayShootActive = true;
         _awayShootTime = 0f;
         _awayShootStart = from;
-        // Wider shot spread matching home team (±75px)
+        // Wider shot spread matching home team (Â±75px)
         var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 150;
         _awayShootEnd = new Point(14, ViewSize.Height / 2 + shootOffsetY);
         _awayPassActive = false;
@@ -1849,7 +1856,7 @@ public class GameState
                     BallPos = owner.Position;
                 }
 
-                // Check if foul is near goal area → 7-meter penalty
+                // Check if foul is near goal area â†’ 7-meter penalty
                 var rightGoalCenter = new Point(ViewSize.Width - GoalCenterInset, ViewSize.Height / 2);
                 double distToGoalArea = Distance(owner.Position, rightGoalCenter) - GoalAreaRadius;
                 bool nearGoalArea = distToGoalArea < PenaltyFoulZoneRadius && distToGoalArea >= 0;
@@ -1996,7 +2003,7 @@ public class GameState
         return new Point(center.X + dx * s, center.Y + dy * s);
     }
 
-    // ── Helper methods ──
+    // â”€â”€ Helper methods â”€â”€
 
     void ClearAllActiveActions()
     {
@@ -2181,7 +2188,7 @@ public class GameState
                     else
                     {
                         ScoreHome++;
-                        SetStatusOverride("STRAFFMÅL! 🎉", 120);
+                        SetStatusOverride("STRAFFMÅL! ðŸŽ‰", 120);
                         GameEvent?.Invoke(GameEventType.GoalHome);
                         ResetAfterScore(homeScored: true);
                     }
@@ -2260,7 +2267,7 @@ public class GameState
         }
     }
 
-    // ── Confetti system ──
+    // â”€â”€ Confetti system â”€â”€
 
     void SpawnConfetti(bool homeScored)
     {
@@ -2419,7 +2426,7 @@ public class GameDrawable : IDrawable
         canvas.FillColor = Color.FromArgb("#44FFFFFF");
         canvas.FillCircle(centerX, centerY, 4);
 
-        // Goal area (6m) — solid, colored fill + line
+        // Goal area (6m) â€” solid, colored fill + line
         var goalAreaRadius = (float)GameState.GoalAreaRadius;
         var freeThrowRadius = (float)GameState.FreeThrowRadius;
         var leftGoalCenterX = (float)GameState.GoalCenterInset;
@@ -2537,7 +2544,7 @@ public class GameDrawable : IDrawable
         canvas.DrawString(posLabel, x - 8, y + bodyH / 2 + 3, 16, 8,
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
-        // Selection ring — pulsing for active player
+        // Selection ring â€” pulsing for active player
         float ringR = bodyW / 2 + 5;
         if (isActive)
         {
@@ -2677,7 +2684,7 @@ public class GameDrawable : IDrawable
         // Match clock and difficulty below score
         canvas.FontSize = 9;
         canvas.FontColor = Color.FromArgb("#AAFFFFFF");
-        string clockText = $"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}  •  {_state.GetDifficultyLabel()}";
+        string clockText = $"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}  â€¢  {_state.GetDifficultyLabel()}";
         canvas.DrawString(clockText,
             new RectF(pillX, 28, pillW, 14),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
@@ -2698,7 +2705,7 @@ public class GameDrawable : IDrawable
     {
         if (!_state.IsGoalCelebration) return;
 
-        // Semi-transparent overlay flash — pulsing
+        // Semi-transparent overlay flash â€” pulsing
         float flashAlpha = (float)(0.1 + 0.08 * Math.Sin(Environment.TickCount / 100.0));
         canvas.FillColor = Colors.Gold.WithAlpha(flashAlpha);
         canvas.FillRectangle(dirtyRect);
@@ -2776,7 +2783,7 @@ public class GameDrawable : IDrawable
 
             // Result
             string result = _state.ScoreHome > _state.ScoreAway ? "SEGER!" :
-                            _state.ScoreHome < _state.ScoreAway ? "FÖRLUST" : "OAVGJORT";
+                            _state.ScoreHome < _state.ScoreAway ? "FÃ–RLUST" : "OAVGJORT";
             canvas.FontColor = _state.ScoreHome >= _state.ScoreAway ? Colors.Gold : Colors.White;
             canvas.FontSize = 28;
             canvas.DrawString(result,
@@ -2801,7 +2808,7 @@ public class GameDrawable : IDrawable
                 new RectF(dirtyRect.Width / 2, dirtyRect.Height * 0.44f, dirtyRect.Width / 2, 24),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
-            // ── Match statistics table ──
+            // â”€â”€ Match statistics table â”€â”€
             float statsY = dirtyRect.Height * 0.52f;
             float statsH = 18;
             float leftColX = dirtyRect.Width * 0.2f;
