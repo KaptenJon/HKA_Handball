@@ -1,7 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Handball ball -->
-  <circle cx="256" cy="220" r="90" fill="#FF8C00"/>
-  <circle cx="240" cy="200" r="20" fill="#FFFFFF" opacity="0.35"/>
-  <!-- HKA text -->
-  <text x="256" y="380" font-family="sans-serif" font-weight="bold" font-size="72" fill="#FFFFFF" text-anchor="middle">HKA</text>
+  <defs>
+    <linearGradient id="hkaBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8AD0FF"/>
+      <stop offset="100%" stop-color="#2F8EEA"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="256" cy="256" r="186" fill="#FFFFFF" opacity="0.98"/>
+  <circle cx="256" cy="256" r="176" fill="none" stroke="#D6EEFF" stroke-width="8"/>
+
+  <rect x="116" y="168" width="30" height="176" rx="8" fill="url(#hkaBlue)"/>
+  <rect x="182" y="168" width="30" height="176" rx="8" fill="url(#hkaBlue)"/>
+  <rect x="144" y="237" width="38" height="30" rx="8" fill="url(#hkaBlue)"/>
+
+  <rect x="228" y="168" width="30" height="176" rx="8" fill="url(#hkaBlue)"/>
+  <path d="M258 258 L336 168 H373 L289 260 L380 344 H340 L258 270 Z" fill="url(#hkaBlue)"/>
+
+  <path d="M318 344 L375 168 H410 L467 344 H434 L421 304 H364 L351 344 Z" fill="url(#hkaBlue)"/>
+  <polygon points="373,275 412,275 392,216" fill="#FFFFFF" opacity="0.86"/>
+
+  <circle cx="392" cy="136" r="46" fill="#9BD6FF"/>
+  <path d="M356 136 C372 120 412 120 428 136" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+  <path d="M364 160 C378 148 406 148 420 160" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+  <path d="M392 94 V178" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
 </svg>

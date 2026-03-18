@@ -1,7 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#14532D"/>
-  <rect x="24" y="24" width="464" height="464" rx="80" fill="#166534"/>
-  <!-- Field lines -->
-  <line x1="256" y1="40" x2="256" y2="472" stroke="#FFFFFF" stroke-width="4" opacity="0.3"/>
-  <circle cx="256" cy="256" r="48" fill="none" stroke="#FFFFFF" stroke-width="4" opacity="0.3"/>
+  <defs>
+    <linearGradient id="iceBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E9F6FF"/>
+      <stop offset="48%" stop-color="#BFE5FF"/>
+      <stop offset="100%" stop-color="#6DBDFF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.22" cy="0.12" r="0.85">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.82"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="108" fill="url(#iceBlue)"/>
+  <rect width="512" height="512" rx="108" fill="url(#glow)"/>
+
+  <line x1="256" y1="28" x2="256" y2="484" stroke="#FFFFFF" stroke-width="10" opacity="0.42"/>
+  <circle cx="256" cy="256" r="68" fill="none" stroke="#FFFFFF" stroke-width="10" opacity="0.42"/>
+
+  <path d="M24 124 H132 A138 138 0 0 1 132 388 H24" fill="none" stroke="#FFFFFF" stroke-width="10" opacity="0.33"/>
+  <path d="M488 124 H380 A138 138 0 0 0 380 388 H488" fill="none" stroke="#FFFFFF" stroke-width="10" opacity="0.33"/>
+
+  <path d="M24 182 H100 A80 80 0 0 1 100 330 H24" fill="none" stroke="#FFFFFF" stroke-width="7" opacity="0.22"/>
+  <path d="M488 182 H412 A80 80 0 0 0 412 330 H488" fill="none" stroke="#FFFFFF" stroke-width="7" opacity="0.22"/>
 </svg>
