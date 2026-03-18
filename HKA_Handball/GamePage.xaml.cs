@@ -963,7 +963,7 @@ public class GameState
                     desiredX = Math.Min(rightGoalAreaEdge + 10, ViewSize.Width - 200);
                     desiredX = Math.Max(p.BaseX + 30, desiredX);
                     // Pivot stays central, oscillating between defenders to create gaps
-                    double pivotDrift = Math.Sin(Environment.TickCount / PivotOscillationPeriod) * PivotDriftAmplitude;
+                    double pivotDrift = Math.Sin((double)Environment.TickCount * (2 * Math.PI / PivotOscillationPeriod)) * PivotDriftAmplitude;
                     desiredY = Lerp(ViewSize.Height / 2 + pivotDrift, carrierY, 0.25);
                 }
                 else if (is6mPlayer)
