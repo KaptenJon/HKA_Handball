@@ -136,7 +136,7 @@ jobs:
         generate_release_notes: true
 
     - name: Upload to Google Play Console
-      if: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      if: secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
       uses: r0adkll/upload-google-play@v1.1.3
       with:
         serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
