@@ -94,15 +94,13 @@ public partial class GamePage : ContentPage
 
     void OnTimerTick(object? sender, EventArgs e)
     {
-        // Derive advance boost from joystick: pushing far right triggers advance
+        // Advance boost from joystick (X > 0.5) or keyboard (Space on Windows)
         var jv = Joystick.Value;
-        if (jv.X > 0.5)
+        if (jv.X > 0.5 || _advanceHeld)
             _state.AdvanceHeld();
-        else if (!_advanceHeld)
+        else
             _state.AdvanceReleased();
 
-        if (_advanceHeld)
-            _state.AdvanceHeld();
         var defending = _state.IsHomeDefending;
         bool controlsActive = !_state.IsMatchOver && !_state.IsHalfTime && !_state.IsGoalCelebration;
         PassUpButton.IsVisible = !defending && controlsActive;
@@ -278,6 +276,10 @@ public class GameState
     // Away AI attack constants
     const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
     const int ThrowOffCarrierIndex = 1; // field player index used for throw-off ball carrier
+
+    // Pivot (circle runner) positioning constants
+    const double PivotOscillationPeriod = 800.0; // milliseconds per oscillation cycle
+    const double PivotDriftAmplitude = 60; // pixels of vertical drift between defenders
 
     // Defensive tackle constants
     const double TackleDistance = 28;
@@ -963,7 +965,7 @@ public class GameState
                     desiredX = Math.Min(rightGoalAreaEdge + 10, ViewSize.Width - 200);
                     desiredX = Math.Max(p.BaseX + 30, desiredX);
                     // Pivot stays central, oscillating between defenders to create gaps
-                    double pivotDrift = Math.Sin(Environment.TickCount / 800.0) * 60;
+                    double pivotDrift = Math.Sin(Environment.TickCount / PivotOscillationPeriod) * PivotDriftAmplitude;
                     desiredY = Lerp(ViewSize.Height / 2 + pivotDrift, carrierY, 0.25);
                 }
                 else if (is6mPlayer)
