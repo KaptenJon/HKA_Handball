@@ -88,8 +88,26 @@ jobs:
         SYMBOLS_DIR="HKA_Handball/obj/Release/net10.0-android/app_shared_libraries"
         if [ -d "$SYMBOLS_DIR" ]; then
           cd "$SYMBOLS_DIR"
-          zip -r "$GITHUB_WORKSPACE/native-debug-symbols.zip" . -x "assembly-store.so.manifest" "*assembly-store.so.manifest" "*/assembly-store.so.manifest"
+          echo "Files in symbols directory:"
+          find . -type f | sort
+          # Only include .so files; Google Play rejects non-ELF entries like .manifest
+          zip -r "$GITHUB_WORKSPACE/native-debug-symbols.zip" . -i "*.so"
+          echo ""
+          echo "ZIP contents:"
+          unzip -l "$GITHUB_WORKSPACE/native-debug-symbols.zip"
+          echo ""
           echo "Native debug symbols packaged ($(du -h "$GITHUB_WORKSPACE/native-debug-symbols.zip" | cut -f1))"
+          # Verify that at least one .so file contains debug info
+          for abi in arm64-v8a x86_64; do
+            SO="$abi/libxamarin-app.so"
+            if [ -f "$SO" ]; then
+              if readelf -S "$SO" 2>/dev/null | grep -q '\.debug_'; then
+                echo "✅ $SO contains native debug symbols"
+              else
+                echo "::warning::$SO does not contain .debug_ sections"
+              fi
+            fi
+          done
           echo "symbols_created=true" >> "$GITHUB_OUTPUT"
         else
           echo "::warning::Native debug symbols directory not found at $SYMBOLS_DIR"
