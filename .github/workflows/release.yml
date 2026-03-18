@@ -88,7 +88,7 @@ jobs:
         SYMBOLS_DIR="HKA_Handball/obj/Release/net10.0-android/app_shared_libraries"
         if [ -d "$SYMBOLS_DIR" ]; then
           cd "$SYMBOLS_DIR"
-          zip -r "$GITHUB_WORKSPACE/native-debug-symbols.zip" .
+          zip -r "$GITHUB_WORKSPACE/native-debug-symbols.zip" . -x "*/assembly-store.so.manifest"
           echo "Native debug symbols packaged ($(du -h "$GITHUB_WORKSPACE/native-debug-symbols.zip" | cut -f1))"
           echo "symbols_created=true" >> "$GITHUB_OUTPUT"
         else
