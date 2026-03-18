@@ -47,39 +47,7 @@
                     HeightRequest="52" MinimumWidthRequest="90"
                     Clicked="OnSwitchDefender" />
 
-            <!-- D-pad column (right of action buttons) -->
-            <Grid x:Name="AttackDiagonalButtons" Grid.Column="1" Grid.RowSpan="3"
-                  RowDefinitions="*,*,*" ColumnDefinitions="Auto" RowSpacing="4">
-                <Button Text="↗" FontSize="22" BackgroundColor="#1B5E20" TextColor="White"
-                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
-                        Pressed="OnAttackDiagUpPressed" Released="OnAttackDiagReleased" />
-                <Button Grid.Row="1" Text="→" FontSize="22" BackgroundColor="#2E7D32" TextColor="White"
-                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
-                        Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
-                <Button Grid.Row="2" Text="↘" FontSize="22" BackgroundColor="#1B5E20" TextColor="White"
-                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
-                        Pressed="OnAttackDiagDownPressed" Released="OnAttackDiagReleased" />
-            </Grid>
-
-            <Grid x:Name="DefenderSideButtons" Grid.Column="1" Grid.RowSpan="3"
-                  RowDefinitions="*,*,*" ColumnDefinitions="Auto,Auto" RowSpacing="4" ColumnSpacing="4">
-                <Button Text="↑" FontSize="22" BackgroundColor="#455A64" TextColor="White"
-                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
-                        Pressed="OnDefenderSideUpPressed" Released="OnDefenderSideReleased" />
-                <Button Grid.Row="1" Text="→" FontSize="22" BackgroundColor="#263238" TextColor="White"
-                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
-                        Pressed="OnAdvancePressed" Released="OnAdvanceReleased" />
-                <Button Grid.Row="2" Text="↓" FontSize="22" BackgroundColor="#455A64" TextColor="White"
-                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
-                        Pressed="OnDefenderSideDownPressed" Released="OnDefenderSideReleased" />
-                <Button Grid.Column="1" Text="↗" FontSize="22" BackgroundColor="#37474F" TextColor="White"
-                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
-                        Pressed="OnDefenderDiagUpPressed" Released="OnDefenderDiagReleased" />
-                <Button Grid.Column="1" Grid.Row="1" />
-                <Button Grid.Column="1" Grid.Row="2" Text="↘" FontSize="22" BackgroundColor="#37474F" TextColor="White"
-                        CornerRadius="10" HeightRequest="48" WidthRequest="52"
-                        Pressed="OnDefenderDiagDownPressed" Released="OnDefenderDiagReleased" />
-            </Grid>
+    
         </Grid>
     </Grid>
 </ContentPage>
