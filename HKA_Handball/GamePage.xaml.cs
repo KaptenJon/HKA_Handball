@@ -1601,11 +1601,12 @@ public class GameState
 
     void ClampActor(Actor a)
     {
-        if (ViewSize.Width <= 0) return;
-        // Keep players inside the court boundaries (fieldMargin from each edge)
+        if (ViewSize.Width <= 0 || ViewSize.Height <= 0) return;
+        // Keep players inside the court boundaries (fieldMargin from each edge, accounting for player radius)
+        const double PlayerRadius = 14;
         a.Position = new Point(
-            Math.Clamp(a.Position.X, FieldMargin + 6, ViewSize.Width - FieldMargin - 6),
-            Math.Clamp(a.Position.Y, FieldMargin + 6, ViewSize.Height - FieldMargin - 6));
+            Math.Clamp(a.Position.X, FieldMargin + PlayerRadius, ViewSize.Width - FieldMargin - PlayerRadius),
+            Math.Clamp(a.Position.Y, FieldMargin + PlayerRadius, ViewSize.Height - FieldMargin - PlayerRadius));
 
         if (a.IsGoalkeeper)
         {
