@@ -134,3 +134,15 @@ jobs:
           HKA_Handball/bin/Release/net10.0-android/publish/*.aab
           ${{ steps.package_symbols.outputs.symbols_created == 'true' && 'native-debug-symbols.zip' || '' }}
         generate_release_notes: true
+
+    - name: Upload to Google Play Console
+      if: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      uses: r0adkll/upload-google-play@v1.1.3
+      with:
+        serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        packageName: com.kaptenjon.hkahandball
+        releaseFiles: HKA_Handball/bin/Release/net10.0-android/publish/*.aab
+        track: internal
+        status: draft
+        debugSymbols: ${{ steps.package_symbols.outputs.symbols_created == 'true' && 'native-debug-symbols.zip' || '' }}
+        releaseName: ${{ github.ref_name }}
