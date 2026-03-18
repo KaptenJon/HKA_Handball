@@ -82,14 +82,37 @@ jobs:
           -p:AndroidSigningKeyPass="$SIGNING_KEY_PASS" \
           -p:JavaSdkDirectory="$JAVA_HOME"
 
+    - name: Package native debug symbols
+      id: package_symbols
+      run: |
+        SYMBOLS_DIR="HKA_Handball/obj/Release/net10.0-android/app_shared_libraries"
+        if [ -d "$SYMBOLS_DIR" ]; then
+          cd "$SYMBOLS_DIR"
+          zip -r "$GITHUB_WORKSPACE/native-debug-symbols.zip" .
+          echo "Native debug symbols packaged ($(du -h "$GITHUB_WORKSPACE/native-debug-symbols.zip" | cut -f1))"
+          echo "symbols_created=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::Native debug symbols directory not found at $SYMBOLS_DIR"
+          echo "symbols_created=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Upload AAB artifact
       uses: actions/upload-artifact@v7
       with:
         name: android-release-aab
         path: HKA_Handball/bin/Release/net10.0-android/publish/*.aab
 
+    - name: Upload native debug symbols artifact
+      if: steps.package_symbols.outputs.symbols_created == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: native-debug-symbols
+        path: native-debug-symbols.zip
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        files: HKA_Handball/bin/Release/net10.0-android/publish/*.aab
+        files: |
+          HKA_Handball/bin/Release/net10.0-android/publish/*.aab
+          ${{ steps.package_symbols.outputs.symbols_created == 'true' && 'native-debug-symbols.zip' || '' }}
         generate_release_notes: true
