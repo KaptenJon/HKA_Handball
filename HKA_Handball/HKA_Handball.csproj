@@ -38,6 +38,8 @@
         <AndroidSigningKeyPass></AndroidSigningKeyPass>
         <AndroidPackageFormat>aab</AndroidPackageFormat>
         <AndroidLinkMode>SdkOnly</AndroidLinkMode>
+        <!-- Generate native debug symbols for Google Play crash analysis -->
+        <AndroidGenerateNativeDebugSymbols>true</AndroidGenerateNativeDebugSymbols>
     </PropertyGroup>
 
     <ItemGroup>

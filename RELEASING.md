@@ -111,8 +111,9 @@ This triggers `.github/workflows/release.yml`, which:
 
 1. Decodes the keystore from `ANDROID_KEYSTORE_BASE64`.
 2. Runs `dotnet publish` in Release configuration with signing.
-3. Uploads the signed `.aab` as a GitHub Actions artifact.
-4. Creates a GitHub Release with the `.aab` attached.
+3. Packages native debug symbols for Google Play crash analysis.
+4. Uploads the signed `.aab` and `native-debug-symbols.zip` as GitHub Actions artifacts.
+5. Creates a GitHub Release with both files attached.
 
 Check the workflow run at **Actions → Release Android AAB** to verify it
 succeeds, then download the AAB from the GitHub Release page.
@@ -165,8 +166,16 @@ The signed AAB will be in
    **Internal testing** / **Closed testing** to test first).
 2. Click **Create new release**.
 3. Upload the `.aab` file from the GitHub Release (or your local build).
-4. Add release notes.
-5. Click **Review release → Start rollout**.
+4. Under **Debug symbols**, upload the `native-debug-symbols.zip` from the
+   GitHub Release. This resolves the "native code without debug symbols" warning
+   and enables Google Play to symbolicate native crash reports.
+5. Add release notes.
+6. Click **Review release → Start rollout**.
+
+> **ℹ️ Deobfuscation file:** Google Play may also show a warning about a missing
+> deobfuscation file (mapping.txt). This relates to R8/ProGuard for Java/Kotlin
+> code. Since this is a .NET MAUI app, the managed code is not obfuscated by R8,
+> so you can safely ignore this warning.
 
 Google will review the app (this can take a few hours to a few days for the
 first submission).
@@ -186,4 +195,5 @@ first submission).
 - [ ] Tag and push (`git tag v1.0.0 && git push origin v1.0.0`)
 - [ ] Verify the release workflow succeeds
 - [ ] Upload the AAB to Google Play Console
+- [ ] Upload `native-debug-symbols.zip` under **Debug symbols** in the release
 - [ ] Submit for review
