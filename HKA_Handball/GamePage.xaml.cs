@@ -102,8 +102,14 @@ public partial class GamePage : ContentPage
         PassDownButton.IsVisible = !defending && controlsActive;
         ShootButton.IsVisible = !defending && controlsActive;
         SwitchDefenderButton.IsVisible = defending && controlsActive;
+#if ANDROID
+        // On Android the joystick handles movement; hide the arrow d-pads.
+        DefenderSideButtons.IsVisible = false;
+        AttackDiagonalButtons.IsVisible = false;
+#else
         DefenderSideButtons.IsVisible = defending && controlsActive;
         AttackDiagonalButtons.IsVisible = !defending && controlsActive;
+#endif
         Joystick.IsVisible = controlsActive;
         StatusLabel.Text = _state.StatusText;
         _state.Update(0.016f);
