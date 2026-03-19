@@ -858,20 +858,37 @@ public class GameState
         double defenseFrontX = AwayPlayers.Skip(1).Min(a => a.Position.X);
         double pressLineX = defenseFrontX - 36;
 
-        // Owner auto forward until press line
+        // Owner movement: joystick gives direct control; otherwise auto-advance smoothly
         if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
         {
             var owner = HomePlayers[BallOwnerPlayerIndex];
             double fastBreakMult = _homeFastBreakTicks > 0 ? FastBreakSpeedMultiplier : 1.0;
-            double forwardExtra = _advanceBoost ? 220 : 0;
-            double diagonalForwardExtra = _attackDiagonalBoostY == 0 ? 0 : 140;
-            var nextPos = new Point(
-                owner.Position.X + (ActiveMoveInput.X + forwardExtra + diagonalForwardExtra) * dt * fastBreakMult,
-                owner.Position.Y + (ActiveMoveInput.Y + _attackDiagonalBoostY) * dt * fastBreakMult);
+            bool hasManualInput = Math.Abs(ActiveMoveInput.X) > 5 || Math.Abs(ActiveMoveInput.Y) > 5
+                                  || _advanceBoost || Math.Abs(_attackDiagonalBoostY) > 0.1;
 
-            owner.Position = nextPos;
+            if (hasManualInput)
+            {
+                // Direct joystick / button control
+                double forwardExtra = _advanceBoost ? 220 : 0;
+                double diagonalForwardExtra = _attackDiagonalBoostY == 0 ? 0 : 140;
+                var nextPos = new Point(
+                    owner.Position.X + (ActiveMoveInput.X + forwardExtra + diagonalForwardExtra) * dt * fastBreakMult,
+                    owner.Position.Y + (ActiveMoveInput.Y + _attackDiagonalBoostY) * dt * fastBreakMult);
+                owner.Position = nextPos;
+            }
+            else
+            {
+                // No manual input: auto-advance naturally toward the press line
+                double targetX = Math.Min(pressLineX - 40, ViewSize.Width - 250);
+                targetX = Math.Max(owner.BaseX + 20, targetX);
+                double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+                double lerpRate = _homeFastBreakTicks > 0 ? 0.04 : 0.025;
+                owner.Position = new Point(
+                    Lerp(owner.Position.X, targetX, lerpRate),
+                    Lerp(owner.Position.Y, centerY, 0.01));
+            }
 
-            if (IsInsideRightGoalArea(nextPos))
+            if (IsInsideRightGoalArea(owner.Position))
             {
                 GiveBallToOpponent(GetNearestAwayIndex(owner.Position), "Målgård: motståndarbolll");
                 return;
