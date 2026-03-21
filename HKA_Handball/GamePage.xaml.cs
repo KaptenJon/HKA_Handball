@@ -639,7 +639,6 @@ public class GameState
     public void AwaySwitchControlledAttacker()
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
-        int startIdx = ControlledAwayAttackerIndex;
         for (int attempt = 0; attempt < AwayPlayers.Length - 1; attempt++)
         {
             ControlledAwayAttackerIndex++;
@@ -654,7 +653,6 @@ public class GameState
     public void AwaySwitchControlledDefender()
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
-        int startIdx = ControlledAwayDefenderIndex;
         for (int attempt = 0; attempt < AwayPlayers.Length - 1; attempt++)
         {
             ControlledAwayDefenderIndex++;
@@ -1362,12 +1360,7 @@ public class GameState
                     }
                     // else: hold position
 
-                    // Trigger away shoot if player reaches the attack stop line
-                    double attackStopX = GoalCenterInset + GoalAreaRadius + 30;
-                    if (!_awayShootActive && a.Position.X <= attackStopX + 4)
-                    {
-                        // Already in shooting range - but only shoot if player explicitly calls it
-                    }
+                    // In two-player mode, shooting is manual — no auto-shoot at attack stop line
 
                     if (IsInsideLeftGoalArea(a.Position))
                     {
@@ -1452,34 +1445,17 @@ public class GameState
             }
             else
             {
-                if (Mode == GameMode.TwoPlayerLocal && BallOwnerType == BallOwnershipType.Opponent)
+                // Support: hold arc formation position, shift toward ball carrier
+                var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
+                double shiftY = 0;
+                if (BallOwnerAwayIndex >= 0)
                 {
-                    // Player 2 controls away support players — AI formation only, no shooting/passing from support
-                    var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                    double shiftY = 0;
-                    if (BallOwnerAwayIndex >= 0)
-                    {
-                        var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
-                        shiftY = (carrierY - arcPos.Y) * 0.15;
-                    }
-                    a.Position = new Point(
-                        Lerp(a.Position.X, arcPos.X, 0.05),
-                        Lerp(a.Position.Y, arcPos.Y + shiftY, 0.05));
+                    var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
+                    shiftY = (carrierY - arcPos.Y) * 0.15;
                 }
-                else
-                {
-                    // Support: hold arc formation position, shift toward ball carrier
-                    var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                    double shiftY = 0;
-                    if (BallOwnerAwayIndex >= 0)
-                    {
-                        var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
-                        shiftY = (carrierY - arcPos.Y) * 0.15;
-                    }
-                    a.Position = new Point(
-                        Lerp(a.Position.X, arcPos.X, 0.05),
-                        Lerp(a.Position.Y, arcPos.Y + shiftY, 0.05));
-                }
+                a.Position = new Point(
+                    Lerp(a.Position.X, arcPos.X, 0.05),
+                    Lerp(a.Position.Y, arcPos.Y + shiftY, 0.05));
             }
             ClampActor(a);
         }
