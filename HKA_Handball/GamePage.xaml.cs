@@ -48,6 +48,18 @@ public partial class GamePage : ContentPage
             _state.ActiveMoveInput = new Point(p.X * maxSpeed, p.Y * maxSpeed);
         };
 
+        Joystick2.ValueChanged += (_, p) =>
+        {
+            const double maxSpeed = 110;
+            _state.AwayActiveMoveInput = new Point(p.X * maxSpeed, p.Y * maxSpeed);
+        };
+
+        if (mode == GameMode.TwoPlayerLocal)
+        {
+            Joystick2.IsVisible = true;
+            Player2Buttons.IsVisible = true;
+        }
+
 #if WINDOWS
         Loaded += (_, __) =>
         {
@@ -101,13 +113,39 @@ public partial class GamePage : ContentPage
         else
             _state.AdvanceReleased();
 
+        // Player 2 advance boost from joystick2 (X < -0.5 = forward for away team)
+        if (_gameMode == GameMode.TwoPlayerLocal)
+        {
+            var jv2 = Joystick2.Value;
+            if (jv2.X < -0.5)
+                _state.AwayAdvanceHeld();
+            else
+                _state.AwayAdvanceReleased();
+        }
+
         var defending = _state.IsHomeDefending;
+        bool awayAttacking = _state.BallOwnerType == BallOwnershipType.Opponent;
         bool controlsActive = !_state.IsMatchOver && !_state.IsHalfTime && !_state.IsGoalCelebration;
+
+        // Player 1 controls
         PassUpButton.IsVisible = !defending && controlsActive;
         PassDownButton.IsVisible = !defending && controlsActive;
         ShootButton.IsVisible = !defending && controlsActive;
         SwitchDefenderButton.IsVisible = defending && controlsActive;
         Joystick.IsVisible = controlsActive;
+
+        // Player 2 controls (two-player mode only)
+        if (_gameMode == GameMode.TwoPlayerLocal)
+        {
+            bool awayDefending = !awayAttacking && !_state.IsMatchOver;
+            AwayPassUpButton.IsVisible = awayAttacking && controlsActive;
+            AwayPassDownButton.IsVisible = awayAttacking && controlsActive;
+            AwayShootButton.IsVisible = awayAttacking && controlsActive;
+            AwaySwitchDefenderButton.IsVisible = awayDefending && controlsActive;
+            Joystick2.IsVisible = controlsActive;
+            Player2Buttons.IsVisible = controlsActive;
+        }
+
         StatusLabel.Text = _state.StatusText;
         _state.Update(0.016f);
         GameView.Invalidate();
@@ -136,6 +174,15 @@ public partial class GamePage : ContentPage
 
     void OnSwitchDefender(object? sender, EventArgs e) => _state.SwitchControlledDefender();
     void OnShoot(object? sender, EventArgs e) => _state.QueueShoot();
+
+    void OnAwayPassUp(object? sender, EventArgs e)
+        => _state.AwayQueuePassVertical(-1);
+
+    void OnAwayPassDown(object? sender, EventArgs e)
+        => _state.AwayQueuePassVertical(1);
+
+    void OnAwaySwitchDefender(object? sender, EventArgs e) => _state.AwaySwitchControlledDefender();
+    void OnAwayShoot(object? sender, EventArgs e) => _state.AwayQueueShoot();
 
 #if WINDOWS
     void OnWinKeyDown(object sender, KeyRoutedEventArgs e)
@@ -423,6 +470,15 @@ public class GameState
     // Tackle cooldown
     int _tackleCooldownTicks;
 
+    // Smoothed press line to prevent abrupt target jumps on possession change
+    double _smoothedPressLineX = 350;
+
+    // Player 2 input (two-player local mode)
+    public Point AwayActiveMoveInput { get; set; }
+    bool _awayAdvanceBoost2;
+    public int ControlledAwayAttackerIndex { get; private set; } = 1; // away ball carrier index player 2 controls
+    public int ControlledAwayDefenderIndex { get; private set; } = 1; // away defender player 2 controls when home has ball
+
     // Goal celebration
     int _goalCelebrationTicks;
     public bool IsGoalCelebration => _goalCelebrationTicks > 0;
@@ -569,6 +625,83 @@ public class GameState
     }
 
     public void DefenderSideReleased() => _defenderSideBoostY = 0;
+
+    public void AwayAdvanceHeld()
+    {
+        if (Mode != GameMode.TwoPlayerLocal) return;
+        _awayAdvanceBoost2 = true;
+    }
+    public void AwayAdvanceReleased()
+    {
+        _awayAdvanceBoost2 = false;
+    }
+
+    public void AwaySwitchControlledAttacker()
+    {
+        if (Mode != GameMode.TwoPlayerLocal) return;
+        int startIdx = ControlledAwayAttackerIndex;
+        for (int attempt = 0; attempt < AwayPlayers.Length - 1; attempt++)
+        {
+            ControlledAwayAttackerIndex++;
+            if (ControlledAwayAttackerIndex >= AwayPlayers.Length)
+                ControlledAwayAttackerIndex = 1;
+            if (!AwayPlayers[ControlledAwayAttackerIndex].IsSuspended)
+                break;
+        }
+        SetStatusOverride($"Borta #{ControlledAwayAttackerIndex}", 45);
+    }
+
+    public void AwaySwitchControlledDefender()
+    {
+        if (Mode != GameMode.TwoPlayerLocal) return;
+        int startIdx = ControlledAwayDefenderIndex;
+        for (int attempt = 0; attempt < AwayPlayers.Length - 1; attempt++)
+        {
+            ControlledAwayDefenderIndex++;
+            if (ControlledAwayDefenderIndex >= AwayPlayers.Length)
+                ControlledAwayDefenderIndex = 1;
+            if (!AwayPlayers[ControlledAwayDefenderIndex].IsSuspended)
+                break;
+        }
+        SetStatusOverride($"Borta försvarare #{ControlledAwayDefenderIndex}", 45);
+    }
+
+    public void AwayQueuePassVertical(int dirY)
+    {
+        if (Mode != GameMode.TwoPlayerLocal) return;
+        if (BallOwnerType != BallOwnershipType.Opponent) return;
+        if (IsMatchOver || IsHalfTime) return;
+        var owner = AwayPlayers[BallOwnerAwayIndex];
+        (int idx, Actor actor)? best = null; double bestMetric = double.MaxValue;
+        for (int i = 0; i < AwayPlayers.Length; i++)
+        {
+            if (i == BallOwnerAwayIndex) continue;
+            if (AwayPlayers[i].IsSuspended) continue;
+            var dy = AwayPlayers[i].Position.Y - owner.Position.Y;
+            if (dirY < 0 && dy >= 0) continue;
+            if (dirY > 0 && dy <= 0) continue;
+            var metric = Distance(owner.Position, AwayPlayers[i].Position);
+            if (metric < bestMetric) { bestMetric = metric; best = (i, AwayPlayers[i]); }
+        }
+        if (best is null) return;
+        _awayPassActive = true;
+        _awayPassTargetIndex = best.Value.idx;
+        _awayPassCooldownTicks = _diffPassCooldownBase;
+        _awayBuildupPasses++;
+        BallOwnerType = BallOwnershipType.Loose;
+        BallOwnerAwayIndex = -1;
+        BallOwnerPlayerIndex = -1;
+        PassesAway++;
+        GameEvent?.Invoke(GameEventType.AwayPass);
+    }
+
+    public void AwayQueueShoot()
+    {
+        if (Mode != GameMode.TwoPlayerLocal) return;
+        if (BallOwnerType != BallOwnershipType.Opponent) return;
+        if (IsMatchOver || IsHalfTime) return;
+        StartAwayShoot(AwayPlayers[BallOwnerAwayIndex].Position);
+    }
 
     public void DefenderDiagUpPressed()
     {
@@ -856,7 +989,9 @@ public class GameState
         }
 
         double defenseFrontX = AwayPlayers.Skip(1).Min(a => a.Position.X);
-        double pressLineX = defenseFrontX - 36;
+        double rawPressLineX = defenseFrontX - 36;
+        _smoothedPressLineX = Lerp(_smoothedPressLineX, rawPressLineX, 0.08);
+        double pressLineX = _smoothedPressLineX;
 
         // Owner movement: joystick gives direct control; otherwise auto-advance smoothly
         if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
@@ -1129,6 +1264,24 @@ public class GameState
                     continue;
                 }
 
+                // In two-player mode, player 2 can control a specific defender
+                if (Mode == GameMode.TwoPlayerLocal && i == ControlledAwayDefenderIndex)
+                {
+                    bool hasManualDefense2 = Math.Abs(AwayActiveMoveInput.X) > 0.1
+                                              || Math.Abs(AwayActiveMoveInput.Y) > 0.1
+                                              || _awayAdvanceBoost2;
+                    if (hasManualDefense2)
+                    {
+                        const double defenderControlBoost = 1.7;
+                        double forwardBoost = _awayAdvanceBoost2 ? 180 : 0;
+                        a.Position = new Point(
+                            a.Position.X + (AwayActiveMoveInput.X * defenderControlBoost + forwardBoost) * dt,
+                            a.Position.Y + AwayActiveMoveInput.Y * defenderControlBoost * dt);
+                        ClampActor(a);
+                        continue;
+                    }
+                }
+
                 // Defending: 6-0 formation — defenders form an arc along the free-throw line
                 // Track the ball carrier, or during a home pass, track the pass target
                 bool trackingPlayer = (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
@@ -1194,7 +1347,36 @@ public class GameState
             if (awayAttacking && i == BallOwnerAwayIndex)
             {
                 double fastBreakMult = _awayFastBreakTicks > 0 ? FastBreakSpeedMultiplier : 1.0;
-                if (_awayBreakthrough)
+
+                if (Mode == GameMode.TwoPlayerLocal)
+                {
+                    // Player 2 direct control of away ball carrier
+                    bool hasManualInput2 = Math.Abs(AwayActiveMoveInput.X) > 5 || Math.Abs(AwayActiveMoveInput.Y) > 5 || _awayAdvanceBoost2;
+                    if (hasManualInput2)
+                    {
+                        double forwardExtra = _awayAdvanceBoost2 ? -220 : 0; // negative = attacking left
+                        var nextPos = new Point(
+                            a.Position.X + (AwayActiveMoveInput.X + forwardExtra) * dt * fastBreakMult,
+                            a.Position.Y + AwayActiveMoveInput.Y * dt * fastBreakMult);
+                        a.Position = nextPos;
+                    }
+                    // else: hold position
+
+                    // Trigger away shoot if player reaches the attack stop line
+                    double attackStopX = GoalCenterInset + GoalAreaRadius + 30;
+                    if (!_awayShootActive && a.Position.X <= attackStopX + 4)
+                    {
+                        // Already in shooting range - but only shoot if player explicitly calls it
+                    }
+
+                    if (IsInsideLeftGoalArea(a.Position))
+                    {
+                        GiveBallToPlayer(GetNearestHomeIndex(a.Position), "Målgård: motståndarbolll");
+                        ClampActor(a);
+                        return;
+                    }
+                }
+                else if (_awayBreakthrough)
                 {
                     // Breaking through: charge toward goal area with varied angles
                     double attackStopX = GoalCenterInset + GoalAreaRadius + 30;
@@ -1270,17 +1452,34 @@ public class GameState
             }
             else
             {
-                // Support: hold arc formation position, shift toward ball carrier
-                var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                double shiftY = 0;
-                if (BallOwnerAwayIndex >= 0)
+                if (Mode == GameMode.TwoPlayerLocal && BallOwnerType == BallOwnershipType.Opponent)
                 {
-                    var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
-                    shiftY = (carrierY - arcPos.Y) * 0.15;
+                    // Player 2 controls away support players — AI formation only, no shooting/passing from support
+                    var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
+                    double shiftY = 0;
+                    if (BallOwnerAwayIndex >= 0)
+                    {
+                        var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
+                        shiftY = (carrierY - arcPos.Y) * 0.15;
+                    }
+                    a.Position = new Point(
+                        Lerp(a.Position.X, arcPos.X, 0.05),
+                        Lerp(a.Position.Y, arcPos.Y + shiftY, 0.05));
                 }
-                a.Position = new Point(
-                    Lerp(a.Position.X, arcPos.X, 0.05),
-                    Lerp(a.Position.Y, arcPos.Y + shiftY, 0.05));
+                else
+                {
+                    // Support: hold arc formation position, shift toward ball carrier
+                    var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
+                    double shiftY = 0;
+                    if (BallOwnerAwayIndex >= 0)
+                    {
+                        var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
+                        shiftY = (carrierY - arcPos.Y) * 0.15;
+                    }
+                    a.Position = new Point(
+                        Lerp(a.Position.X, arcPos.X, 0.05),
+                        Lerp(a.Position.Y, arcPos.Y + shiftY, 0.05));
+                }
             }
             ClampActor(a);
         }
@@ -1686,6 +1885,7 @@ public class GameState
     {
         BallOwnerType = BallOwnershipType.Opponent;
         BallOwnerAwayIndex = awayIndex;
+        ControlledAwayAttackerIndex = awayIndex;
         BallOwnerPlayerIndex = -1;
         _advanceBoost = false;
         _passActive = false;
@@ -1703,6 +1903,9 @@ public class GameState
         // Auto-switch to nearest non-suspended defender
         AutoSwitchDefender(AwayPlayers[awayIndex].Position);
         SetStatusOverride(reason);
+        // Reset smoothed press line for opponent fast break
+        if (ViewSize.Width > 0)
+            _smoothedPressLineX = ViewSize.Width * 0.5;
     }
 
     void GiveBallToPlayer(int homeIndex, string reason)
@@ -1711,6 +1914,7 @@ public class GameState
         BallOwnerPlayerIndex = homeIndex;
         BallOwnerAwayIndex = -1;
         _advanceBoost = false;
+        _awayAdvanceBoost2 = false;
         _passActive = false;
         _awayPassActive = false;
         _awayPassTargetIndex = -1;
@@ -1723,6 +1927,9 @@ public class GameState
         _homeFastBreakTicks = FastBreakDurationTicks;
         _awayFastBreakTicks = 0;
         SetStatusOverride(reason);
+        // Reset smoothed press line so ball carrier doesn't immediately push backward
+        if (ViewSize.Width > 0)
+            _smoothedPressLineX = ViewSize.Width * 0.5;
     }
 
     void AutoSwitchDefender(Point ballCarrierPos)
