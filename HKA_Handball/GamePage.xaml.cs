@@ -893,7 +893,7 @@ public class GameState
                 // Passive play turnover
                 _possessionTimer = 0;
                 PassivePlayWarningActive = false;
-                GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarbolll");
+                GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarboll");
                 GameEvent?.Invoke(GameEventType.Whistle);
                 return;
             }
@@ -1023,7 +1023,7 @@ public class GameState
 
             if (IsInsideRightGoalArea(owner.Position))
             {
-                GiveBallToOpponent(GetNearestAwayIndex(owner.Position), "Målgård: motståndarbolll");
+                GiveBallToOpponent(GetNearestAwayIndex(owner.Position), "Målgård: motståndarboll");
                 return;
             }
 
@@ -1364,7 +1364,7 @@ public class GameState
 
                     if (IsInsideLeftGoalArea(a.Position))
                     {
-                        GiveBallToPlayer(GetNearestHomeIndex(a.Position), "Målgård: motståndarbolll");
+                        GiveBallToPlayer(GetNearestHomeIndex(a.Position), "Målgård: motståndarboll");
                         ClampActor(a);
                         return;
                     }
@@ -2115,7 +2115,7 @@ public class GameState
                 }
                 else
                 {
-                    GiveBallToOpponent(i, "Tappad boll: motståndarbolll");
+                    GiveBallToOpponent(i, "Tappad boll: motståndarboll");
                 }
                 return true;
             }
@@ -2177,7 +2177,7 @@ public class GameState
                 }
                 else
                 {
-                    SetStatusOverride("Frikast - motståndarbolll");
+                    SetStatusOverride("Frikast - motståndarboll");
                     GameEvent?.Invoke(GameEventType.Whistle);
                 }
                 var freeThrowX = GoalCenterInset + FreeThrowRadius + 8;
