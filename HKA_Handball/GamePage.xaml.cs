@@ -1271,7 +1271,7 @@ public class GameState
                     if (hasManualDefense2)
                     {
                         const double defenderControlBoost = 1.7;
-                        double forwardBoost = _awayAdvanceBoost2 ? 180 : 0;
+                        double forwardBoost = _awayAdvanceBoost2 ? -180 : 0; // negative = step out leftward to pressure home attackers
                         a.Position = new Point(
                             a.Position.X + (AwayActiveMoveInput.X * defenderControlBoost + forwardBoost) * dt,
                             a.Position.Y + AwayActiveMoveInput.Y * defenderControlBoost * dt);
@@ -1505,6 +1505,7 @@ public class GameState
             {
                 BallOwnerType = BallOwnershipType.Opponent;
                 BallOwnerAwayIndex = _awayPassTargetIndex;
+                ControlledAwayAttackerIndex = _awayPassTargetIndex;
                 BallOwnerPlayerIndex = -1;
                 _awayPassActive = false;
             }
