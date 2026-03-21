@@ -18,12 +18,12 @@
         <Label x:Name="StatusLabel" TextColor="#CCFFFFFF" FontSize="11" FontAttributes="Italic"
                HorizontalOptions="Center" VerticalOptions="Start" Margin="0,4,0,0" />
 
-        <!-- LEFT THUMB: Joystick -->
+        <!-- PLAYER 1 LEFT THUMB: Joystick -->
         <controls:JoystickView x:Name="Joystick" WidthRequest="140" HeightRequest="140"
                                HorizontalOptions="Start" VerticalOptions="End" Margin="12,0,0,12" />
 
-        <!-- RIGHT THUMB: Action buttons -->
-        <Grid HorizontalOptions="End" VerticalOptions="End" Margin="0,0,12,12"
+        <!-- PLAYER 1 RIGHT THUMB: Action buttons (single-player and two-player, left side) -->
+        <Grid x:Name="Player1Buttons" HorizontalOptions="End" VerticalOptions="End" Margin="0,0,12,12"
               RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,Auto"
               RowSpacing="6" ColumnSpacing="6">
 
@@ -46,8 +46,38 @@
                     BackgroundColor="#FF8F00" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
                     Clicked="OnSwitchDefender" />
+        </Grid>
 
-    
+        <!-- PLAYER 2 RIGHT THUMB: Joystick (two-player mode only) -->
+        <controls:JoystickView x:Name="Joystick2" WidthRequest="140" HeightRequest="140"
+                               HorizontalOptions="End" VerticalOptions="End" Margin="0,0,12,12"
+                               IsVisible="False" />
+
+        <!-- PLAYER 2 LEFT THUMB: Action buttons for away team (two-player mode only) -->
+        <Grid x:Name="Player2Buttons" HorizontalOptions="Start" VerticalOptions="End" Margin="164,0,0,12"
+              RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,Auto"
+              RowSpacing="6" ColumnSpacing="6"
+              IsVisible="False">
+
+            <!-- Away attack controls -->
+            <Button x:Name="AwayPassUpButton" Text="⬆ Pass" FontSize="15"
+                    BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
+                    HeightRequest="52" MinimumWidthRequest="90"
+                    Clicked="OnAwayPassUp" />
+            <Button x:Name="AwayPassDownButton" Grid.Row="1" Text="⬇ Pass" FontSize="15"
+                    BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
+                    HeightRequest="52" MinimumWidthRequest="90"
+                    Clicked="OnAwayPassDown" />
+            <Button x:Name="AwayShootButton" Grid.Row="2" Text="🎯 Skjut" FontSize="15"
+                    BackgroundColor="#7B0000" TextColor="White" CornerRadius="12"
+                    HeightRequest="52" MinimumWidthRequest="90"
+                    Clicked="OnAwayShoot" />
+
+            <!-- Away defense controls -->
+            <Button x:Name="AwaySwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
+                    BackgroundColor="#E65100" TextColor="White" CornerRadius="12"
+                    HeightRequest="52" MinimumWidthRequest="90"
+                    Clicked="OnAwaySwitchDefender" />
         </Grid>
     </Grid>
 </ContentPage>
