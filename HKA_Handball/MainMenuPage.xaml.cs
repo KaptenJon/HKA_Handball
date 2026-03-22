@@ -181,7 +181,12 @@ public partial class MainMenuPage : ContentPage
             if (HomeColorStack.Children[i] is Border b)
             {
                 b.Stroke = i == _selectedHomeColorIndex ? Colors.White : Colors.Transparent;
-                b.Opacity = i == _selectedAwayColorIndex ? 0.3 : 1.0; // dim if already picked by away
+                // Dim already-picked color by blending with dark background instead of Opacity
+                // (Opacity changes trigger layout recalculation causing swatches to jump)
+                var baseColor = Color.FromArgb(ColorPresets[i].Primary);
+                b.BackgroundColor = i == _selectedAwayColorIndex
+                    ? baseColor.WithAlpha(0.3f)
+                    : baseColor;
             }
         }
         for (int i = 0; i < AwayColorStack.Children.Count; i++)
@@ -189,7 +194,10 @@ public partial class MainMenuPage : ContentPage
             if (AwayColorStack.Children[i] is Border b)
             {
                 b.Stroke = i == _selectedAwayColorIndex ? Colors.White : Colors.Transparent;
-                b.Opacity = i == _selectedHomeColorIndex ? 0.3 : 1.0; // dim if already picked by home
+                var baseColor = Color.FromArgb(ColorPresets[i].Primary);
+                b.BackgroundColor = i == _selectedHomeColorIndex
+                    ? baseColor.WithAlpha(0.3f)
+                    : baseColor;
             }
         }
     }

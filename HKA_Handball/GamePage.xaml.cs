@@ -374,7 +374,7 @@ public class GameState
 
     // 2-minute suspension constants (approximate at ~62.5fps from 0.016f dt)
     const int SuspensionDurationTicks = 7500; // ~2 real minutes at ~62.5fps
-    const double SuspensionChance = 0.15; // 15% chance a collision results in a suspension
+    const double SuspensionChance = 0.0; // suspensions disabled for now
 
     // Shot distance factor constants
     const double MaxShotDistance = 400; // beyond this distance, shots are very unlikely to score
@@ -532,6 +532,10 @@ public class GameState
 
     // Tackle cooldown
     int _tackleCooldownTicks;
+
+    // Free throw cooldown — prevents consecutive free throws from rapid re-collision
+    int _freeThrowCooldownTicks;
+    const int FreeThrowCooldownDuration = 60; // ~1 second at 60fps
 
     // Smoothed press line to prevent abrupt target jumps on possession change
     double _smoothedPressLineX = 350;
@@ -1092,7 +1096,7 @@ public class GameState
 
             ClampActor(owner);
 
-            if (TryHandleFrontalDefense(owner))
+            if (_freeThrowCooldownTicks == 0 && TryHandleFrontalDefense(owner))
             {
                 // event handled in helper
             }
@@ -1534,8 +1538,11 @@ public class GameState
         // Tackle cooldown tick
         if (_tackleCooldownTicks > 0) _tackleCooldownTicks--;
 
+        // Free throw cooldown tick
+        if (_freeThrowCooldownTicks > 0) _freeThrowCooldownTicks--;
+
         // Defensive tackle: home defenders can stop the away ball carrier
-        if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 1 && _tackleCooldownTicks == 0)
+        if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 1 && _tackleCooldownTicks == 0 && _freeThrowCooldownTicks == 0)
             TryHandleDefensiveTackle();
     }
 
@@ -2135,6 +2142,9 @@ public class GameState
             var dist = Distance(owner.Position, defender.Position);
             if (dist < collisionRadius)
             {
+                // Cooldown to prevent consecutive collisions / free throws
+                _freeThrowCooldownTicks = FreeThrowCooldownDuration;
+
                 // Push attacker back out of collision
                 if (dist > 0.001)
                 {
@@ -2245,6 +2255,7 @@ public class GameState
             }
             else if (roll < stealChance + TackleFoulChance)
             {
+                _freeThrowCooldownTicks = FreeThrowCooldownDuration;
                 if (Random.Shared.NextDouble() < SuspensionChance)
                 {
                     HomePlayers[i].SuspensionTicks = SuspensionDurationTicks;
@@ -2321,6 +2332,7 @@ public class GameState
         BallHeight = 0;
         _keeperHoldTicks = 0;
         _tackleCooldownTicks = 0;
+        _freeThrowCooldownTicks = 0;
     }
 
     /// <summary>Sets a player's base position to center court for a throw-off.</summary>
@@ -2441,6 +2453,99 @@ public class GameState
         SetStatusOverride(_penaltyIsHome ? "7-meterstraff! Hemma skjuter" : "7-meterstraff! Borta skjuter", 90);
         GameEvent?.Invoke(GameEventType.PenaltyAwarded);
         GameEvent?.Invoke(GameEventType.Whistle);
+
+        // IHF rules: position all players correctly during a penalty.
+        // - Shooter at 7m spot
+        // - Defending GK on goal line
+        // - All other players outside the free-throw (9m) line
+        PositionPlayersForPenalty(isHome, penaltyX);
+    }
+
+    /// <summary>
+    /// Positions players for a 7-meter penalty according to IHF rules:
+    /// shooter at the spot, defending GK on the goal line, everyone else
+    /// behind the free-throw arc.
+    /// </summary>
+    void PositionPlayersForPenalty(bool isHome, double penaltyX)
+    {
+        double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+        double topY = 60;
+        double bottomY = ViewSize.Height > 0 ? ViewSize.Height - 60 : 540;
+
+        if (isHome)
+        {
+            // Home shoots at right goal
+            // Place shooter (pick nearest home field player, fallback to 1)
+            int shooterIdx = 1;
+            HomePlayers[shooterIdx].Position = new Point(penaltyX, centerY);
+
+            // Defending GK (away) on goal line
+            AwayPlayers[0].Position = new Point(
+                ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - 20 : 700,
+                centerY);
+
+            // All other players behind the right free-throw arc (to the left of it)
+            double rightFreeThrowEdge = ViewSize.Width - GoalCenterInset - FreeThrowRadius - 12;
+            double lineX = Math.Min(rightFreeThrowEdge, penaltyX - 40);
+            int slot = 0;
+            int totalOthers = (HomePlayers.Length - 2) + (AwayPlayers.Length - 1); // exclude home GK, shooter, away GK
+            for (int i = 0; i < HomePlayers.Length; i++)
+            {
+                if (i == 0) // Home GK goes back to own goal
+                {
+                    HomePlayers[0].Position = new Point(GoalCenterInset + 20, centerY);
+                    continue;
+                }
+                if (i == shooterIdx) continue; // already positioned
+                double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
+                HomePlayers[i].Position = new Point(lineX, slotY);
+                slot++;
+            }
+            for (int i = 0; i < AwayPlayers.Length; i++)
+            {
+                if (i == 0) continue; // GK already positioned
+                double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
+                AwayPlayers[i].Position = new Point(lineX, slotY);
+                slot++;
+            }
+        }
+        else
+        {
+            // Away shoots at left goal
+            // Place shooter (pick nearest away field player, fallback to 1)
+            int shooterIdx = 1;
+            AwayPlayers[shooterIdx].Position = new Point(penaltyX, centerY);
+
+            // Defending GK (home) on goal line
+            HomePlayers[0].Position = new Point(GoalCenterInset + 20, centerY);
+
+            // All other players behind the left free-throw arc (to the right of it)
+            double leftFreeThrowEdge = GoalCenterInset + FreeThrowRadius + 12;
+            double lineX = Math.Max(leftFreeThrowEdge, penaltyX + 40);
+            int slot = 0;
+            int totalOthers = (AwayPlayers.Length - 2) + (HomePlayers.Length - 1); // exclude away GK, shooter, home GK
+            for (int i = 0; i < AwayPlayers.Length; i++)
+            {
+                if (i == 0) // Away GK goes back to own goal
+                {
+                    AwayPlayers[0].Position = new Point(
+                        ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - 20 : 700,
+                        centerY);
+                    continue;
+                }
+                if (i == shooterIdx) continue; // already positioned
+                double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
+                AwayPlayers[i].Position = new Point(lineX, slotY);
+                slot++;
+            }
+            for (int i = 0; i < HomePlayers.Length; i++)
+            {
+                if (i == 0) continue; // GK already positioned
+                double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
+                HomePlayers[i].Position = new Point(lineX, slotY);
+                slot++;
+            }
+        }
     }
 
     void UpdatePenalty(double dt)
