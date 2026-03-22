@@ -95,12 +95,25 @@ public partial class GamePage : ContentPage
         base.OnAppearing();
         if (!_timer.IsRunning)
             _timer.Start();
+
+        // Subscribe to window lifecycle to auto-pause when minimized
+        if (Window is not null)
+        {
+            Window.Stopped += OnWindowStopped;
+            Window.Resumed += OnWindowResumed;
+        }
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
         _timer.Stop();
+
+        if (Window is not null)
+        {
+            Window.Stopped -= OnWindowStopped;
+            Window.Resumed -= OnWindowResumed;
+        }
 #if WINDOWS
         if (_winKeyTarget is not null)
         {
@@ -112,8 +125,42 @@ public partial class GamePage : ContentPage
 #endif
     }
 
+    void OnWindowStopped(object? sender, EventArgs e)
+    {
+        // Auto-pause when the app goes to background (minimized)
+        if (!_state.IsMatchOver && !_state.IsHalfTime)
+            _state.IsPaused = true;
+    }
+
+    void OnWindowResumed(object? sender, EventArgs e)
+    {
+        // Don't auto-resume — let the user tap to resume
+    }
+
     void OnTimerTick(object? sender, EventArgs e)
     {
+        if (_state.IsPaused)
+        {
+            // Hide all controls while paused
+            PassUpButton.IsVisible = false;
+            PassDownButton.IsVisible = false;
+            ShootButton.IsVisible = false;
+            SwitchDefenderButton.IsVisible = false;
+            Joystick.IsVisible = false;
+            if (_gameMode == GameMode.TwoPlayerLocal)
+            {
+                AwayPassUpButton.IsVisible = false;
+                AwayPassDownButton.IsVisible = false;
+                AwayShootButton.IsVisible = false;
+                AwaySwitchDefenderButton.IsVisible = false;
+                Joystick2.IsVisible = false;
+                Player2Buttons.IsVisible = false;
+            }
+            StatusLabel.Text = "";
+            GameView.Invalidate();
+            return;
+        }
+
         // Advance boost from joystick (X > 0.5) or keyboard (Space on Windows)
         var jv = Joystick.Value;
         if (jv.X > 0.5 || _advanceHeld)
@@ -164,6 +211,12 @@ public partial class GamePage : ContentPage
         var pos = e.GetPosition(GameView);
         if (pos is Point p)
         {
+            // Resume from pause on tap
+            if (_state.IsPaused)
+            {
+                _state.IsPaused = false;
+                return;
+            }
             // If match is over, restart on tap
             if (_state.IsMatchOver)
             {
@@ -223,6 +276,7 @@ public partial class GamePage : ContentPage
         if (_keysDown.Contains(VirtualKey.F)) { _keysDown.Remove(VirtualKey.F); _state.QueueShoot(); }
         if (_keysDown.Contains(VirtualKey.R)) { _keysDown.Remove(VirtualKey.R); _state.SwitchControlledDefender(); }
         if (_keysDown.Contains(VirtualKey.H)) { _keysDown.Remove(VirtualKey.H); _state.ShowKeyboardHelp = !_state.ShowKeyboardHelp; }
+        if (_keysDown.Contains(VirtualKey.Escape)) { _keysDown.Remove(VirtualKey.Escape); _state.IsPaused = !_state.IsPaused; }
     }
 #endif
 
@@ -447,6 +501,7 @@ public class GameState
     public double MatchClockSeconds { get; private set; } // game-time elapsed in current half
     public bool IsHalfTime { get; private set; }
     public bool IsMatchOver { get; private set; }
+    public bool IsPaused { get; set; }
     public bool ShowKeyboardHelp { get; set; }
     int _halfTimeCountdown;
 
@@ -2642,6 +2697,7 @@ public class GameDrawable : IDrawable
         DrawPassivePlayIndicator(canvas, dirtyRect);
         DrawGoalCelebration(canvas, dirtyRect);
         DrawMatchOverlay(canvas, dirtyRect);
+        DrawPauseOverlay(canvas, dirtyRect);
         DrawKeyboardHelp(canvas, dirtyRect);
     }
 
@@ -3109,6 +3165,44 @@ public class GameDrawable : IDrawable
                 new RectF(0, dirtyRect.Height * 0.82f, dirtyRect.Width, 24),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
         }
+    }
+
+    void DrawPauseOverlay(ICanvas canvas, RectF dirtyRect)
+    {
+        if (!_state.IsPaused) return;
+
+        // Semi-transparent overlay
+        canvas.FillColor = Color.FromArgb("#CC2C1B0E");
+        canvas.FillRectangle(dirtyRect);
+
+        // Pause icon (two vertical bars)
+        float cx = dirtyRect.Width / 2;
+        float cy = dirtyRect.Height * 0.32f;
+        float barW = 14, barH = 50, gap = 10;
+        canvas.FillColor = Colors.White;
+        canvas.FillRoundedRectangle(cx - gap - barW, cy - barH / 2, barW, barH, 4);
+        canvas.FillRoundedRectangle(cx + gap, cy - barH / 2, barW, barH, 4);
+
+        // "PAUS" text
+        canvas.FontColor = Colors.Gold;
+        canvas.FontSize = 32;
+        canvas.DrawString("PAUS",
+            new RectF(0, dirtyRect.Height * 0.48f, dirtyRect.Width, 40),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Current score
+        canvas.FontColor = AranasWhite;
+        canvas.FontSize = 24;
+        canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
+            new RectF(0, dirtyRect.Height * 0.58f, dirtyRect.Width, 36),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Resume hint
+        canvas.FontSize = 14;
+        canvas.FontColor = Color.FromArgb("#AAFFFFFF");
+        canvas.DrawString("Tryck för att fortsätta",
+            new RectF(0, dirtyRect.Height * 0.70f, dirtyRect.Width, 24),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
     }
 
     static void DrawStatRow(ICanvas canvas, float leftX, float centerX, float rightX, float colW, float labelW,
