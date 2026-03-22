@@ -57,9 +57,15 @@ public partial class GamePage : ContentPage
 
         if (mode == GameMode.TwoPlayerLocal)
         {
-            // Leave Player 2 controls hidden here; their visibility is managed
-            // by the game loop (OnTimerTick) to avoid an initial flash where all
-            // away buttons appear visible regardless of ball possession.
+            // In two-player mode, each player's controls must be on the same side:
+            // Player 1 (home) on the left, Player 2 (away) on the right.
+            Player1Buttons.HorizontalOptions = LayoutOptions.Start;
+            Player1Buttons.Margin = new Thickness(164, 0, 0, 12);
+
+            Player2Buttons.HorizontalOptions = LayoutOptions.End;
+            Player2Buttons.Margin = new Thickness(0, 0, 164, 12);
+
+            Joystick2.Margin = new Thickness(0, 0, 12, 12);
         }
 
 #if WINDOWS
@@ -238,8 +244,8 @@ public partial class GamePage : ContentPage
                 _soundManager.PlayPass();
                 break;
             case GameEventType.Save:
+                break;
             case GameEventType.Interception:
-                _soundManager.PlayWhistle();
                 break;
             case GameEventType.Whistle:
             case GameEventType.HalfTime:
@@ -329,9 +335,9 @@ public class GameState
     const double PivotDriftAmplitude = 60; // pixels of vertical drift between defenders
 
     // Defensive tackle constants
-    const double TackleDistance = 28;
+    const double TackleDistance = 22;
     const double TackleStealChance = 0.30;
-    const double TackleFoulChance = 0.35;
+    const double TackleFoulChance = 0.20;
     const double ControlledDefenderInterceptBonus = 0.25;
     const double GoalkeeperSaveRadius = 32;
     const int TackleCooldownDuration = 25;
@@ -1095,13 +1101,13 @@ public class GameState
                 }
                 if (activeFieldCount == 0) activeFieldCount = 1;
 
-                double topY = 80;
-                double bottomY = ViewSize.Height > 0 ? ViewSize.Height - 80 : 520;
+                double topY = 60;
+                double bottomY = ViewSize.Height > 0 ? ViewSize.Height - 60 : 540;
                 double slotY = topY + activeFieldIdx * ((bottomY - topY) / Math.Max(activeFieldCount - 1, 1));
 
-                // Shift toward ball carrier Y position
+                // Shift toward ball carrier Y position (gentle attraction to keep formation wide)
                 double carrierY = BallOwnerPlayerIndex >= 0 ? HomePlayers[BallOwnerPlayerIndex].Position.Y : ViewSize.Height / 2;
-                slotY = Lerp(slotY, carrierY, 0.2);
+                slotY = Lerp(slotY, carrierY, 0.10);
 
                 // Differentiate run-up: 6m players (wings 1,5 + pivot 6) go all the way,
                 // 9m players (backs 2,3,4) stay approximately with the ball carrier
@@ -1130,7 +1136,15 @@ public class GameState
                     desiredX = Math.Max(p.BaseX + 20, backMaxX);
                 }
                 if (!isPivot)
-                    desiredY = slotY;
+                {
+                    // Wings stay wide near the sidelines for authentic handball positioning
+                    if (i == 1) // Left wing (VY) — near top sideline
+                        desiredY = Lerp(topY, carrierY, 0.12);
+                    else if (i == 5) // Right wing (HY) — near bottom sideline
+                        desiredY = Lerp(bottomY, carrierY, 0.12);
+                    else
+                        desiredY = slotY;
+                }
             }
             double newX = p.Position.X + (desiredX - p.Position.X) * 0.04;
             double newY = p.Position.Y + (desiredY - p.Position.Y) * 0.04;
@@ -1959,7 +1973,7 @@ public class GameState
         int fieldCount = AwayPlayers.Length - 1; // exclude GK
         int slot = playerIndex - 1; // 0-based field slot
         // Spread from ~-70° to +70° (top to bottom)
-        double angleRange = 140.0;
+        double angleRange = 160.0;
         double startAngle = -angleRange / 2;
         double angleDeg = startAngle + slot * (angleRange / (fieldCount - 1));
         double angleRad = angleDeg * Math.PI / 180.0;
@@ -2059,7 +2073,7 @@ public class GameState
 
     bool TryHandleFrontalDefense(Actor owner)
     {
-        const double collisionRadius = 24;
+        const double collisionRadius = 18;
         for (int i = 1; i < AwayPlayers.Length; i++)
         {
             var defender = AwayPlayers[i];
@@ -2101,7 +2115,9 @@ public class GameState
                 if (Random.Shared.NextDouble() < SuspensionChance)
                 {
                     defender.SuspensionTicks = SuspensionDurationTicks;
-                    var freeThrowX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
+                    // Free throw at foul position, but no closer than the 9m line
+                    var freeThrowLineX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
+                    var freeThrowX = Math.Min(owner.Position.X, freeThrowLineX);
                     owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
                     BallPos = owner.Position;
                     SetStatusOverride("2 min utvisning + frikast!", 120);
@@ -2109,9 +2125,11 @@ public class GameState
                     return true;
                 }
 
-                if (Random.Shared.NextDouble() < 0.5)
+                if (Random.Shared.NextDouble() < 0.30)
                 {
-                    var freeThrowX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
+                    // Free throw at foul position, but no closer than the 9m line
+                    var freeThrowLineX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
+                    var freeThrowX = Math.Min(owner.Position.X, freeThrowLineX);
                     owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
                     BallPos = owner.Position;
                     SetStatusOverride("Frikast - börja om utanför");
