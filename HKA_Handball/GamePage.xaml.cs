@@ -2453,6 +2453,99 @@ public class GameState
         SetStatusOverride(_penaltyIsHome ? "7-meterstraff! Hemma skjuter" : "7-meterstraff! Borta skjuter", 90);
         GameEvent?.Invoke(GameEventType.PenaltyAwarded);
         GameEvent?.Invoke(GameEventType.Whistle);
+
+        // IHF rules: position all players correctly during a penalty.
+        // - Shooter at 7m spot
+        // - Defending GK on goal line
+        // - All other players outside the free-throw (9m) line
+        PositionPlayersForPenalty(isHome, penaltyX);
+    }
+
+    /// <summary>
+    /// Positions players for a 7-meter penalty according to IHF rules:
+    /// shooter at the spot, defending GK on the goal line, everyone else
+    /// behind the free-throw arc.
+    /// </summary>
+    void PositionPlayersForPenalty(bool isHome, double penaltyX)
+    {
+        double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+        double topY = 60;
+        double bottomY = ViewSize.Height > 0 ? ViewSize.Height - 60 : 540;
+
+        if (isHome)
+        {
+            // Home shoots at right goal
+            // Place shooter (pick nearest home field player, fallback to 1)
+            int shooterIdx = 1;
+            HomePlayers[shooterIdx].Position = new Point(penaltyX, centerY);
+
+            // Defending GK (away) on goal line
+            AwayPlayers[0].Position = new Point(
+                ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - 20 : 700,
+                centerY);
+
+            // All other players behind the right free-throw arc (to the left of it)
+            double rightFreeThrowEdge = ViewSize.Width - GoalCenterInset - FreeThrowRadius - 12;
+            double lineX = Math.Min(rightFreeThrowEdge, penaltyX - 40);
+            int slot = 0;
+            int totalOthers = (HomePlayers.Length - 2) + (AwayPlayers.Length - 1); // exclude home GK, shooter, away GK
+            for (int i = 0; i < HomePlayers.Length; i++)
+            {
+                if (i == 0) // Home GK goes back to own goal
+                {
+                    HomePlayers[0].Position = new Point(GoalCenterInset + 20, centerY);
+                    continue;
+                }
+                if (i == shooterIdx) continue; // already positioned
+                double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
+                HomePlayers[i].Position = new Point(lineX, slotY);
+                slot++;
+            }
+            for (int i = 0; i < AwayPlayers.Length; i++)
+            {
+                if (i == 0) continue; // GK already positioned
+                double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
+                AwayPlayers[i].Position = new Point(lineX, slotY);
+                slot++;
+            }
+        }
+        else
+        {
+            // Away shoots at left goal
+            // Place shooter (pick nearest away field player, fallback to 1)
+            int shooterIdx = 1;
+            AwayPlayers[shooterIdx].Position = new Point(penaltyX, centerY);
+
+            // Defending GK (home) on goal line
+            HomePlayers[0].Position = new Point(GoalCenterInset + 20, centerY);
+
+            // All other players behind the left free-throw arc (to the right of it)
+            double leftFreeThrowEdge = GoalCenterInset + FreeThrowRadius + 12;
+            double lineX = Math.Max(leftFreeThrowEdge, penaltyX + 40);
+            int slot = 0;
+            int totalOthers = (AwayPlayers.Length - 2) + (HomePlayers.Length - 1); // exclude away GK, shooter, home GK
+            for (int i = 0; i < AwayPlayers.Length; i++)
+            {
+                if (i == 0) // Away GK goes back to own goal
+                {
+                    AwayPlayers[0].Position = new Point(
+                        ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - 20 : 700,
+                        centerY);
+                    continue;
+                }
+                if (i == shooterIdx) continue; // already positioned
+                double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
+                AwayPlayers[i].Position = new Point(lineX, slotY);
+                slot++;
+            }
+            for (int i = 0; i < HomePlayers.Length; i++)
+            {
+                if (i == 0) continue; // GK already positioned
+                double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
+                HomePlayers[i].Position = new Point(lineX, slotY);
+                slot++;
+            }
+        }
     }
 
     void UpdatePenalty(double dt)
