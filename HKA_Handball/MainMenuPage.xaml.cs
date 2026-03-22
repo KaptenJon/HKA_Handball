@@ -9,6 +9,22 @@ public partial class MainMenuPage : ContentPage
     bool _initialized;
     Difficulty _selectedDifficulty = Difficulty.Medium;
 
+    // Available team color presets
+    static readonly TeamColorOption[] ColorPresets =
+    [
+        new("Blå",    "#003DA5", "#2E7CF6"),
+        new("Röd",    "#DC143C", "#FF5555"),
+        new("Grön",   "#1B5E20", "#43A047"),
+        new("Gul",    "#F9A825", "#FDD835"),
+        new("Lila",   "#6A1B9A", "#AB47BC"),
+        new("Orange", "#E65100", "#FF8C00"),
+        new("Svart",  "#212121", "#616161"),
+        new("Vit",    "#CFD8DC", "#FFFFFF"),
+    ];
+
+    int _selectedHomeColorIndex = 0; // default: Blue
+    int _selectedAwayColorIndex = 1; // default: Red
+
     public MainMenuPage(SoundManager soundManager)
     {
         InitializeComponent();
@@ -16,6 +32,7 @@ public partial class MainMenuPage : ContentPage
 
         Loaded += OnPageLoaded;
         UpdateDifficultyButtons();
+        BuildColorSwatches();
     }
 
     async void OnPageLoaded(object? sender, EventArgs e)
@@ -102,17 +119,78 @@ public partial class MainMenuPage : ContentPage
     async void OnSinglePlayer(object? sender, EventArgs e)
     {
         _soundManager.PlayClick();
-        await Navigation.PushAsync(new GamePage(GameMode.SinglePlayer, _selectedDifficulty, _soundManager));
+        await Navigation.PushAsync(new GamePage(GameMode.SinglePlayer, _selectedDifficulty, _soundManager,
+            ColorPresets[_selectedHomeColorIndex], ColorPresets[_selectedAwayColorIndex]));
     }
 
     async void OnTwoPlayerLocal(object? sender, EventArgs e)
     {
         _soundManager.PlayClick();
-        await Navigation.PushAsync(new GamePage(GameMode.TwoPlayerLocal, _selectedDifficulty, _soundManager));
+        await Navigation.PushAsync(new GamePage(GameMode.TwoPlayerLocal, _selectedDifficulty, _soundManager,
+            ColorPresets[_selectedHomeColorIndex], ColorPresets[_selectedAwayColorIndex]));
     }
 
     void OnSoundToggled(object? sender, ToggledEventArgs e)
     {
         _soundManager.Enabled = e.Value;
+    }
+
+    void BuildColorSwatches()
+    {
+        HomeColorStack.Children.Clear();
+        AwayColorStack.Children.Clear();
+        for (int i = 0; i < ColorPresets.Length; i++)
+        {
+            HomeColorStack.Children.Add(CreateSwatch(i, isHome: true));
+            AwayColorStack.Children.Add(CreateSwatch(i, isHome: false));
+        }
+        UpdateColorSwatches();
+    }
+
+    Border CreateSwatch(int index, bool isHome)
+    {
+        var swatch = new Border
+        {
+            WidthRequest = 28,
+            HeightRequest = 28,
+            BackgroundColor = Color.FromArgb(ColorPresets[index].Primary),
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 6 },
+            Stroke = Colors.Transparent,
+            StrokeThickness = 2,
+        };
+        var tap = new TapGestureRecognizer();
+        int capturedIndex = index;
+        bool capturedIsHome = isHome;
+        tap.Tapped += (_, _) =>
+        {
+            _soundManager.PlayClick();
+            if (capturedIsHome)
+                _selectedHomeColorIndex = capturedIndex;
+            else
+                _selectedAwayColorIndex = capturedIndex;
+            UpdateColorSwatches();
+        };
+        swatch.GestureRecognizers.Add(tap);
+        return swatch;
+    }
+
+    void UpdateColorSwatches()
+    {
+        for (int i = 0; i < HomeColorStack.Children.Count; i++)
+        {
+            if (HomeColorStack.Children[i] is Border b)
+            {
+                b.Stroke = i == _selectedHomeColorIndex ? Colors.White : Colors.Transparent;
+                b.Opacity = i == _selectedAwayColorIndex ? 0.3 : 1.0; // dim if already picked by away
+            }
+        }
+        for (int i = 0; i < AwayColorStack.Children.Count; i++)
+        {
+            if (AwayColorStack.Children[i] is Border b)
+            {
+                b.Stroke = i == _selectedAwayColorIndex ? Colors.White : Colors.Transparent;
+                b.Opacity = i == _selectedHomeColorIndex ? 0.3 : 1.0; // dim if already picked by home
+            }
+        }
     }
 }

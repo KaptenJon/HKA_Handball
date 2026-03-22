@@ -26,16 +26,17 @@ public partial class GamePage : ContentPage
     bool _advanceHeld;
 
     /// <summary>Parameterless constructor for XAML previewer. Sound effects are disabled.</summary>
-    public GamePage() : this(GameMode.SinglePlayer, Difficulty.Medium, null) { }
+    public GamePage() : this(GameMode.SinglePlayer, Difficulty.Medium, null, null, null) { }
 
-    public GamePage(GameMode mode, Difficulty difficulty, SoundManager? soundManager)
+    public GamePage(GameMode mode, Difficulty difficulty, SoundManager? soundManager,
+        TeamColorOption? homeColors = null, TeamColorOption? awayColors = null)
     {
         _gameMode = mode;
         _soundManager = soundManager;
         _state = new GameState(mode, difficulty);
 
         InitializeComponent();
-        _drawable = new GameDrawable(_state);
+        _drawable = new GameDrawable(_state, homeColors, awayColors);
         GameView.Drawable = _drawable;
 
         _state.GameEvent += OnGameEvent;
@@ -2555,27 +2556,53 @@ public class GameState
 public class GameDrawable : IDrawable
 {
     readonly GameState _state;
-    readonly Color AranasBlue;
-    readonly Color AranasBlueLight;
+    readonly Color HomeColor;
+    readonly Color HomeColorLight;
+    readonly Color AwayColor;
+    readonly Color AwayColorLight;
     readonly Color AranasWhite;
-    readonly Color AwayRed = Colors.Crimson;
 
-    // Confetti colors
-    static readonly Color[] ConfettiColors =
-    [
-        Colors.Gold,
-        Color.FromArgb("#003DA5"),
-        Colors.White,
-        Colors.Crimson,
-        Color.FromArgb("#2E7CF6")
-    ];
+    // Confetti colors (updated per-game based on team colors)
+    readonly Color[] _confettiColors;
 
-    public GameDrawable(GameState state)
+    public GameDrawable(GameState state, TeamColorOption? homeColors = null, TeamColorOption? awayColors = null)
     {
         _state = state;
-        AranasBlue = ControlsApplication.Current?.Resources.TryGetValue("AranasBlue", out var b) == true ? (Color)b : Color.FromArgb("#003DA5");
-        AranasBlueLight = ControlsApplication.Current?.Resources.TryGetValue("AranasBlueLight", out var bl) == true ? (Color)bl : Color.FromArgb("#2E7CF6");
+
+        // Home team colors
+        if (homeColors != null)
+        {
+            HomeColor = Color.FromArgb(homeColors.Primary);
+            HomeColorLight = Color.FromArgb(homeColors.Light);
+        }
+        else
+        {
+            HomeColor = ControlsApplication.Current?.Resources.TryGetValue("AranasBlue", out var b) == true ? (Color)b : Color.FromArgb("#003DA5");
+            HomeColorLight = ControlsApplication.Current?.Resources.TryGetValue("AranasBlueLight", out var bl) == true ? (Color)bl : Color.FromArgb("#2E7CF6");
+        }
+
+        // Away team colors
+        if (awayColors != null)
+        {
+            AwayColor = Color.FromArgb(awayColors.Primary);
+            AwayColorLight = Color.FromArgb(awayColors.Light);
+        }
+        else
+        {
+            AwayColor = Colors.Crimson;
+            AwayColorLight = Color.FromArgb("#FF5555");
+        }
+
         AranasWhite = ControlsApplication.Current?.Resources.TryGetValue("AranasWhite", out var w) == true ? (Color)w : Colors.White;
+
+        _confettiColors =
+        [
+            Colors.Gold,
+            HomeColor,
+            Colors.White,
+            AwayColor,
+            HomeColorLight
+        ];
     }
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
@@ -2658,9 +2685,9 @@ public class GameDrawable : IDrawable
         var rightGoalCenterX = dirtyRect.Width - (float)GameState.GoalCenterInset;
 
         // Goal area fill (light tint)
-        canvas.FillColor = Color.FromArgb("#22003DA5");
+        canvas.FillColor = HomeColor.WithAlpha(0.13f);
         canvas.FillCircle(leftGoalCenterX, centerY, goalAreaRadius);
-        canvas.FillColor = Color.FromArgb("#22DC143C");
+        canvas.FillColor = AwayColor.WithAlpha(0.13f);
         canvas.FillCircle(rightGoalCenterX, centerY, goalAreaRadius);
 
         // Goal area line (solid)
@@ -2686,8 +2713,8 @@ public class GameDrawable : IDrawable
         canvas.DrawLine(penaltyRightX, centerY - 8, penaltyRightX, centerY + 8);
 
         // Goals (nets with depth)
-        DrawGoal(canvas, new RectF(4, centerY - 80, 16, 160), AranasBlue);
-        DrawGoal(canvas, new RectF(dirtyRect.Width - 20, centerY - 80, 16, 160), AwayRed);
+        DrawGoal(canvas, new RectF(4, centerY - 80, 16, 160), HomeColor);
+        DrawGoal(canvas, new RectF(dirtyRect.Width - 20, centerY - 80, 16, 160), AwayColor);
     }
 
     void DrawPlayers(ICanvas canvas)
@@ -2697,7 +2724,7 @@ public class GameDrawable : IDrawable
             var p = _state.HomePlayers[i];
             bool isActive = _state.BallOwnerType == BallOwnershipType.Player && _state.BallOwnerPlayerIndex == i;
             bool isDefender = _state.IsHomeDefending && i == _state.ControlledDefenderIndex;
-            var jerseyColor = i == 0 ? AranasBlueLight : AranasBlue;
+            var jerseyColor = i == 0 ? HomeColorLight : HomeColor;
             DrawPlayerFigure(canvas, p.Position, jerseyColor, i, isActive, isDefender, p.IsGoalkeeper, p.IsSuspended);
         }
 
@@ -2705,7 +2732,7 @@ public class GameDrawable : IDrawable
         {
             var a = _state.AwayPlayers[i];
             bool isActive = _state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex == i;
-            var jerseyColor = i == 0 ? Color.FromArgb("#FF5555") : AwayRed;
+            var jerseyColor = i == 0 ? AwayColorLight : AwayColor;
             DrawPlayerFigure(canvas, a.Position, jerseyColor, i, isActive, false, a.IsGoalkeeper, a.IsSuspended);
         }
     }
@@ -2888,13 +2915,13 @@ public class GameDrawable : IDrawable
         canvas.DrawRoundedRectangle(pillX, 4, pillW, pillH, 18);
 
         // Score with team names
-        canvas.FontColor = AranasBlue;
+        canvas.FontColor = HomeColor;
         canvas.FontSize = 11;
         canvas.DrawString("HEM",
             new RectF(pillX + 8, 8, 40, 14),
             G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
 
-        canvas.FontColor = AwayRed;
+        canvas.FontColor = AwayColor;
         canvas.DrawString("BOR",
             new RectF(pillX + pillW - 48, 8, 40, 14),
             G.HorizontalAlignment.Right, G.VerticalAlignment.Center);
@@ -2957,7 +2984,7 @@ public class GameDrawable : IDrawable
             if (p.LifeTicks <= 0) continue;
 
             float alpha = Math.Clamp(p.LifeTicks / 40f, 0f, 1f);
-            var color = ConfettiColors[p.ColorIndex % ConfettiColors.Length].WithAlpha(alpha);
+            var color = _confettiColors[p.ColorIndex % _confettiColors.Length].WithAlpha(alpha);
             canvas.FillColor = color;
 
             // Rotate confetti pieces slightly based on position
@@ -3024,11 +3051,11 @@ public class GameDrawable : IDrawable
 
             // Team labels
             canvas.FontSize = 16;
-            canvas.FontColor = AranasBlue;
+            canvas.FontColor = HomeColor;
             canvas.DrawString("Hemma",
                 new RectF(0, dirtyRect.Height * 0.44f, dirtyRect.Width / 2, 24),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
-            canvas.FontColor = AwayRed;
+            canvas.FontColor = AwayColor;
             canvas.DrawString("Borta",
                 new RectF(dirtyRect.Width / 2, dirtyRect.Height * 0.44f, dirtyRect.Width / 2, 24),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
@@ -3189,14 +3216,14 @@ public class GameDrawable : IDrawable
         canvas.FontSize = 9;
         if (homeSus > 0)
         {
-            canvas.FontColor = AranasBlue;
+            canvas.FontColor = HomeColor;
             canvas.DrawString($"HEM -{homeSus}",
                 new RectF(pillX + 4, indicatorY, pillW / 2 - 4, pillH),
                 G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
         }
         if (awaySus > 0)
         {
-            canvas.FontColor = AwayRed;
+            canvas.FontColor = AwayColor;
             canvas.DrawString($"BOR -{awaySus}",
                 new RectF(pillX + pillW / 2, indicatorY, pillW / 2 - 4, pillH),
                 G.HorizontalAlignment.Right, G.VerticalAlignment.Center);
