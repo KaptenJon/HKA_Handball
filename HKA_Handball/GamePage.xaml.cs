@@ -55,6 +55,10 @@ public partial class GamePage : ContentPage
             _state.AwayActiveMoveInput = new Point(p.X * maxSpeed, p.Y * maxSpeed);
         };
 
+        // Wire up goal-aim views: tapping on the mini goal aims and fires a shot
+        HomeGoalAim.ShotAimed += (_, aimX) => _state.QueueShootAt(aimX);
+        AwayGoalAim.ShotAimed += (_, aimX) => _state.AwayQueueShootAt(aimX);
+
         if (mode == GameMode.TwoPlayerLocal)
         {
             // In two-player mode, each player's controls must be on the same side:
@@ -144,14 +148,14 @@ public partial class GamePage : ContentPage
             // Hide all controls while paused
             PassUpButton.IsVisible = false;
             PassDownButton.IsVisible = false;
-            ShootButton.IsVisible = false;
+            HomeGoalAim.IsVisible = false;
             SwitchDefenderButton.IsVisible = false;
             Joystick.IsVisible = false;
             if (_gameMode == GameMode.TwoPlayerLocal)
             {
                 AwayPassUpButton.IsVisible = false;
                 AwayPassDownButton.IsVisible = false;
-                AwayShootButton.IsVisible = false;
+                AwayGoalAim.IsVisible = false;
                 AwaySwitchDefenderButton.IsVisible = false;
                 Joystick2.IsVisible = false;
                 Player2Buttons.IsVisible = false;
@@ -182,12 +186,21 @@ public partial class GamePage : ContentPage
         bool awayAttacking = _state.BallOwnerType == BallOwnershipType.Opponent;
         bool controlsActive = !_state.IsMatchOver && !_state.IsHalfTime && !_state.IsGoalCelebration;
 
-        // Player 1 controls
+        // Player 1 controls — goal aim stays visible during shot to show GK diving
         PassUpButton.IsVisible = !defending && controlsActive;
         PassDownButton.IsVisible = !defending && controlsActive;
-        ShootButton.IsVisible = !defending && controlsActive;
-        SwitchDefenderButton.IsVisible = defending && controlsActive;
+        HomeGoalAim.IsVisible = (!defending || _state.IsShootActive) && controlsActive;
+        SwitchDefenderButton.IsVisible = defending && !_state.IsShootActive && controlsActive;
         Joystick.IsVisible = controlsActive;
+
+        // Update home goal-aim view: show away GK position (home attacks right goal)
+        HomeGoalAim.GoalkeeperNormalizedX = _state.GetAwayGkNormalizedX();
+        HomeGoalAim.GoalkeeperJerseyColor = _drawable.GetAwayGkColor();
+        HomeGoalAim.GoalColor = _drawable.GetAwayColor();
+        HomeGoalAim.ShowShotInProgress = _state.IsShootActive;
+        if (_state.IsShootActive)
+            HomeGoalAim.ShotAimNormalizedX = _state.GetShootAimNormalizedX();
+        HomeGoalAim.InvalidateView();
 
         // Player 2 controls (two-player mode only)
         if (_gameMode == GameMode.TwoPlayerLocal)
@@ -195,10 +208,19 @@ public partial class GamePage : ContentPage
             bool awayDefending = !awayAttacking && !_state.IsMatchOver;
             AwayPassUpButton.IsVisible = awayAttacking && controlsActive;
             AwayPassDownButton.IsVisible = awayAttacking && controlsActive;
-            AwayShootButton.IsVisible = awayAttacking && controlsActive;
-            AwaySwitchDefenderButton.IsVisible = awayDefending && controlsActive;
+            AwayGoalAim.IsVisible = (awayAttacking || _state.IsAwayShootActive) && controlsActive;
+            AwaySwitchDefenderButton.IsVisible = awayDefending && !_state.IsAwayShootActive && controlsActive;
             Joystick2.IsVisible = controlsActive;
             Player2Buttons.IsVisible = controlsActive;
+
+            // Update away goal-aim view: show home GK position (away attacks left goal)
+            AwayGoalAim.GoalkeeperNormalizedX = _state.GetHomeGkNormalizedX();
+            AwayGoalAim.GoalkeeperJerseyColor = _drawable.GetHomeGkColor();
+            AwayGoalAim.GoalColor = _drawable.GetHomeColor();
+            AwayGoalAim.ShowShotInProgress = _state.IsAwayShootActive;
+            if (_state.IsAwayShootActive)
+                AwayGoalAim.ShotAimNormalizedX = _state.GetAwayShootAimNormalizedX();
+            AwayGoalAim.InvalidateView();
         }
 
         StatusLabel.Text = _state.StatusText;
@@ -234,7 +256,6 @@ public partial class GamePage : ContentPage
         => _state.QueuePassVertical(1);
 
     void OnSwitchDefender(object? sender, EventArgs e) => _state.SwitchControlledDefender();
-    void OnShoot(object? sender, EventArgs e) => _state.QueueShoot();
 
     void OnAwayPassUp(object? sender, EventArgs e)
         => _state.AwayQueuePassVertical(-1);
@@ -243,7 +264,6 @@ public partial class GamePage : ContentPage
         => _state.AwayQueuePassVertical(1);
 
     void OnAwaySwitchDefender(object? sender, EventArgs e) => _state.AwaySwitchControlledDefender();
-    void OnAwayShoot(object? sender, EventArgs e) => _state.AwayQueueShoot();
 
 #if WINDOWS
     void OnWinKeyDown(object sender, KeyRoutedEventArgs e)
@@ -764,6 +784,19 @@ public class GameState
         StartAwayShoot(AwayPlayers[BallOwnerAwayIndex].Position);
     }
 
+    /// <summary>
+    /// Queue an away-team shot aimed at a specific position in the goal (two-player mode).
+    /// normalizedAimX: 0=left of goal (front view), 1=right of goal.
+    /// Maps to actual Y position on the court (0→top, 1→bottom).
+    /// </summary>
+    public void AwayQueueShootAt(double normalizedAimX)
+    {
+        if (Mode != GameMode.TwoPlayerLocal) return;
+        if (BallOwnerType != BallOwnershipType.Opponent) return;
+        if (IsMatchOver || IsHalfTime) return;
+        StartAwayShootAt(AwayPlayers[BallOwnerAwayIndex].Position, normalizedAimX);
+    }
+
     public void DefenderDiagUpPressed()
     {
         if (!IsHomeDefending) return;
@@ -837,6 +870,34 @@ public class GameState
         // Wider shot spread: use ±75px (was ±60) to cover more of the 160px goal
         var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 150;
         _shootEnd = new Point(ViewSize.Width - 14, ViewSize.Height / 2 + shootOffsetY);
+        _shootTime = 0f;
+        _shootActive = true;
+        BallOwnerType = BallOwnershipType.Loose;
+        BallOwnerPlayerIndex = -1;
+        BallOwnerAwayIndex = -1;
+        _possessionTimer = 0;
+        PassivePlayWarningActive = false;
+        ShotsHome++;
+        GameEvent?.Invoke(GameEventType.Shoot);
+    }
+
+    /// <summary>
+    /// Queue a shot aimed at a specific position in the goal.
+    /// normalizedAimX: 0=left of goal (front view), 1=right of goal.
+    /// Maps to actual Y position on the court (0→top, 1→bottom).
+    /// </summary>
+    public void QueueShootAt(double normalizedAimX)
+    {
+        if (BallOwnerType != BallOwnershipType.Player) return;
+        if (IsMatchOver || IsHalfTime) return;
+        _formerOwnerIndex = BallOwnerPlayerIndex;
+        _retreatingFormerOwner = true;
+        _advanceBoost = false;
+        _shootStart = BallPos;
+        // Map normalized aim to actual goal Y position
+        double centerY = ViewSize.Height / 2;
+        double aimY = centerY - GoalMouthHalf + normalizedAimX * (GoalMouthHalf * 2);
+        _shootEnd = new Point(ViewSize.Width - 14, aimY);
         _shootTime = 0f;
         _shootActive = true;
         BallOwnerType = BallOwnershipType.Loose;
@@ -2084,6 +2145,24 @@ public class GameState
         GameEvent?.Invoke(GameEventType.AwayShoot);
     }
 
+    void StartAwayShootAt(Point from, double normalizedAimX)
+    {
+        _awayShootActive = true;
+        _awayShootTime = 0f;
+        _awayShootStart = from;
+        // Map normalized aim to actual goal Y position (away attacks left goal)
+        double centerY = ViewSize.Height / 2;
+        double aimY = centerY - GoalMouthHalf + normalizedAimX * (GoalMouthHalf * 2);
+        _awayShootEnd = new Point(14, aimY);
+        _awayPassActive = false;
+        BallOwnerType = BallOwnershipType.Loose;
+        BallOwnerAwayIndex = -1;
+        BallOwnerPlayerIndex = -1;
+        ShotsAway++;
+        SetStatusOverride("Borta skjuter!", 60);
+        GameEvent?.Invoke(GameEventType.AwayShoot);
+    }
+
     int TryGetInterception(Actor[] team, int startIndex, Point from, Point to, double chance)
     {
         for (int i = startIndex; i < team.Length; i++)
@@ -2624,6 +2703,40 @@ public class GameState
         Difficulty.Hard => "Svår",
         _ => "Normal"
     };
+
+    // ── Goal-aim view helpers ──
+
+    /// <summary>Returns away goalkeeper's normalized position within the goal mouth (0=top of court/left in front view, 1=bottom/right).</summary>
+    public double GetAwayGkNormalizedX()
+    {
+        if (ViewSize.Height <= 0) return 0.5;
+        double centerY = ViewSize.Height / 2;
+        return Math.Clamp((AwayPlayers[0].Position.Y - (centerY - GoalMouthHalf)) / (GoalMouthHalf * 2), 0, 1);
+    }
+
+    /// <summary>Returns home goalkeeper's normalized position within the goal mouth (0=top/left, 1=bottom/right).</summary>
+    public double GetHomeGkNormalizedX()
+    {
+        if (ViewSize.Height <= 0) return 0.5;
+        double centerY = ViewSize.Height / 2;
+        return Math.Clamp((HomePlayers[0].Position.Y - (centerY - GoalMouthHalf)) / (GoalMouthHalf * 2), 0, 1);
+    }
+
+    /// <summary>Returns the normalized aim position (0-1) for the current home shot in flight.</summary>
+    public double GetShootAimNormalizedX()
+    {
+        if (ViewSize.Height <= 0) return 0.5;
+        double centerY = ViewSize.Height / 2;
+        return Math.Clamp((_shootEnd.Y - (centerY - GoalMouthHalf)) / (GoalMouthHalf * 2), 0, 1);
+    }
+
+    /// <summary>Returns the normalized aim position (0-1) for the current away shot in flight.</summary>
+    public double GetAwayShootAimNormalizedX()
+    {
+        if (ViewSize.Height <= 0) return 0.5;
+        double centerY = ViewSize.Height / 2;
+        return Math.Clamp((_awayShootEnd.Y - (centerY - GoalMouthHalf)) / (GoalMouthHalf * 2), 0, 1);
+    }
 }
 
 public class GameDrawable : IDrawable
@@ -2677,6 +2790,12 @@ public class GameDrawable : IDrawable
             HomeColorLight
         ];
     }
+
+    // Color accessors for goal-aim views
+    public Color GetAwayGkColor() => AwayColorLight;
+    public Color GetAwayColor() => AwayColor;
+    public Color GetHomeGkColor() => HomeColorLight;
+    public Color GetHomeColor() => HomeColor;
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
