@@ -66,6 +66,21 @@
                         Clicked="OnSelectHard" />
             </Grid>
 
+            <!-- Team color selectors -->
+            <Label Text="Lagfärger" FontSize="12" TextColor="#AAFFFFFF"
+                   HorizontalOptions="Center" Margin="0,6,0,2" />
+            <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="8"
+                  HorizontalOptions="Center" MinimumWidthRequest="280">
+                <Label Text="Hem:" FontSize="12" TextColor="#CCFFFFFF"
+                       VerticalOptions="Center" />
+                <HorizontalStackLayout x:Name="HomeColorStack" Grid.Column="1"
+                                       Spacing="6" VerticalOptions="Center" />
+                <Label Grid.Column="2" Text="Borta:" FontSize="12" TextColor="#CCFFFFFF"
+                       VerticalOptions="Center" />
+                <HorizontalStackLayout x:Name="AwayColorStack" Grid.Column="3"
+                                       Spacing="6" VerticalOptions="Center" />
+            </Grid>
+
             <!-- Play buttons -->
             <Button x:Name="SinglePlayerButton"
                     Text="🏠 1 Spelare"
@@ -96,7 +111,7 @@
 
         <!-- Bottom: Version / credits -->
         <Label Grid.Row="2"
-               Text="v1.1.0  •  HK Aranäs  •  Open Source"
+               Text="v1.1.1  •  HK Aranäs  •  Open Source"
                FontSize="10" TextColor="#55FFFFFF"
                HorizontalOptions="Center" VerticalOptions="End"
                Margin="0,0,0,12" />
