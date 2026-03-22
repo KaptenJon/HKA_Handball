@@ -64,7 +64,7 @@ public sealed class SoundManager
     /// <summary>
     /// Play a named sound effect (fire-and-forget).
     /// </summary>
-    public void Play(string name)
+    public void Play(string name, double volume = 1.0)
     {
         if (!_enabled) return;
         if (_players.TryGetValue(name, out var player))
@@ -73,6 +73,8 @@ public sealed class SoundManager
             if (player.IsPlaying)
                 player.Stop();
             player.Seek(0);
+            var clampedVolume = Math.Clamp(volume, 0.0, 1.0);
+            player.Volume = clampedVolume;
             player.Play();
         }
     }
@@ -80,7 +82,7 @@ public sealed class SoundManager
     public void PlayGoal() => Play("goal");
     public void PlayShoot() => Play("shoot");
     public void PlayPass() => Play("pass");
-    public void PlayWhistle() => Play("whistle");
+    public void PlayWhistle() => Play("whistle", volume: 0.35);
     public void PlayCrowd() => Play("crowd");
     public void PlayClick() => Play("click");
 }
