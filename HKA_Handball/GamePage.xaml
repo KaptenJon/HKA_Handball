@@ -36,10 +36,8 @@
                     BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
                     Clicked="OnPassDown" />
-            <Button x:Name="ShootButton" Grid.Row="2" Text="🎯 Skjut" FontSize="15"
-                    BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
-                    HeightRequest="52" MinimumWidthRequest="90"
-                    Clicked="OnShoot" />
+            <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="2"
+                    HeightRequest="65" WidthRequest="100" />
 
             <!-- Defense controls (visible when defending) -->
             <Button x:Name="SwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
@@ -68,10 +66,8 @@
                     BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
                     Clicked="OnAwayPassDown" />
-            <Button x:Name="AwayShootButton" Grid.Row="2" Text="🎯 Skjut" FontSize="15"
-                    BackgroundColor="#7B0000" TextColor="White" CornerRadius="12"
-                    HeightRequest="52" MinimumWidthRequest="90"
-                    Clicked="OnAwayShoot" />
+            <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="2"
+                    HeightRequest="65" WidthRequest="100" />
 
             <!-- Away defense controls -->
             <Button x:Name="AwaySwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
