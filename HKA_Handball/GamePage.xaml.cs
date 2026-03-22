@@ -374,7 +374,7 @@ public class GameState
 
     // 2-minute suspension constants (approximate at ~62.5fps from 0.016f dt)
     const int SuspensionDurationTicks = 7500; // ~2 real minutes at ~62.5fps
-    const double SuspensionChance = 0.15; // 15% chance a collision results in a suspension
+    const double SuspensionChance = 0.0; // suspensions disabled for now
 
     // Shot distance factor constants
     const double MaxShotDistance = 400; // beyond this distance, shots are very unlikely to score
@@ -532,6 +532,10 @@ public class GameState
 
     // Tackle cooldown
     int _tackleCooldownTicks;
+
+    // Free throw cooldown — prevents consecutive free throws from rapid re-collision
+    int _freeThrowCooldownTicks;
+    const int FreeThrowCooldownDuration = 60; // ~1 second at 60fps
 
     // Smoothed press line to prevent abrupt target jumps on possession change
     double _smoothedPressLineX = 350;
@@ -1092,7 +1096,7 @@ public class GameState
 
             ClampActor(owner);
 
-            if (TryHandleFrontalDefense(owner))
+            if (_freeThrowCooldownTicks == 0 && TryHandleFrontalDefense(owner))
             {
                 // event handled in helper
             }
@@ -1534,8 +1538,11 @@ public class GameState
         // Tackle cooldown tick
         if (_tackleCooldownTicks > 0) _tackleCooldownTicks--;
 
+        // Free throw cooldown tick
+        if (_freeThrowCooldownTicks > 0) _freeThrowCooldownTicks--;
+
         // Defensive tackle: home defenders can stop the away ball carrier
-        if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 1 && _tackleCooldownTicks == 0)
+        if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 1 && _tackleCooldownTicks == 0 && _freeThrowCooldownTicks == 0)
             TryHandleDefensiveTackle();
     }
 
@@ -2135,6 +2142,9 @@ public class GameState
             var dist = Distance(owner.Position, defender.Position);
             if (dist < collisionRadius)
             {
+                // Cooldown to prevent consecutive collisions / free throws
+                _freeThrowCooldownTicks = FreeThrowCooldownDuration;
+
                 // Push attacker back out of collision
                 if (dist > 0.001)
                 {
@@ -2245,6 +2255,7 @@ public class GameState
             }
             else if (roll < stealChance + TackleFoulChance)
             {
+                _freeThrowCooldownTicks = FreeThrowCooldownDuration;
                 if (Random.Shared.NextDouble() < SuspensionChance)
                 {
                     HomePlayers[i].SuspensionTicks = SuspensionDurationTicks;
@@ -2321,6 +2332,7 @@ public class GameState
         BallHeight = 0;
         _keeperHoldTicks = 0;
         _tackleCooldownTicks = 0;
+        _freeThrowCooldownTicks = 0;
     }
 
     /// <summary>Sets a player's base position to center court for a throw-off.</summary>
