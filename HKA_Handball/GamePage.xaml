@@ -50,7 +50,7 @@
 
         <!-- PLAYER 2 RIGHT THUMB: Joystick (two-player mode only) -->
         <controls:JoystickView x:Name="Joystick2" WidthRequest="140" HeightRequest="140"
-                               HorizontalOptions="End" VerticalOptions="End" Margin="0,0,12,12"
+                               HorizontalOptions="End" VerticalOptions="End" Margin="0,0,164,12"
                                IsVisible="False" />
 
         <!-- PLAYER 2 LEFT THUMB: Action buttons for away team (two-player mode only) -->
