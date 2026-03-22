@@ -56,8 +56,9 @@ public partial class GamePage : ContentPage
 
         if (mode == GameMode.TwoPlayerLocal)
         {
-            Joystick2.IsVisible = true;
-            Player2Buttons.IsVisible = true;
+            // Leave Player 2 controls hidden here; their visibility is managed
+            // by the game loop (OnTimerTick) to avoid an initial flash where all
+            // away buttons appear visible regardless of ball possession.
         }
 
 #if WINDOWS
