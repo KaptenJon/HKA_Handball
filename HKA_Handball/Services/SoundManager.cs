@@ -73,7 +73,8 @@ public sealed class SoundManager
             if (player.IsPlaying)
                 player.Stop();
             player.Seek(0);
-            player.Volume = volume;
+            var clampedVolume = Math.Clamp(volume, 0.0, 1.0);
+            player.Volume = clampedVolume;
             player.Play();
         }
     }
