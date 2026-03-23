@@ -555,7 +555,7 @@ public class GameState
 
     // Free throw cooldown — prevents consecutive free throws from rapid re-collision
     int _freeThrowCooldownTicks;
-    const int FreeThrowCooldownDuration = 60; // ~1 second at 60fps
+    const int FreeThrowCooldownDuration = 75; // ~1.25 seconds at 60fps
 
     // Smoothed press line to prevent abrupt target jumps on possession change
     double _smoothedPressLineX = 350;
@@ -1494,7 +1494,16 @@ public class GameState
                             a.Position.Y + AwayActiveMoveInput.Y * dt * fastBreakMult);
                         a.Position = nextPos;
                     }
-                    // else: hold position
+                    else
+                    {
+                        // Auto-advance toward arc position when no joystick input (mirrors home team behavior)
+                        var autoArcPos = GetArcPosition(i, arcCenterX, arcRadius);
+                        double lerpRate = _awayFastBreakTicks > 0 ? 0.04 : 0.025;
+                        double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+                        a.Position = new Point(
+                            Lerp(a.Position.X, autoArcPos.X, lerpRate),
+                            Lerp(a.Position.Y, centerY, 0.01));
+                    }
 
                     // In two-player mode, shooting is manual — no auto-shoot at attack stop line
 
@@ -1536,24 +1545,17 @@ public class GameState
                 }
                 else
                 {
-                    // Build-up: push forward first, then hold arc position
+                    // Build-up: lerp toward arc position (matches home team transition speed)
                     var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                    if (a.Position.X > arcPos.X + AwayPushForwardThreshold)
+                    double lerpRate = _awayFastBreakTicks > 0 ? 0.04 : 0.025;
+                    if (a.Position.X <= arcPos.X + AwayPushForwardThreshold)
                     {
-                        // Push forward toward the goal before settling into arc
-                        double pushSpeed = 120 * dt * fastBreakMult;
-                        double pushTargetY = Lerp(a.Position.Y, arcPos.Y, 0.04);
-                        a.Position = new Point(
-                            a.Position.X - pushSpeed,
-                            pushTargetY);
+                        // Near arc: tighter lerp for lateral positioning
+                        lerpRate = 0.06;
                     }
-                    else
-                    {
-                        // Near arc: hold position and move laterally
-                        a.Position = new Point(
-                            Lerp(a.Position.X, arcPos.X, 0.06),
-                            Lerp(a.Position.Y, arcPos.Y, 0.06));
-                    }
+                    a.Position = new Point(
+                        Lerp(a.Position.X, arcPos.X, lerpRate),
+                        Lerp(a.Position.Y, arcPos.Y, 0.04));
 
                     // Pass or breakthrough decision (only when near arc) — difficulty adjusted
                     if (!_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
@@ -1581,7 +1583,7 @@ public class GameState
             }
             else
             {
-                // Support: hold arc formation position, shift toward ball carrier
+                // Support: advance toward arc formation, shift toward ball carrier
                 var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
                 double shiftY = 0;
                 if (BallOwnerAwayIndex >= 0)
@@ -1589,9 +1591,11 @@ public class GameState
                     var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
                     shiftY = (carrierY - arcPos.Y) * 0.15;
                 }
+                // Use faster lerp during fast break to match home team transition speed
+                double supportLerp = _awayFastBreakTicks > 0 ? 0.07 : 0.05;
                 a.Position = new Point(
-                    Lerp(a.Position.X, arcPos.X, 0.05),
-                    Lerp(a.Position.Y, arcPos.Y + shiftY, 0.05));
+                    Lerp(a.Position.X, arcPos.X, supportLerp),
+                    Lerp(a.Position.Y, arcPos.Y + shiftY, supportLerp));
             }
             ClampActor(a);
         }
@@ -2264,6 +2268,7 @@ public class GameState
                     var freeThrowX = Math.Min(owner.Position.X, freeThrowLineX);
                     owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
                     BallPos = owner.Position;
+                    PushDefendersBackFromFreeThrow(owner.Position, AwayPlayers);
                     SetStatusOverride("2 min utvisning + frikast!", 120);
                     GameEvent?.Invoke(GameEventType.Suspension);
                     return true;
@@ -2276,7 +2281,9 @@ public class GameState
                     var freeThrowX = Math.Min(owner.Position.X, freeThrowLineX);
                     owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
                     BallPos = owner.Position;
+                    PushDefendersBackFromFreeThrow(owner.Position, AwayPlayers);
                     SetStatusOverride("Frikast - börja om utanför");
+                    GameEvent?.Invoke(GameEventType.Whistle);
                 }
                 else
                 {
@@ -2350,6 +2357,7 @@ public class GameState
                 carrier.Position = new Point(Math.Max(freeThrowX, carrier.Position.X),
                     Math.Clamp(carrier.Position.Y, 70, ViewSize.Height - 70));
                 BallPos = carrier.Position;
+                PushDefendersBackFromFreeThrow(carrier.Position, HomePlayers);
                 _awayPassCooldownTicks = 50;
                 _awayBreakthrough = false;
                 return true;
@@ -2388,6 +2396,37 @@ public class GameState
     }
 
     // ── Helper methods ──
+
+    /// <summary>
+    /// After a free throw is awarded, pushes all nearby defenders back to at least
+    /// 3 meters (~45px) from the free throw position, per IHF rules.
+    /// </summary>
+    void PushDefendersBackFromFreeThrow(Point freeThrowPos, Actor[] defenders)
+    {
+        const double minDistance = 45; // ~3 meters in game units
+        for (int j = 1; j < defenders.Length; j++)
+        {
+            var dist = Distance(defenders[j].Position, freeThrowPos);
+            if (dist < minDistance)
+            {
+                if (dist < 0.001)
+                {
+                    // Defender exactly on spot: push back toward their own goal
+                    bool isHomeDefender = defenders == HomePlayers;
+                    double pushX = isHomeDefender ? freeThrowPos.X - minDistance : freeThrowPos.X + minDistance;
+                    defenders[j].Position = new Point(pushX, freeThrowPos.Y);
+                }
+                else
+                {
+                    var dx = defenders[j].Position.X - freeThrowPos.X;
+                    var dy = defenders[j].Position.Y - freeThrowPos.Y;
+                    var s = minDistance / dist;
+                    defenders[j].Position = new Point(freeThrowPos.X + dx * s, freeThrowPos.Y + dy * s);
+                }
+                ClampActor(defenders[j]);
+            }
+        }
+    }
 
     void ClearAllActiveActions()
     {
@@ -3023,20 +3062,27 @@ public class GameDrawable : IDrawable
             bool isActive = _state.BallOwnerType == BallOwnershipType.Player && _state.BallOwnerPlayerIndex == i;
             bool isDefender = _state.IsHomeDefending && i == _state.ControlledDefenderIndex;
             var jerseyColor = i == 0 ? HomeColorLight : HomeColor;
-            DrawPlayerFigure(canvas, p.Position, jerseyColor, i, isActive, isDefender, p.IsGoalkeeper, p.IsSuspended);
+            DrawPlayerFigure(canvas, p.Position, jerseyColor, i, isActive, isDefender, p.IsGoalkeeper, false, p.IsSuspended);
         }
 
+        bool awayAttacking = _state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex >= 0;
         for (int i = 0; i < _state.AwayPlayers.Length; i++)
         {
             var a = _state.AwayPlayers[i];
             bool isActive = _state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex == i;
+            // In two-player mode, highlight the controlled attacker even if not the ball carrier
+            if (_state.Mode == GameMode.TwoPlayerLocal && awayAttacking && i == _state.ControlledAwayAttackerIndex)
+                isActive = true;
+            // In two-player mode, highlight the controlled defender when home has the ball
+            bool isDefender = _state.Mode == GameMode.TwoPlayerLocal
+                              && !awayAttacking && i == _state.ControlledAwayDefenderIndex;
             var jerseyColor = i == 0 ? AwayColorLight : AwayColor;
-            DrawPlayerFigure(canvas, a.Position, jerseyColor, i, isActive, false, a.IsGoalkeeper, a.IsSuspended);
+            DrawPlayerFigure(canvas, a.Position, jerseyColor, i, isActive, isDefender, a.IsGoalkeeper, true, a.IsSuspended);
         }
     }
 
     void DrawPlayerFigure(ICanvas canvas, Point pos, Color jerseyColor, int number,
-        bool isActive, bool isDefender, bool isGoalkeeper, bool isSuspended = false)
+        bool isActive, bool isDefender, bool isGoalkeeper, bool isAwayPlayer = false, bool isSuspended = false)
     {
         // Suspended players are drawn faded at bench position
         if (isSuspended)
@@ -3103,15 +3149,16 @@ public class GameDrawable : IDrawable
             canvas.StrokeSize = 2.5f;
             canvas.DrawCircle(x, y + 2, ringR);
 
-            // Direction arrow showing movement input
-            if (Math.Abs(_state.ActiveMoveInput.X) > 5 || Math.Abs(_state.ActiveMoveInput.Y) > 5)
+            // Direction arrow showing movement input (use away input for away players)
+            var moveInput = isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput;
+            if (Math.Abs(moveInput.X) > 5 || Math.Abs(moveInput.Y) > 5)
             {
-                double len = Math.Sqrt(_state.ActiveMoveInput.X * _state.ActiveMoveInput.X + _state.ActiveMoveInput.Y * _state.ActiveMoveInput.Y);
+                double len = Math.Sqrt(moveInput.X * moveInput.X + moveInput.Y * moveInput.Y);
                 if (len > 0)
                 {
                     float arrowLen = 16f;
-                    float ax = x + (float)(_state.ActiveMoveInput.X / len) * arrowLen;
-                    float ay = y + 2 + (float)(_state.ActiveMoveInput.Y / len) * arrowLen;
+                    float ax = x + (float)(moveInput.X / len) * arrowLen;
+                    float ay = y + 2 + (float)(moveInput.Y / len) * arrowLen;
                     canvas.StrokeColor = Colors.Yellow.WithAlpha(0.7f);
                     canvas.StrokeSize = 2;
                     canvas.DrawLine(x, y + 2, ax, ay);
