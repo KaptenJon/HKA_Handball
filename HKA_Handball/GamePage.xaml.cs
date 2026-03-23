@@ -404,6 +404,9 @@ public class GameState
     const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
     const int ThrowOffCarrierIndex = 1; // field player index used for throw-off ball carrier
 
+    // Free throw positioning
+    public const double FreeThrowMinDefenderDistance = 45; // ~3 meters — IHF minimum distance defenders must keep
+
     // Pivot (circle runner) positioning constants
     const double PivotOscillationPeriod = 800.0; // milliseconds per oscillation cycle
     const double PivotDriftAmplitude = 60; // pixels of vertical drift between defenders
@@ -2403,24 +2406,25 @@ public class GameState
     /// </summary>
     void PushDefendersBackFromFreeThrow(Point freeThrowPos, Actor[] defenders)
     {
-        const double minDistance = 45; // ~3 meters in game units
         for (int j = 1; j < defenders.Length; j++)
         {
             var dist = Distance(defenders[j].Position, freeThrowPos);
-            if (dist < minDistance)
+            if (dist < FreeThrowMinDefenderDistance)
             {
                 if (dist < 0.001)
                 {
                     // Defender exactly on spot: push back toward their own goal
                     bool isHomeDefender = defenders == HomePlayers;
-                    double pushX = isHomeDefender ? freeThrowPos.X - minDistance : freeThrowPos.X + minDistance;
+                    double pushX = isHomeDefender
+                        ? freeThrowPos.X - FreeThrowMinDefenderDistance
+                        : freeThrowPos.X + FreeThrowMinDefenderDistance;
                     defenders[j].Position = new Point(pushX, freeThrowPos.Y);
                 }
                 else
                 {
                     var dx = defenders[j].Position.X - freeThrowPos.X;
                     var dy = defenders[j].Position.Y - freeThrowPos.Y;
-                    var s = minDistance / dist;
+                    var s = FreeThrowMinDefenderDistance / dist;
                     defenders[j].Position = new Point(freeThrowPos.X + dx * s, freeThrowPos.Y + dy * s);
                 }
                 ClampActor(defenders[j]);
