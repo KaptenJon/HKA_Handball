@@ -18,8 +18,8 @@
         <ApplicationId>com.kaptenjon.hkahandball</ApplicationId>
 
         <!-- Versions: bump ApplicationVersion (integer) for each Play Store upload -->
-        <ApplicationDisplayVersion>1.4.0</ApplicationDisplayVersion>
-        <ApplicationVersion>9</ApplicationVersion>
+        <ApplicationDisplayVersion>1.5.0</ApplicationDisplayVersion>
+        <ApplicationVersion>10</ApplicationVersion>
 
         <WindowsPackageType>None</WindowsPackageType>
 
