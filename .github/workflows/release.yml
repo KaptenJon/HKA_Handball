@@ -128,7 +128,7 @@ jobs:
         path: native-debug-symbols.zip
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         files: |
           HKA_Handball/bin/Release/net10.0-android/publish/*.aab
