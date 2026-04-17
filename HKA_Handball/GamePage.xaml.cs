@@ -3142,25 +3142,46 @@ public class GameDrawable : IDrawable
         DrawGoal(canvas, new RectF(dirtyRect.Width - 20, centerY - 80, 16, 160), AwayColor);
     }
 
+    // Pre-computed spectator positions for consistent rendering across frames
+    static readonly float[] _spectatorOffsets;
+    static readonly int[] _spectatorColorIndices;
+    const int SpectatorCount = 100; // max spectator slots
+
+    static GameDrawable()
+    {
+        var rand = new Random(42);
+        _spectatorOffsets = new float[SpectatorCount * 4]; // jitterX, topJitter, bottomJitter, spacing per slot
+        _spectatorColorIndices = new int[SpectatorCount * 2]; // top + bottom color indices
+        for (int i = 0; i < SpectatorCount; i++)
+        {
+            _spectatorOffsets[i * 4] = (float)(rand.NextDouble() - 0.5) * 4; // jitterX
+            _spectatorOffsets[i * 4 + 1] = (float)(rand.NextDouble() * 4);    // topY jitter
+            _spectatorOffsets[i * 4 + 2] = (float)(rand.NextDouble() * 4);    // bottomY jitter
+            _spectatorOffsets[i * 4 + 3] = 0; // reserved
+            _spectatorColorIndices[i * 2] = rand.Next(6);     // top color
+            _spectatorColorIndices[i * 2 + 1] = rand.Next(6); // bottom color
+        }
+    }
+
     void DrawSpectators(ICanvas canvas, RectF dirtyRect, float margin)
     {
         // Draw tiny spectator dots along the top and bottom edges to create arena atmosphere
-        var rand = new Random(42); // deterministic seed for consistent spectator positions
         float topY = margin * 0.3f;
         float bottomY = dirtyRect.Height - margin * 0.3f;
         Color[] crowdColors = [Color.FromArgb("#554488AA"), Color.FromArgb("#55AA6644"),
                                Color.FromArgb("#55886644"), Color.FromArgb("#55667788"),
                                Color.FromArgb("#55998866"), Color.FromArgb("#55AA5555")];
 
-        for (float sx = margin + 20; sx < dirtyRect.Width - margin - 20; sx += 12)
+        int slot = 0;
+        for (float sx = margin + 20; sx < dirtyRect.Width - margin - 20 && slot < SpectatorCount; sx += 12, slot++)
         {
-            float jitter = (float)(rand.NextDouble() - 0.5) * 4;
+            float jitter = _spectatorOffsets[slot * 4];
             // Top spectators
-            canvas.FillColor = crowdColors[rand.Next(crowdColors.Length)];
-            canvas.FillCircle(sx + jitter, topY + (float)(rand.NextDouble() * 4), 2.5f);
+            canvas.FillColor = crowdColors[_spectatorColorIndices[slot * 2] % crowdColors.Length];
+            canvas.FillCircle(sx + jitter, topY + _spectatorOffsets[slot * 4 + 1], 2.5f);
             // Bottom spectators
-            canvas.FillColor = crowdColors[rand.Next(crowdColors.Length)];
-            canvas.FillCircle(sx + jitter, bottomY - (float)(rand.NextDouble() * 4), 2.5f);
+            canvas.FillColor = crowdColors[_spectatorColorIndices[slot * 2 + 1] % crowdColors.Length];
+            canvas.FillCircle(sx + jitter, bottomY - _spectatorOffsets[slot * 4 + 2], 2.5f);
         }
     }
 
@@ -3565,6 +3586,7 @@ public class GameDrawable : IDrawable
         // Screen shake effect via subtle offset
         float shakeX = (float)(Math.Sin(Environment.TickCount / 30.0) * 2);
         float shakeY = (float)(Math.Cos(Environment.TickCount / 25.0) * 1.5);
+        canvas.SaveState();
         canvas.Translate(shakeX, shakeY);
 
         // Semi-transparent overlay flash — pulsing gold
@@ -3600,8 +3622,8 @@ public class GameDrawable : IDrawable
             new RectF(0, textY, dirtyRect.Width, 50),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
-        // Reset translation
-        canvas.Translate(-shakeX, -shakeY);
+        // Restore canvas state (undo translation)
+        canvas.RestoreState();
     }
 
     void DrawConfetti(ICanvas canvas)
