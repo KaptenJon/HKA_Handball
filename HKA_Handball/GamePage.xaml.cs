@@ -1080,14 +1080,18 @@ public class GameState
             return;
         }
 
-        // Match intro pause — effects at start of match
+        // Match intro pause — effects at start of match.
+        // Do not return before the one-time ViewSize-based initialization
+        // has had a chance to run later in Update.
         if (_matchIntroActive)
         {
             _matchIntroTicks--;
             UpdateIntroParticles(dt);
             if (_matchIntroTicks <= 0)
                 _matchIntroActive = false;
-            return;
+
+            if (_viewInitialized)
+                return;
         }
 
         // Fast break timers
