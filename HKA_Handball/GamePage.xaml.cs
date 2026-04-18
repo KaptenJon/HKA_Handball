@@ -3038,7 +3038,6 @@ public class GameState
                 IntroParticles[i].Size *= 1.015f; // expands slowly
             }
 
-            IntroParticles[i].Rotation += 0.05f * (float)dt;
             if (IntroParticles[i].LifeTicks > 0) alive++;
         }
         if (alive == 0) IntroParticleCount = 0;
