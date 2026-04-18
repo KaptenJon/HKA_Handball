@@ -3215,9 +3215,11 @@ public class GameDrawable : IDrawable
     static readonly int[] _spectatorColorIndices;
     const int SpectatorCount = 100; // max spectator slots
 
+    const int SpectatorRandomSeed = 42;
+
     static GameDrawable()
     {
-        var rand = new Random(42);
+        var rand = new Random(SpectatorRandomSeed);
         _spectatorOffsets = new float[SpectatorCount * 4]; // jitterX, topJitter, bottomJitter, spacing per slot
         _spectatorColorIndices = new int[SpectatorCount * 2]; // top + bottom color indices
         for (int i = 0; i < SpectatorCount; i++)
@@ -3231,24 +3233,29 @@ public class GameDrawable : IDrawable
         }
     }
 
+    // Spectator crowd colors (static to avoid per-frame allocation)
+    static readonly Color[] CrowdColors =
+    [
+        Color.FromArgb("#554488AA"), Color.FromArgb("#55AA6644"),
+        Color.FromArgb("#55886644"), Color.FromArgb("#55667788"),
+        Color.FromArgb("#55998866"), Color.FromArgb("#55AA5555")
+    ];
+
     void DrawSpectators(ICanvas canvas, RectF dirtyRect, float margin)
     {
         // Draw tiny spectator dots along the top and bottom edges to create arena atmosphere
         float topY = margin * 0.3f;
         float bottomY = dirtyRect.Height - margin * 0.3f;
-        Color[] crowdColors = [Color.FromArgb("#554488AA"), Color.FromArgb("#55AA6644"),
-                               Color.FromArgb("#55886644"), Color.FromArgb("#55667788"),
-                               Color.FromArgb("#55998866"), Color.FromArgb("#55AA5555")];
 
         int slot = 0;
         for (float sx = margin + 20; sx < dirtyRect.Width - margin - 20 && slot < SpectatorCount; sx += 12, slot++)
         {
             float jitter = _spectatorOffsets[slot * 4];
             // Top spectators
-            canvas.FillColor = crowdColors[_spectatorColorIndices[slot * 2] % crowdColors.Length];
+            canvas.FillColor = CrowdColors[_spectatorColorIndices[slot * 2] % CrowdColors.Length];
             canvas.FillCircle(sx + jitter, topY + _spectatorOffsets[slot * 4 + 1], 2.5f);
             // Bottom spectators
-            canvas.FillColor = crowdColors[_spectatorColorIndices[slot * 2 + 1] % crowdColors.Length];
+            canvas.FillColor = CrowdColors[_spectatorColorIndices[slot * 2 + 1] % CrowdColors.Length];
             canvas.FillCircle(sx + jitter, bottomY - _spectatorOffsets[slot * 4 + 2], 2.5f);
         }
     }
