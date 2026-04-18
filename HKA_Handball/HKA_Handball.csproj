@@ -19,7 +19,7 @@
 
         <!-- Versions: bump ApplicationVersion (integer) for each Play Store upload -->
         <ApplicationDisplayVersion>1.8.0</ApplicationDisplayVersion>
-        <ApplicationVersion>13</ApplicationVersion>
+        <ApplicationVersion>14</ApplicationVersion>
 
         <WindowsPackageType>None</WindowsPackageType>
 
