@@ -358,6 +358,16 @@ public struct ConfettiParticle
     public int LifeTicks;
 }
 
+// ── Intro particle for match start effects ──
+public struct IntroParticle
+{
+    public float X, Y, VX, VY;
+    public int ParticleType; // 0 = fire, 1 = spark, 2 = smoke
+    public int LifeTicks;
+    public float Size;
+    public float Rotation;
+}
+
 public class GameState
 {
     public const double GoalCenterInset = 20;
@@ -450,6 +460,14 @@ public class GameState
     public const int MaxConfetti = 60;
     public readonly ConfettiParticle[] Confetti = new ConfettiParticle[MaxConfetti];
     public int ConfettiCount { get; private set; }
+
+    // ── Match intro system ──
+    public const int MaxIntroParticles = 120;
+    public readonly IntroParticle[] IntroParticles = new IntroParticle[MaxIntroParticles];
+    public int IntroParticleCount { get; private set; }
+    bool _matchIntroActive;
+    int _matchIntroTicks;
+    const int MatchIntroDuration = 180; // ~3 seconds of intro effects
 
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
@@ -579,6 +597,9 @@ public class GameState
     public bool IsGoalCelebration => _goalCelebrationTicks > 0;
     public string GoalCelebrationText { get; private set; } = "";
 
+    // Match intro
+    public bool IsMatchIntro => _matchIntroActive;
+
     // Suspension display
     public int HomeSuspensionCount => HomePlayers.Count(p => p.IsSuspended);
     public int AwaySuspensionCount => AwayPlayers.Count(p => p.IsSuspended);
@@ -626,6 +647,9 @@ public class GameState
         InitTeam(AwayPlayers, 700, false);
         BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
         UpdateStatus();
+
+        // Start match with intro effects
+        StartMatchIntro();
     }
 
     void InitTeam(Actor[] team, double startX, bool leftToRight)
@@ -1054,6 +1078,20 @@ public class GameState
             _goalCelebrationTicks--;
             UpdateConfetti(dt);
             return;
+        }
+
+        // Match intro pause — effects at start of match.
+        // Do not return before the one-time ViewSize-based initialization
+        // has had a chance to run later in Update.
+        if (_matchIntroActive)
+        {
+            _matchIntroTicks--;
+            UpdateIntroParticles(dt);
+            if (_matchIntroTicks <= 0)
+                _matchIntroActive = false;
+
+            if (_viewInitialized)
+                return;
         }
 
         // Fast break timers
@@ -2932,6 +2970,83 @@ public class GameState
         if (alive == 0) ConfettiCount = 0;
     }
 
+    // ── Match intro system ──
+
+    void StartMatchIntro()
+    {
+        _matchIntroActive = true;
+        _matchIntroTicks = MatchIntroDuration;
+        SpawnIntroParticles();
+    }
+
+    void SpawnIntroParticles()
+    {
+        float centerX = ViewSize.Width > 0 ? (float)(ViewSize.Width / 2) : 350f;
+        float centerY = ViewSize.Height > 0 ? (float)(ViewSize.Height / 2) : 300f;
+
+        IntroParticleCount = MaxIntroParticles;
+
+        // Spawn particles in waves for dramatic effect
+        for (int i = 0; i < MaxIntroParticles; i++)
+        {
+            int waveDelay = (i / 30) * 20; // stagger waves
+            float angle = (float)(Random.Shared.NextDouble() * Math.PI * 2);
+            float speed = 80f + (float)(Random.Shared.NextDouble() * 200);
+
+            // Mix of particle types: 50% fire, 30% sparks, 20% smoke
+            double particleRoll = Random.Shared.NextDouble();
+            int particleType = particleRoll < 0.5 ? 0 : particleRoll < 0.8 ? 1 : 2;
+
+            IntroParticles[i] = new IntroParticle
+            {
+                X = centerX + (float)(Random.Shared.NextDouble() - 0.5) * 60,
+                Y = centerY + (float)(Random.Shared.NextDouble() - 0.5) * 60,
+                VX = (float)Math.Cos(angle) * speed,
+                VY = (float)Math.Sin(angle) * speed - 40f, // slight upward bias
+                ParticleType = particleType,
+                LifeTicks = 90 + Random.Shared.Next(90) - waveDelay,
+                Size = particleType == 0 ? 8f + (float)Random.Shared.NextDouble() * 8f : // fire
+                       particleType == 1 ? 2f + (float)Random.Shared.NextDouble() * 3f : // spark
+                       12f + (float)Random.Shared.NextDouble() * 12f, // smoke
+                Rotation = (float)(Random.Shared.NextDouble() * Math.PI * 2)
+            };
+        }
+    }
+
+    void UpdateIntroParticles(double dt)
+    {
+        int alive = 0;
+        for (int i = 0; i < IntroParticleCount; i++)
+        {
+            if (IntroParticles[i].LifeTicks <= 0) continue;
+            IntroParticles[i].LifeTicks--;
+            IntroParticles[i].X += IntroParticles[i].VX * (float)dt;
+            IntroParticles[i].Y += IntroParticles[i].VY * (float)dt;
+
+            // Physics varies by particle type
+            if (IntroParticles[i].ParticleType == 0) // Fire — rises and expands
+            {
+                IntroParticles[i].VY -= 50f * (float)dt; // buoyant
+                IntroParticles[i].VX *= 0.96f;
+                IntroParticles[i].Size *= 1.02f; // grows
+            }
+            else if (IntroParticles[i].ParticleType == 1) // Spark — gravity affected
+            {
+                IntroParticles[i].VY += 180f * (float)dt; // gravity
+                IntroParticles[i].VX *= 0.97f;
+            }
+            else // Smoke — slow drift upward
+            {
+                IntroParticles[i].VY -= 20f * (float)dt;
+                IntroParticles[i].VX *= 0.94f;
+                IntroParticles[i].Size *= 1.015f; // expands slowly
+            }
+
+            if (IntroParticles[i].LifeTicks > 0) alive++;
+        }
+        if (alive == 0) IntroParticleCount = 0;
+    }
+
     /// <summary>
     /// Returns the match clock formatted as MM:SS for display.
     /// </summary>
@@ -3072,6 +3187,7 @@ public class GameDrawable : IDrawable
         DrawPassIndicator(canvas);
         DrawPenaltySpotIndicator(canvas, dirtyRect);
         DrawConfetti(canvas);
+        DrawIntroEffects(canvas, dirtyRect);
         DrawScore(canvas, dirtyRect);
         DrawSuspensionIndicator(canvas, dirtyRect);
         DrawPassivePlayIndicator(canvas, dirtyRect);
@@ -3743,6 +3859,95 @@ public class GameDrawable : IDrawable
             float w = 4f + (p.ColorIndex % 3) * 2f;
             float h = 3f + (p.ColorIndex % 2) * 2f;
             canvas.FillRoundedRectangle(p.X - w / 2, p.Y - h / 2, w, h, 1);
+        }
+    }
+
+    void DrawIntroEffects(ICanvas canvas, RectF dirtyRect)
+    {
+        if (!_state.IsMatchIntro) return;
+
+        // Draw intro particles (fire, sparks, smoke)
+        for (int i = 0; i < _state.IntroParticleCount; i++)
+        {
+            ref readonly var p = ref _state.IntroParticles[i];
+            if (p.LifeTicks <= 0) continue;
+
+            float alpha = Math.Clamp(p.LifeTicks / 60f, 0f, 1f);
+            float size = p.Size;
+
+            if (p.ParticleType == 0) // Fire
+            {
+                // Fire gradient: bright yellow/orange core fading to red
+                float coreAlpha = alpha * 0.9f;
+                canvas.FillColor = Color.FromArgb("#FFAA00").WithAlpha(coreAlpha);
+                canvas.FillCircle(p.X, p.Y, size);
+                canvas.FillColor = Color.FromArgb("#FF5500").WithAlpha(alpha * 0.6f);
+                canvas.FillCircle(p.X, p.Y, size * 0.7f);
+                canvas.FillColor = Color.FromArgb("#FFFF00").WithAlpha(alpha * 0.8f);
+                canvas.FillCircle(p.X, p.Y, size * 0.4f);
+            }
+            else if (p.ParticleType == 1) // Spark
+            {
+                // Bright white/yellow sparks
+                canvas.FillColor = Colors.Yellow.WithAlpha(alpha);
+                canvas.FillCircle(p.X, p.Y, size);
+                canvas.FillColor = Colors.White.WithAlpha(alpha * 0.7f);
+                canvas.FillCircle(p.X, p.Y, size * 0.5f);
+            }
+            else // Smoke
+            {
+                // Dark gray smoke that fades
+                float smokeAlpha = alpha * 0.3f;
+                canvas.FillColor = Color.FromArgb("#333333").WithAlpha(smokeAlpha);
+                canvas.FillCircle(p.X, p.Y, size);
+            }
+        }
+
+        // Screen flash effect — bright burst at start
+        int ticksRemaining = _state.IntroParticleCount > 0 ?
+            _state.IntroParticles[0].LifeTicks : 0;
+        if (ticksRemaining > 120)
+        {
+            float flashAlpha = (ticksRemaining - 120) / 60f * 0.15f;
+            canvas.FillColor = Colors.Orange.WithAlpha(flashAlpha);
+            canvas.FillRectangle(dirtyRect);
+        }
+
+        // Radial light burst from center
+        float centerX = dirtyRect.Center.X;
+        float centerY = dirtyRect.Center.Y;
+        float burstProgress = 1f - (ticksRemaining / 180f);
+        float burstRadius = burstProgress * dirtyRect.Width * 0.4f;
+        float burstAlpha = (1f - burstProgress) * 0.12f;
+        canvas.FillColor = Colors.Gold.WithAlpha(burstAlpha);
+        canvas.FillCircle(centerX, centerY, burstRadius);
+
+        // "MATCH START" text with dramatic entrance
+        if (ticksRemaining > 60)
+        {
+            float textAlpha = Math.Min((180 - ticksRemaining) / 30f, (ticksRemaining - 60) / 30f);
+            float textScale = 0.8f + (1f - textAlpha) * 0.4f; // zoom in effect
+
+            // Shadow
+            canvas.FontColor = Color.FromArgb("#88000000");
+            canvas.FontSize = 48 * textScale;
+            canvas.DrawString("MATCH START!",
+                new RectF(3, dirtyRect.Height * 0.38f + 3, dirtyRect.Width, 60),
+                HorizontalAlignment.Center, VerticalAlignment.Center);
+
+            // Glow
+            canvas.FontColor = Colors.Orange.WithAlpha(textAlpha * 0.4f);
+            canvas.FontSize = 50 * textScale;
+            canvas.DrawString("MATCH START!",
+                new RectF(0, dirtyRect.Height * 0.38f, dirtyRect.Width, 60),
+                HorizontalAlignment.Center, VerticalAlignment.Center);
+
+            // Main text
+            canvas.FontColor = Colors.Gold.WithAlpha(textAlpha);
+            canvas.FontSize = 48 * textScale;
+            canvas.DrawString("MATCH START!",
+                new RectF(0, dirtyRect.Height * 0.38f, dirtyRect.Width, 60),
+                HorizontalAlignment.Center, VerticalAlignment.Center);
         }
     }
 
