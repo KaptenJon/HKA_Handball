@@ -2990,7 +2990,8 @@ public class GameState
             float speed = 80f + (float)(Random.Shared.NextDouble() * 200);
 
             // Mix of particle types: 50% fire, 30% sparks, 20% smoke
-            int particleType = Random.Shared.NextDouble() < 0.5 ? 0 : Random.Shared.NextDouble() < 0.75 ? 1 : 2;
+            double particleRoll = Random.Shared.NextDouble();
+            int particleType = particleRoll < 0.5 ? 0 : particleRoll < 0.8 ? 1 : 2;
 
             IntroParticles[i] = new IntroParticle
             {
