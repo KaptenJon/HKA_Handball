@@ -25,14 +25,14 @@ public class MainActivity : MauiAppCompatActivity
             return;
 
         // Allow the app to draw into display cutout areas (notches)
-        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+        if (OperatingSystem.IsAndroidVersionAtLeast(30) && Window.Attributes is not null)
         {
-            Window.Attributes!.LayoutInDisplayCutoutMode =
+            Window.Attributes.LayoutInDisplayCutoutMode =
                 Android.Views.LayoutInDisplayCutoutMode.Always;
         }
-        else if (OperatingSystem.IsAndroidVersionAtLeast(28))
+        else if (OperatingSystem.IsAndroidVersionAtLeast(28) && Window.Attributes is not null)
         {
-            Window.Attributes!.LayoutInDisplayCutoutMode =
+            Window.Attributes.LayoutInDisplayCutoutMode =
                 Android.Views.LayoutInDisplayCutoutMode.ShortEdges;
         }
 
