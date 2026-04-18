@@ -3265,18 +3265,17 @@ public class GameDrawable : IDrawable
         {
             float size = maxSize - i * (maxSize / layers);
             float alpha = 0.04f + i * 0.03f; // inner layers are darker
-            float thickness = maxSize / layers;
             canvas.FillColor = Colors.Black.WithAlpha(alpha);
             // Top edge
-            canvas.FillRectangle(0, 0, dirtyRect.Width, thickness * (layers - i) * 0.15f);
+            canvas.FillRectangle(0, 0, dirtyRect.Width, size * 0.15f);
             // Bottom edge
-            float bottomH = thickness * (layers - i) * 0.12f;
+            float bottomH = size * 0.12f;
             canvas.FillRectangle(0, dirtyRect.Height - bottomH, dirtyRect.Width, bottomH);
             // Left edge
-            float leftW = thickness * (layers - i) * 0.25f;
+            float leftW = size * 0.25f;
             canvas.FillRectangle(0, 0, leftW, dirtyRect.Height);
             // Right edge
-            float rightW = thickness * (layers - i) * 0.25f;
+            float rightW = size * 0.25f;
             canvas.FillRectangle(dirtyRect.Width - rightW, 0, rightW, dirtyRect.Height);
         }
     }
