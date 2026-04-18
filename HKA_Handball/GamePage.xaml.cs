@@ -983,14 +983,13 @@ public class GameState
             {
                 // Prefer wings (index 1 or 5) for fast-break throw if available
                 int targetField = -1;
-                int[] wingIndices = [1, 5];
-                foreach (int w in wingIndices)
+                if (1 < HomePlayers.Length && !HomePlayers[1].IsSuspended)
                 {
-                    if (w < HomePlayers.Length && !HomePlayers[w].IsSuspended)
-                    {
-                        targetField = w;
-                        break;
-                    }
+                    targetField = 1;
+                }
+                else if (5 < HomePlayers.Length && !HomePlayers[5].IsSuspended)
+                {
+                    targetField = 5;
                 }
                 if (targetField < 0)
                     targetField = GetNearestHomeIndex(HomePlayers[0].Position);
@@ -1522,7 +1521,8 @@ public class GameState
                     double carrierX = HomePlayers[trackedIdx].Position.X;
                     double distToCarrier = Distance(a.Position, HomePlayers[trackedIdx].Position);
 
-                    // Nearest two defenders step out to pressure ball carrier
+                    // Defenders within 130px of ball carrier step out to pressure more aggressively.
+                    // Multiple defenders may pressure simultaneously — intensity scales with proximity.
                     if (distToCarrier < 130)
                     {
                         // Aggressive pressure: move toward carrier with intensity based on proximity
@@ -3464,19 +3464,18 @@ public class GameDrawable : IDrawable
                     canvas.StrokeColor = Colors.Yellow.WithAlpha(0.8f);
                     canvas.StrokeSize = 2.5f;
                     canvas.DrawLine(x, y + 2, ax, ay);
-                    // Arrowhead
+                    // Arrowhead drawn with lines (avoids per-frame PathF allocation)
                     float aheadLen = 5f;
                     float perpX = -(float)(moveInput.Y / len) * aheadLen;
                     float perpY = (float)(moveInput.X / len) * aheadLen;
                     float backX = ax - (float)(moveInput.X / len) * aheadLen;
                     float backY = ay - (float)(moveInput.Y / len) * aheadLen;
-                    var arrowPath = new PathF();
-                    arrowPath.MoveTo(ax, ay);
-                    arrowPath.LineTo(backX + perpX, backY + perpY);
-                    arrowPath.LineTo(backX - perpX, backY - perpY);
-                    arrowPath.Close();
                     canvas.FillColor = Colors.Yellow.WithAlpha(0.8f);
-                    canvas.FillPath(arrowPath);
+                    canvas.StrokeColor = Colors.Yellow.WithAlpha(0.8f);
+                    canvas.StrokeSize = 2;
+                    canvas.DrawLine(ax, ay, backX + perpX, backY + perpY);
+                    canvas.DrawLine(ax, ay, backX - perpX, backY - perpY);
+                    canvas.DrawLine(backX + perpX, backY + perpY, backX - perpX, backY - perpY);
                 }
             }
         }
