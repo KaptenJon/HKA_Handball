@@ -354,6 +354,16 @@ public struct ConfettiParticle
     public int LifeTicks;
 }
 
+// ── Explosion particle for match intro ──
+public struct ExplosionParticle
+{
+    public float X, Y, VX, VY;
+    public float Size;
+    public int ColorIndex; // 0=orange-red, 1=yellow-orange, 2=bright yellow, 3=white-hot
+    public int LifeTicks;
+    public int MaxLifeTicks; // for fade calculation
+}
+
 public class GameState
 {
     public const double GoalCenterInset = 20;
@@ -446,6 +456,12 @@ public class GameState
     public const int MaxConfetti = 60;
     public readonly ConfettiParticle[] Confetti = new ConfettiParticle[MaxConfetti];
     public int ConfettiCount { get; private set; }
+
+    // ── Explosion system (match intro) ──
+    public const int MaxExplosions = 80;
+    public readonly ExplosionParticle[] Explosions = new ExplosionParticle[MaxExplosions];
+    public int ExplosionCount { get; private set; }
+    bool _introEffectsTriggered;
 
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
@@ -1055,12 +1071,16 @@ public class GameState
                 if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
                     BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
                 _viewInitialized = true;
+
+                // Spawn intro explosions on first initialization
+                SpawnIntroExplosions();
             }
         }
         UpdatePlayers(dt);
         UpdateBall(dt);
         UpdateBallHeight(dt);
         UpdateConfetti(dt);
+        UpdateExplosions(dt);
         UpdateStatus();
     }
 
@@ -2830,6 +2850,94 @@ public class GameState
         if (alive == 0) ConfettiCount = 0;
     }
 
+    // ── Explosion system for match intro ──
+
+    void SpawnIntroExplosions()
+    {
+        if (_introEffectsTriggered) return;
+        _introEffectsTriggered = true;
+
+        float centerX = ViewSize.Width > 0 ? (float)(ViewSize.Width / 2) : 350f;
+        float centerY = ViewSize.Height > 0 ? (float)(ViewSize.Height / 2) : 300f;
+
+        ExplosionCount = MaxExplosions;
+
+        // Create multiple explosion origins for a spectacular effect
+        Point[] explosionOrigins = [
+            new Point(centerX - 120, centerY - 40),
+            new Point(centerX + 120, centerY + 40),
+            new Point(centerX - 80, centerY + 60),
+            new Point(centerX + 100, centerY - 50),
+            new Point(centerX, centerY)
+        ];
+
+        int particlesPerOrigin = MaxExplosions / explosionOrigins.Length;
+        int particleIndex = 0;
+
+        foreach (var origin in explosionOrigins)
+        {
+            for (int i = 0; i < particlesPerOrigin && particleIndex < MaxExplosions; i++, particleIndex++)
+            {
+                float angle = (float)(Random.Shared.NextDouble() * Math.PI * 2);
+                float speed = 30f + (float)(Random.Shared.NextDouble() * 200);
+                float size = 8f + (float)(Random.Shared.NextDouble() * 20);
+                int maxLife = 40 + Random.Shared.Next(50);
+
+                Explosions[particleIndex] = new ExplosionParticle
+                {
+                    X = (float)origin.X + (float)(Random.Shared.NextDouble() - 0.5) * 20,
+                    Y = (float)origin.Y + (float)(Random.Shared.NextDouble() - 0.5) * 20,
+                    VX = (float)Math.Cos(angle) * speed,
+                    VY = (float)Math.Sin(angle) * speed - 40f, // slight upward bias
+                    Size = size,
+                    ColorIndex = Random.Shared.Next(4), // 4 fire colors
+                    LifeTicks = maxLife,
+                    MaxLifeTicks = maxLife
+                };
+            }
+        }
+
+        // Trigger explosion sound
+        GameEvent?.Invoke(GameEventType.Whistle); // Whistle to signal match start
+        GameEvent?.Invoke(GameEventType.Shoot);   // Shoot sound for explosion effect
+    }
+
+    void UpdateExplosions(double dt)
+    {
+        int alive = 0;
+        for (int i = 0; i < ExplosionCount; i++)
+        {
+            if (Explosions[i].LifeTicks <= 0) continue;
+
+            Explosions[i].LifeTicks--;
+            Explosions[i].X += Explosions[i].VX * (float)dt;
+            Explosions[i].Y += Explosions[i].VY * (float)dt;
+
+            // Upward drift (heat rises)
+            Explosions[i].VY -= 60f * (float)dt;
+
+            // Air resistance
+            Explosions[i].VX *= 0.96f;
+            Explosions[i].VY *= 0.96f;
+
+            // Expand as they age, then shrink
+            float lifeRatio = (float)Explosions[i].LifeTicks / Explosions[i].MaxLifeTicks;
+            if (lifeRatio > 0.7f)
+            {
+                // Early expansion
+                Explosions[i].Size *= 1.05f;
+            }
+            else
+            {
+                // Later shrinkage
+                Explosions[i].Size *= 0.97f;
+            }
+
+            if (Explosions[i].LifeTicks > 0) alive++;
+        }
+        if (alive == 0) ExplosionCount = 0;
+    }
+
     /// <summary>
     /// Returns the match clock formatted as MM:SS for display.
     /// </summary>
@@ -2899,6 +3007,15 @@ public class GameDrawable : IDrawable
     // Confetti colors (updated per-game based on team colors)
     readonly Color[] _confettiColors;
 
+    // Explosion colors (fire effect: red-orange to white-hot)
+    static readonly Color[] ExplosionColors =
+    [
+        Color.FromArgb("#FF4500"), // orange-red
+        Color.FromArgb("#FF8C00"), // dark orange
+        Color.FromArgb("#FFD700"), // gold
+        Color.FromArgb("#FFFACD")  // light yellow (white-hot)
+    ];
+
     public GameDrawable(GameState state, TeamColorOption? homeColors = null, TeamColorOption? awayColors = null)
     {
         _state = state;
@@ -2953,6 +3070,7 @@ public class GameDrawable : IDrawable
             _state.OnViewSizeChanged(new Size(dirtyRect.Width, dirtyRect.Height));
 
         DrawField(canvas, dirtyRect);
+        DrawExplosions(canvas); // Draw explosions early so they appear behind players
         DrawPlayers(canvas);
         DrawShotTrail(canvas);
         DrawBall(canvas);
@@ -3340,6 +3458,39 @@ public class GameDrawable : IDrawable
             float w = 4f + (p.ColorIndex % 3) * 2f;
             float h = 3f + (p.ColorIndex % 2) * 2f;
             canvas.FillRoundedRectangle(p.X - w / 2, p.Y - h / 2, w, h, 1);
+        }
+    }
+
+    void DrawExplosions(ICanvas canvas)
+    {
+        if (_state.ExplosionCount == 0) return;
+
+        for (int i = 0; i < _state.ExplosionCount; i++)
+        {
+            ref readonly var ex = ref _state.Explosions[i];
+            if (ex.LifeTicks <= 0) continue;
+
+            // Calculate alpha based on remaining life
+            float lifeRatio = (float)ex.LifeTicks / ex.MaxLifeTicks;
+            float alpha = Math.Clamp(lifeRatio * 0.9f, 0f, 0.9f);
+
+            // Get base color and make it semi-transparent
+            var baseColor = ExplosionColors[ex.ColorIndex % ExplosionColors.Length];
+            var color = baseColor.WithAlpha(alpha);
+
+            canvas.FillColor = color;
+
+            // Draw as a circle with size
+            float radius = ex.Size / 2f;
+            canvas.FillCircle(ex.X, ex.Y, radius);
+
+            // Add a brighter inner core for more intensity
+            if (lifeRatio > 0.5f)
+            {
+                var coreColor = ExplosionColors[3].WithAlpha(alpha * 0.7f); // white-hot center
+                canvas.FillColor = coreColor;
+                canvas.FillCircle(ex.X, ex.Y, radius * 0.4f);
+            }
         }
     }
 
