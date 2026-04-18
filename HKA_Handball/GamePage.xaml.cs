@@ -951,14 +951,13 @@ public class GameState
             {
                 // Prefer wings (index 1 or 6) for fast-break throw if available
                 int targetField = -1;
-                int[] wingIndices = [1, 6];
-                foreach (int w in wingIndices)
+                if (1 < AwayPlayers.Length && !AwayPlayers[1].IsSuspended)
                 {
-                    if (w < AwayPlayers.Length && !AwayPlayers[w].IsSuspended)
-                    {
-                        targetField = w;
-                        break;
-                    }
+                    targetField = 1;
+                }
+                else if (6 < AwayPlayers.Length && !AwayPlayers[6].IsSuspended)
+                {
+                    targetField = 6;
                 }
                 if (targetField < 0)
                     targetField = GetNearestAwayIndex(AwayPlayers[0].Position);
