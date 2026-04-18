@@ -22,8 +22,8 @@ public partial class GamePage : ContentPage
 #if WINDOWS
     HashSet<VirtualKey> _keysDown = new();
     UIElement? _winKeyTarget;
-#endif
     bool _advanceHeld;
+#endif
 
     /// <summary>Parameterless constructor for XAML previewer. Sound effects are disabled.</summary>
     public GamePage() : this(GameMode.SinglePlayer, Difficulty.Medium, null, null, null) { }
@@ -167,7 +167,11 @@ public partial class GamePage : ContentPage
 
         // Advance boost from joystick (X > 0.5) or keyboard (Space on Windows)
         var jv = Joystick.Value;
-        if (jv.X > 0.5 || _advanceHeld)
+        bool advanceKeyboard = false;
+#if WINDOWS
+        advanceKeyboard = _advanceHeld;
+#endif
+        if (jv.X > 0.5 || advanceKeyboard)
             _state.AdvanceHeld();
         else
             _state.AdvanceReleased();
@@ -551,7 +555,8 @@ public class GameState
     public double BallHeight { get; private set; } // 0 = ground, 1 = max height
 
     // Goalkeeper hold after save
-    int _keeperHoldTicks; // ticks remaining for keeper to hold ball before auto-throw
+    int _keeperHoldTicks; // ticks remaining for away keeper to hold ball before auto-throw
+    int _homeKeeperHoldTicks; // ticks remaining for home keeper to hold ball before auto-throw
 
     // Tackle cooldown
     int _tackleCooldownTicks;
@@ -938,22 +943,67 @@ public class GameState
         if (_awayPassCooldownTicks > 0)
             _awayPassCooldownTicks--;
 
-        // Away goalkeeper hold: auto-throw to nearest field player after hold expires
+        // Away goalkeeper hold: auto-throw to wing for fast break after hold expires
         if (_keeperHoldTicks > 0)
         {
             _keeperHoldTicks--;
             if (_keeperHoldTicks == 0 && BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex == 0)
             {
-                int nearestField = GetNearestAwayIndex(AwayPlayers[0].Position);
-                if (nearestField >= 1)
+                // Prefer wings (index 1 or 6) for fast-break throw if available
+                int targetField = -1;
+                if (1 < AwayPlayers.Length && !AwayPlayers[1].IsSuspended)
                 {
-                    _awayPassTargetIndex = nearestField;
+                    targetField = 1;
+                }
+                else if (6 < AwayPlayers.Length && !AwayPlayers[6].IsSuspended)
+                {
+                    targetField = 6;
+                }
+                if (targetField < 0)
+                    targetField = GetNearestAwayIndex(AwayPlayers[0].Position);
+
+                if (targetField >= 1)
+                {
+                    _awayPassTargetIndex = targetField;
                     _awayPassActive = true;
                     _awayPassCooldownTicks = _diffPassCooldownBase;
                     BallOwnerType = BallOwnershipType.Loose;
                     BallOwnerAwayIndex = -1;
                     BallOwnerPlayerIndex = -1;
                     GameEvent?.Invoke(GameEventType.AwayPass);
+                }
+            }
+        }
+
+        // Home goalkeeper hold: auto-throw to wing for fast break after hold expires
+        if (_homeKeeperHoldTicks > 0)
+        {
+            _homeKeeperHoldTicks--;
+            if (_homeKeeperHoldTicks == 0 && BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex == 0)
+            {
+                // Prefer wings (index 1 or 5) for fast-break throw if available
+                int targetField = -1;
+                if (1 < HomePlayers.Length && !HomePlayers[1].IsSuspended)
+                {
+                    targetField = 1;
+                }
+                else if (5 < HomePlayers.Length && !HomePlayers[5].IsSuspended)
+                {
+                    targetField = 5;
+                }
+                if (targetField < 0)
+                    targetField = GetNearestHomeIndex(HomePlayers[0].Position);
+
+                if (targetField >= 1)
+                {
+                    _passTargetHomeIndex = targetField;
+                    _passActive = true;
+                    _passStartPos = HomePlayers[0].Position;
+                    BallOwnerType = BallOwnershipType.Loose;
+                    BallOwnerPlayerIndex = -1;
+                    BallOwnerAwayIndex = -1;
+                    PassesHome++;
+                    GameEvent?.Invoke(GameEventType.Pass);
                 }
             }
         }
@@ -1260,11 +1310,25 @@ public class GameState
                 }
                 if (!isPivot)
                 {
-                    // Wings stay wide near the sidelines for authentic handball positioning
+                    // Wings stay wide near the sidelines, but cut inside when near the goal area
+                    // This is authentic handball wing play — cutting inside for better shooting angles
+                    double rightGoalAreaEdge = ViewSize.Width - GoalCenterInset - GoalAreaRadius;
+                    bool nearGoalArea = desiredX > rightGoalAreaEdge - 60;
+
                     if (i == 1) // Left wing (VY) — near top sideline
-                        desiredY = Lerp(topY, carrierY, 0.12);
+                    {
+                        if (nearGoalArea)
+                            desiredY = Lerp(topY + 40, carrierY, 0.25); // cut inside toward center
+                        else
+                            desiredY = Lerp(topY, carrierY, 0.12);
+                    }
                     else if (i == 5) // Right wing (HY) — near bottom sideline
-                        desiredY = Lerp(bottomY, carrierY, 0.12);
+                    {
+                        if (nearGoalArea)
+                            desiredY = Lerp(bottomY - 40, carrierY, 0.25); // cut inside toward center
+                        else
+                            desiredY = Lerp(bottomY, carrierY, 0.12);
+                    }
                     else
                         desiredY = slotY;
                 }
@@ -1443,7 +1507,7 @@ public class GameState
                     // Shift arc toward tracked player
                     double arcCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
                     double carrierY = HomePlayers[trackedIdx].Position.Y;
-                    arcCenterY += (carrierY - arcCenterY) * 0.35;
+                    arcCenterY += (carrierY - arcCenterY) * 0.4;
 
                     double angleRange = 120.0;
                     double startAngle = 180.0 - angleRange / 2; // face left (toward home goal)
@@ -1453,21 +1517,26 @@ public class GameState
                     double defX = defArcCenterX + defArcRadius * Math.Cos(angleRad);
                     double defY = arcCenterY + defArcRadius * Math.Sin(angleRad);
 
-                    // Step out to pressure ball carrier when nearby
+                    // Find the nearest defender to the carrier — that one pressures more aggressively
                     double carrierX = HomePlayers[trackedIdx].Position.X;
                     double distToCarrier = Distance(a.Position, HomePlayers[trackedIdx].Position);
-                    if (distToCarrier < 100)
+
+                    // Defenders within 130px of ball carrier step out to pressure more aggressively.
+                    // Multiple defenders may pressure simultaneously — intensity scales with proximity.
+                    if (distToCarrier < 130)
                     {
-                        // Pressure: move toward carrier
-                        defX = Lerp(defX, carrierX + 20, 0.3);
-                        defY = Lerp(defY, carrierY, 0.2);
+                        // Aggressive pressure: move toward carrier with intensity based on proximity
+                        double pressureIntensity = Math.Clamp(1.0 - distToCarrier / 130.0, 0, 1);
+                        defX = Lerp(defX, carrierX + 15, 0.35 * pressureIntensity);
+                        defY = Lerp(defY, carrierY, 0.25 * pressureIntensity);
                     }
 
                     double drift = Math.Sin(Environment.TickCount / 600.0 + i * 1.2) * 10;
 
+                    // Faster lerp rate toward defensive positions for snappier defense
                     a.Position = new Point(
-                        Lerp(a.Position.X, defX, 0.06),
-                        Lerp(a.Position.Y, defY + drift, 0.06));
+                        Lerp(a.Position.X, defX, 0.08),
+                        Lerp(a.Position.Y, defY + drift, 0.08));
                 }
                 else
                 {
@@ -1686,6 +1755,7 @@ public class GameState
                         SavesHome++;
                         BallPos = homeKeeper.Position;
                         GiveBallToPlayer(0, "Målvaktsräddning!");
+                        _homeKeeperHoldTicks = 45; // hold briefly before fast-break throw
                         return;
                     }
                 }
@@ -1757,7 +1827,7 @@ public class GameState
                 if (onTarget)
                 {
                     ScoreHome++;
-                    SetStatusOverride("MÅL! ðŸŽ‰", 120);
+                    SetStatusOverride("MÅL! 🎉", 120);
                     GameEvent?.Invoke(GameEventType.GoalHome);
                     ResetAfterScore(homeScored: true);
                 }
@@ -1861,7 +1931,7 @@ public class GameState
     void ResetAfterScore(bool homeScored)
     {
         _goalCelebrationTicks = 75;
-        GoalCelebrationText = homeScored ? "MÅL! ðŸŽ‰" : "Motståndarenmål!";
+        GoalCelebrationText = homeScored ? "MÅL! 🎉" : "Motståndarens mål!";
 
         // Spawn confetti from the goal area
         SpawnConfetti(homeScored);
@@ -2074,16 +2144,34 @@ public class GameState
         var candidates = Enumerable.Range(1, AwayPlayers.Length - 1).Where(i => i != ownerIndex).ToArray();
         if (candidates.Length == 0) return;
 
-        // Prefer closest teammates with a small chance to pick a further player for variety
+        // Score candidates based on proximity AND defender avoidance
         var ownerPos = AwayPlayers[ownerIndex].Position;
-        var sorted = candidates.OrderBy(i => Distance(ownerPos, AwayPlayers[i].Position)).ToArray();
+        var scored = candidates.Select(i =>
+        {
+            double dist = Distance(ownerPos, AwayPlayers[i].Position);
+            // Check if any home defender is between passer and target
+            double interceptRisk = 0;
+            for (int d = 1; d < HomePlayers.Length; d++)
+            {
+                if (HomePlayers[d].IsSuspended) continue;
+                double distToLine = DistanceToSegment(HomePlayers[d].Position, ownerPos, AwayPlayers[i].Position);
+                if (distToLine < 40) // defender close to passing lane
+                    interceptRisk += (40 - distToLine) / 40.0; // higher risk = closer defender
+            }
+            // Lower score is better: prefer short passes through open lanes
+            double score = dist + interceptRisk * 120;
+            return (index: i, score);
+        }).OrderBy(x => x.score).ToArray();
+
+        // Weighted random: best candidate most likely, but allow variety
         double roll = Random.Shared.NextDouble();
-        if (roll < AwayPassClosestChance || sorted.Length == 1)
-            _awayPassTargetIndex = sorted[0];
-        else if (roll < AwayPassSecondClosestChance && sorted.Length >= 2)
-            _awayPassTargetIndex = sorted[1];
+        if (roll < AwayPassClosestChance || scored.Length == 1)
+            _awayPassTargetIndex = scored[0].index;
+        else if (roll < AwayPassSecondClosestChance && scored.Length >= 2)
+            _awayPassTargetIndex = scored[1].index;
         else
-            _awayPassTargetIndex = sorted[Random.Shared.Next(sorted.Length)];
+            _awayPassTargetIndex = scored[Random.Shared.Next(scored.Length)].index;
+
         _awayPassActive = true;
         _awayPassCooldownTicks = _diffPassCooldownBase + Random.Shared.Next(_diffPassCooldownRange);
         _awayBuildupPasses++;
@@ -2097,6 +2185,7 @@ public class GameState
     /// <summary>
     /// Returns the attacking arc position for field player index i (1-6).
     /// Positions are spread in a semicircle to the left of the home goal.
+    /// Wings cut inside when near the goal area for better shooting angles.
     /// </summary>
     Point GetArcPosition(int playerIndex, double arcCenterX, double arcRadius)
     {
@@ -2110,6 +2199,18 @@ public class GameState
 
         double x = arcCenterX + arcRadius * Math.Cos(angleRad);
         double y = ViewSize.Height / 2 + arcRadius * Math.Sin(angleRad);
+
+        // Wing cut-inside: when near the goal area, wings shift toward center
+        double leftGoalAreaEdge = GoalCenterInset + GoalAreaRadius;
+        bool nearGoalArea = x < leftGoalAreaEdge + 60;
+        if (nearGoalArea)
+        {
+            double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
+            if (playerIndex == 1) // Left wing (VY) — near top
+                y = Lerp(y, centerY - 40, 0.2);
+            else if (playerIndex == 6) // Right wing equivalent
+                y = Lerp(y, centerY + 40, 0.2);
+        }
 
         // Add subtle lateral drift for realism
         double drift = Math.Sin(Environment.TickCount / 800.0 + playerIndex * 1.5) * 18;
@@ -2453,6 +2554,7 @@ public class GameState
         PassivePlayWarningActive = false;
         BallHeight = 0;
         _keeperHoldTicks = 0;
+        _homeKeeperHoldTicks = 0;
         _tackleCooldownTicks = 0;
         _freeThrowCooldownTicks = 0;
     }
@@ -2709,7 +2811,7 @@ public class GameState
                     else
                     {
                         ScoreHome++;
-                        SetStatusOverride("STRAFFMÅL! ðŸŽ‰", 120);
+                        SetStatusOverride("STRAFFMÅL! 🎉", 120);
                         GameEvent?.Invoke(GameEventType.GoalHome);
                         ResetAfterScore(homeScored: true);
                     }
@@ -2896,6 +2998,17 @@ public class GameDrawable : IDrawable
     readonly Color AwayColorLight;
     readonly Color AranasWhite;
 
+    // Frequently used colors extracted to avoid repeated allocation
+    static readonly Color ArenaBackground = Color.FromArgb("#2C1B0E");
+    static readonly Color SkinColor = Color.FromArgb("#FFDAB9");
+    static readonly Color HairColor = Color.FromArgb("#3E2723");
+    static readonly Color BallColor = Color.FromArgb("#FF8C00");
+    static readonly Color ShadowColor = Color.FromArgb("#33000000");
+    static readonly Color ShoesColor = Color.FromArgb("#333333");
+    static readonly Color ShortsColor = Color.FromArgb("#1A237E");
+    static readonly Color ScoreboardBg = Color.FromArgb("#EE1A1208");
+    static readonly Color OverlayBg = Color.FromArgb("#CC2C1B0E");
+
     // Confetti colors (updated per-game based on team colors)
     readonly Color[] _confettiColors;
 
@@ -2971,7 +3084,7 @@ public class GameDrawable : IDrawable
     void DrawField(ICanvas canvas, RectF dirtyRect)
     {
         // Arena background (dark surround like spectator area)
-        canvas.FillColor = Color.FromArgb("#2C1B0E");
+        canvas.FillColor = ArenaBackground;
         canvas.FillRectangle(dirtyRect);
 
         var fieldMargin = (float)GameState.FieldMargin;
@@ -2981,6 +3094,9 @@ public class GameDrawable : IDrawable
         var courtH = dirtyRect.Height - fieldMargin * 2;
         var centerX = dirtyRect.Center.X;
         var centerY = dirtyRect.Center.Y;
+
+        // Spectator dots along the sidelines for atmosphere
+        DrawSpectators(canvas, dirtyRect, fieldMargin);
 
         // Wooden floor base
         canvas.FillColor = Color.FromArgb("#C8956C");
@@ -2995,12 +3111,23 @@ public class GameDrawable : IDrawable
             canvas.DrawLine(courtLeft, py, courtLeft + courtW, py);
         }
 
-        // Slight color variation on alternating planks
-        canvas.FillColor = Color.FromArgb("#08000000");
+        // Slight color variation on alternating planks — alternate between warm/cool tones
         for (float py = courtTop; py < courtTop + courtH; py += plankHeight * 2)
         {
             float h = Math.Min(plankHeight, courtTop + courtH - py);
+            canvas.FillColor = Color.FromArgb("#06000000");
             canvas.FillRectangle(courtLeft, py, courtW, h);
+        }
+        // Secondary grain: faint vertical stagger marks for realism
+        canvas.StrokeColor = Color.FromArgb("#0A000000");
+        canvas.StrokeSize = 0.5f;
+        for (float px = courtLeft + 60; px < courtLeft + courtW; px += 120)
+        {
+            float stagger = ((int)(px / 120) % 2 == 0) ? plankHeight * 0.5f : 0;
+            for (float py = courtTop + stagger; py < courtTop + courtH; py += plankHeight)
+            {
+                canvas.DrawLine(px, py, px, py + plankHeight * 0.3f);
+            }
         }
 
         // Court boundary (thick line)
@@ -3013,8 +3140,20 @@ public class GameDrawable : IDrawable
         canvas.StrokeSize = 2;
         canvas.DrawLine(centerX, courtTop, centerX, courtTop + courtH);
 
+        // Substitution area markers (short lines at center on both sides)
+        canvas.StrokeColor = Color.FromArgb("#88FFFFFF");
+        canvas.StrokeSize = 2;
+        float subLineLen = 8;
+        // Home substitution zone (bottom sideline, left of center)
+        canvas.DrawLine(centerX - 60, courtTop + courtH, centerX - 60, courtTop + courtH - subLineLen);
+        // Shared center mark
+        canvas.DrawLine(centerX, courtTop + courtH, centerX, courtTop + courtH - subLineLen);
+        // Away substitution zone (bottom sideline, right of center)
+        canvas.DrawLine(centerX + 60, courtTop + courtH, centerX + 60, courtTop + courtH - subLineLen);
+
         // Center circle (substitution area)
         canvas.StrokeColor = Color.FromArgb("#99FFFFFF");
+        canvas.StrokeSize = 2;
         canvas.DrawCircle(centerX, centerY, 34);
         canvas.FillColor = Color.FromArgb("#44FFFFFF");
         canvas.FillCircle(centerX, centerY, 4);
@@ -3025,11 +3164,17 @@ public class GameDrawable : IDrawable
         var leftGoalCenterX = (float)GameState.GoalCenterInset;
         var rightGoalCenterX = dirtyRect.Width - (float)GameState.GoalCenterInset;
 
-        // Goal area fill (light tint)
+        // Goal area fill (colored gradient-like tint)
         canvas.FillColor = HomeColor.WithAlpha(0.13f);
         canvas.FillCircle(leftGoalCenterX, centerY, goalAreaRadius);
         canvas.FillColor = AwayColor.WithAlpha(0.13f);
         canvas.FillCircle(rightGoalCenterX, centerY, goalAreaRadius);
+
+        // Inner goal area accent (subtle inner glow)
+        canvas.FillColor = HomeColor.WithAlpha(0.06f);
+        canvas.FillCircle(leftGoalCenterX, centerY, goalAreaRadius * 0.7f);
+        canvas.FillColor = AwayColor.WithAlpha(0.06f);
+        canvas.FillCircle(rightGoalCenterX, centerY, goalAreaRadius * 0.7f);
 
         // Goal area line (solid)
         canvas.StrokeColor = Color.FromArgb("#BBFFFFFF");
@@ -3053,9 +3198,86 @@ public class GameDrawable : IDrawable
         canvas.DrawLine(penaltyLeftX, centerY - 8, penaltyLeftX, centerY + 8);
         canvas.DrawLine(penaltyRightX, centerY - 8, penaltyRightX, centerY + 8);
 
+        // Vignette effect — darker edges for arena atmosphere
+        DrawVignette(canvas, dirtyRect);
+
         // Goals (nets with depth)
         DrawGoal(canvas, new RectF(4, centerY - 80, 16, 160), HomeColor);
         DrawGoal(canvas, new RectF(dirtyRect.Width - 20, centerY - 80, 16, 160), AwayColor);
+    }
+
+    // Pre-computed spectator positions for consistent rendering across frames
+    static readonly float[] _spectatorOffsets;
+    static readonly int[] _spectatorColorIndices;
+    const int SpectatorCount = 100; // max spectator slots
+
+    const int SpectatorRandomSeed = 42;
+
+    static GameDrawable()
+    {
+        var rand = new Random(SpectatorRandomSeed);
+        _spectatorOffsets = new float[SpectatorCount * 4]; // jitterX, topJitter, bottomJitter, spacing per slot
+        _spectatorColorIndices = new int[SpectatorCount * 2]; // top + bottom color indices
+        for (int i = 0; i < SpectatorCount; i++)
+        {
+            _spectatorOffsets[i * 4] = (float)(rand.NextDouble() - 0.5) * 4; // jitterX
+            _spectatorOffsets[i * 4 + 1] = (float)(rand.NextDouble() * 4);    // topY jitter
+            _spectatorOffsets[i * 4 + 2] = (float)(rand.NextDouble() * 4);    // bottomY jitter
+            _spectatorOffsets[i * 4 + 3] = 0; // reserved
+            _spectatorColorIndices[i * 2] = rand.Next(6);     // top color
+            _spectatorColorIndices[i * 2 + 1] = rand.Next(6); // bottom color
+        }
+    }
+
+    // Spectator crowd colors (static to avoid per-frame allocation)
+    static readonly Color[] CrowdColors =
+    [
+        Color.FromArgb("#554488AA"), Color.FromArgb("#55AA6644"),
+        Color.FromArgb("#55886644"), Color.FromArgb("#55667788"),
+        Color.FromArgb("#55998866"), Color.FromArgb("#55AA5555")
+    ];
+
+    void DrawSpectators(ICanvas canvas, RectF dirtyRect, float margin)
+    {
+        // Draw tiny spectator dots along the top and bottom edges to create arena atmosphere
+        float topY = margin * 0.3f;
+        float bottomY = dirtyRect.Height - margin * 0.3f;
+
+        int slot = 0;
+        for (float sx = margin + 20; sx < dirtyRect.Width - margin - 20 && slot < SpectatorCount; sx += 12, slot++)
+        {
+            float jitter = _spectatorOffsets[slot * 4];
+            // Top spectators
+            canvas.FillColor = CrowdColors[_spectatorColorIndices[slot * 2] % CrowdColors.Length];
+            canvas.FillCircle(sx + jitter, topY + _spectatorOffsets[slot * 4 + 1], 2.5f);
+            // Bottom spectators
+            canvas.FillColor = CrowdColors[_spectatorColorIndices[slot * 2 + 1] % CrowdColors.Length];
+            canvas.FillCircle(sx + jitter, bottomY - _spectatorOffsets[slot * 4 + 2], 2.5f);
+        }
+    }
+
+    void DrawVignette(ICanvas canvas, RectF dirtyRect)
+    {
+        // Smooth vignette: concentric edge overlays with decreasing alpha for soft arena lighting
+        float maxSize = 80f;
+        int layers = 4;
+        for (int i = 0; i < layers; i++)
+        {
+            float size = maxSize - i * (maxSize / layers);
+            float alpha = 0.04f + i * 0.03f; // inner layers are darker
+            canvas.FillColor = Colors.Black.WithAlpha(alpha);
+            // Top edge
+            canvas.FillRectangle(0, 0, dirtyRect.Width, size * 0.15f);
+            // Bottom edge
+            float bottomH = size * 0.12f;
+            canvas.FillRectangle(0, dirtyRect.Height - bottomH, dirtyRect.Width, bottomH);
+            // Left edge
+            float leftW = size * 0.25f;
+            canvas.FillRectangle(0, 0, leftW, dirtyRect.Height);
+            // Right edge
+            float rightW = size * 0.25f;
+            canvas.FillRectangle(dirtyRect.Width - rightW, 0, rightW, dirtyRect.Height);
+        }
     }
 
     void DrawPlayers(ICanvas canvas)
@@ -3108,28 +3330,100 @@ public class GameDrawable : IDrawable
         float bodyH = isGoalkeeper ? 18f : 14f;
         float headR = isGoalkeeper ? 7f : 6f;
 
-        // Shadow
-        canvas.FillColor = Color.FromArgb("#33000000");
-        canvas.FillEllipse(x - bodyW / 2 + 1, y - bodyH / 2 + 2, bodyW, bodyH);
+        // Running animation: leg sway based on time + player index for variety
+        float runPhase = (float)(Environment.TickCount / 180.0 + number * 2.1);
+        float legSway = (float)Math.Sin(runPhase) * 3f;
+        bool isMoving = isActive && (Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).X) > 5
+                                  || Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).Y) > 5);
+
+        // Shadow (larger when moving for speed effect)
+        float shadowStretch = isMoving ? 1.15f : 1f;
+        canvas.FillColor = ShadowColor;
+        canvas.FillEllipse(x - bodyW / 2 * shadowStretch + 1, y - bodyH / 2 + 3, bodyW * shadowStretch, bodyH * 0.7f);
+
+        // Legs (shorts + shoes) — drawn behind body
+        float legY = y + bodyH / 2 - 1;
+        float leftLegX = x - 4;
+        float rightLegX = x + 4;
+        float legOffset = isMoving ? legSway : 0;
+
+        // Shorts
+        canvas.FillColor = ShortsColor;
+        canvas.FillRoundedRectangle(x - bodyW / 2 + 1, legY - 2, bodyW - 2, 5, 2);
+
+        // Leg lines
+        canvas.StrokeColor = SkinColor;
+        canvas.StrokeSize = 2.5f;
+        canvas.DrawLine(leftLegX, legY + 2, leftLegX + legOffset, legY + 7);
+        canvas.DrawLine(rightLegX, legY + 2, rightLegX - legOffset, legY + 7);
+
+        // Shoes
+        canvas.FillColor = ShoesColor;
+        canvas.FillRoundedRectangle(leftLegX + legOffset - 2.5f, legY + 6, 5, 3, 1.5f);
+        canvas.FillRoundedRectangle(rightLegX - legOffset - 2.5f, legY + 6, 5, 3, 1.5f);
 
         // Body (jersey torso)
         canvas.FillColor = jerseyColor;
         canvas.FillRoundedRectangle(x - bodyW / 2, y - bodyH / 2 + 2, bodyW, bodyH, 4);
 
-        // Jersey stripe for goalkeepers
+        // Jersey collar (V-neck detail)
+        canvas.StrokeColor = Colors.White.WithAlpha(0.5f);
+        canvas.StrokeSize = 1;
+        canvas.DrawLine(x - 3, y - bodyH / 2 + 2, x, y - bodyH / 2 + 6);
+        canvas.DrawLine(x + 3, y - bodyH / 2 + 2, x, y - bodyH / 2 + 6);
+
+        // Jersey side stripe for goalkeepers
         if (isGoalkeeper)
         {
             canvas.FillColor = Colors.White.WithAlpha(0.3f);
             canvas.FillRoundedRectangle(x - bodyW / 2 + 2, y + 1, bodyW - 4, 5, 2);
         }
 
+        // Arms
+        float armY = y - bodyH / 2 + 6;
+        float armSway = isMoving ? legSway * 0.6f : 0;
+        canvas.StrokeColor = jerseyColor;
+        canvas.StrokeSize = 3;
+        canvas.DrawLine(x - bodyW / 2, armY, x - bodyW / 2 - 6, armY + 4 - armSway);
+        canvas.DrawLine(x + bodyW / 2, armY, x + bodyW / 2 + 6, armY + 4 + armSway);
+        // Hands — goalkeepers have colored gloves, field players have skin-colored hands
+        if (isGoalkeeper)
+        {
+            canvas.FillColor = jerseyColor;
+            canvas.FillCircle(x - bodyW / 2 - 6, armY + 4 - armSway, 2.5f);
+            canvas.FillCircle(x + bodyW / 2 + 6, armY + 4 + armSway, 2.5f);
+            // Glove outline
+            canvas.StrokeColor = Colors.White.WithAlpha(0.5f);
+            canvas.StrokeSize = 0.8f;
+            canvas.DrawCircle(x - bodyW / 2 - 6, armY + 4 - armSway, 2.5f);
+            canvas.DrawCircle(x + bodyW / 2 + 6, armY + 4 + armSway, 2.5f);
+        }
+        else
+        {
+            canvas.FillColor = SkinColor;
+            canvas.FillCircle(x - bodyW / 2 - 6, armY + 4 - armSway, 2);
+            canvas.FillCircle(x + bodyW / 2 + 6, armY + 4 + armSway, 2);
+        }
+
         // Head
-        canvas.FillColor = Color.FromArgb("#FFDAB9");
+        canvas.FillColor = SkinColor;
         canvas.FillCircle(x, y - bodyH / 2 - headR + 4, headR);
 
-        // Hair
-        canvas.FillColor = Color.FromArgb("#3E2723");
-        canvas.FillCircle(x, y - bodyH / 2 - headR + 2, headR * 0.65f);
+        // Hair / Goalkeeper cap
+        if (isGoalkeeper)
+        {
+            // Goalkeeper cap (matching jersey color, covers top of head)
+            canvas.FillColor = jerseyColor;
+            float capY = y - bodyH / 2 - headR + 2;
+            canvas.FillCircle(x, capY, headR * 0.75f);
+            // Cap brim
+            canvas.FillRoundedRectangle(x - headR * 0.8f, capY + headR * 0.15f, headR * 1.6f, 2.5f, 1);
+        }
+        else
+        {
+            canvas.FillColor = HairColor;
+            canvas.FillCircle(x, y - bodyH / 2 - headR + 2, headR * 0.65f);
+        }
 
         // Number on jersey
         canvas.FontColor = Colors.White;
@@ -3141,7 +3435,7 @@ public class GameDrawable : IDrawable
         string posLabel = GetPositionLabel(number, isGoalkeeper);
         canvas.FontColor = Colors.White.WithAlpha(0.6f);
         canvas.FontSize = 6;
-        canvas.DrawString(posLabel, x - 8, y + bodyH / 2 + 3, 16, 8,
+        canvas.DrawString(posLabel, x - 8, y + bodyH / 2 + 10, 16, 8,
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
         // Selection ring — pulsing for active player
@@ -3153,6 +3447,10 @@ public class GameDrawable : IDrawable
             canvas.StrokeSize = 2.5f;
             canvas.DrawCircle(x, y + 2, ringR);
 
+            // Active player glow
+            canvas.FillColor = Colors.White.WithAlpha(0.08f);
+            canvas.FillCircle(x, y + 2, ringR + 3);
+
             // Direction arrow showing movement input (use away input for away players)
             var moveInput = isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput;
             if (Math.Abs(moveInput.X) > 5 || Math.Abs(moveInput.Y) > 5)
@@ -3160,12 +3458,24 @@ public class GameDrawable : IDrawable
                 double len = Math.Sqrt(moveInput.X * moveInput.X + moveInput.Y * moveInput.Y);
                 if (len > 0)
                 {
-                    float arrowLen = 16f;
+                    float arrowLen = 18f;
                     float ax = x + (float)(moveInput.X / len) * arrowLen;
                     float ay = y + 2 + (float)(moveInput.Y / len) * arrowLen;
-                    canvas.StrokeColor = Colors.Yellow.WithAlpha(0.7f);
-                    canvas.StrokeSize = 2;
+                    canvas.StrokeColor = Colors.Yellow.WithAlpha(0.8f);
+                    canvas.StrokeSize = 2.5f;
                     canvas.DrawLine(x, y + 2, ax, ay);
+                    // Arrowhead drawn with lines (avoids per-frame PathF allocation)
+                    float aheadLen = 5f;
+                    float perpX = -(float)(moveInput.Y / len) * aheadLen;
+                    float perpY = (float)(moveInput.X / len) * aheadLen;
+                    float backX = ax - (float)(moveInput.X / len) * aheadLen;
+                    float backY = ay - (float)(moveInput.Y / len) * aheadLen;
+                    canvas.FillColor = Colors.Yellow.WithAlpha(0.8f);
+                    canvas.StrokeColor = Colors.Yellow.WithAlpha(0.8f);
+                    canvas.StrokeSize = 2;
+                    canvas.DrawLine(ax, ay, backX + perpX, backY + perpY);
+                    canvas.DrawLine(ax, ay, backX - perpX, backY - perpY);
+                    canvas.DrawLine(backX + perpX, backY + perpY, backX - perpX, backY - perpY);
                 }
             }
         }
@@ -3175,6 +3485,10 @@ public class GameDrawable : IDrawable
             canvas.StrokeColor = Colors.Gold.WithAlpha(pulse);
             canvas.StrokeSize = 3;
             canvas.DrawCircle(x, y + 2, ringR);
+
+            // Defender shield icon (small triangle)
+            canvas.FillColor = Colors.Gold.WithAlpha(0.4f);
+            canvas.FillCircle(x, y + 2, ringR - 2);
         }
     }
 
@@ -3202,40 +3516,54 @@ public class GameDrawable : IDrawable
         // Ball shadow on ground (offset increases with height)
         float shadowOffset = height * 12;
         float shadowScale = 1f + height * 0.3f;
-        canvas.FillColor = Color.FromArgb("#33000000");
+        canvas.FillColor = ShadowColor;
         canvas.FillEllipse(bx - 5 * shadowScale + 1, by + 2 + shadowOffset, 10 * shadowScale, 6 * shadowScale);
 
         // Lift ball visually based on height
         float visualBy = by - height * 20;
         float ballRadius = 7f + height * 2f; // ball appears slightly larger when high
 
-        // Ball glow during shots
+        // Ball glow during shots (enhanced with multiple layers)
         if (_state.IsShootActive || _state.IsAwayShootActive || _state.IsPenaltyActive)
         {
+            canvas.FillColor = Colors.Orange.WithAlpha(0.12f);
+            canvas.FillCircle(bx, visualBy, ballRadius + 10);
             canvas.FillColor = Colors.Yellow.WithAlpha(0.25f);
-            canvas.FillCircle(bx, visualBy, ballRadius + 7);
+            canvas.FillCircle(bx, visualBy, ballRadius + 6);
         }
 
         // Fast break indicator glow
         if (_state.IsHomeFastBreak || _state.IsAwayFastBreak)
         {
-            canvas.FillColor = Colors.Cyan.WithAlpha(0.15f);
+            float fbPulse = (float)(0.1 + 0.08 * Math.Sin(Environment.TickCount / 100.0));
+            canvas.FillColor = Colors.Cyan.WithAlpha(fbPulse);
             canvas.FillCircle(bx, visualBy, ballRadius + 5);
         }
 
-        // Ball
-        canvas.FillColor = Color.FromArgb("#FF8C00");
+        // Ball body
+        canvas.FillColor = BallColor;
         canvas.FillCircle(bx, visualBy, ballRadius);
 
-        // Ball seam lines for realism
+        // Ball panel pattern (spinning seam lines for realism)
+        float spinAngle = (float)(Environment.TickCount / 80.0);
         canvas.StrokeColor = Color.FromArgb("#44000000");
         canvas.StrokeSize = 0.8f;
-        canvas.DrawLine(bx - ballRadius * 0.5f, visualBy - ballRadius * 0.3f,
-                        bx + ballRadius * 0.5f, visualBy + ballRadius * 0.3f);
+        // Horizontal seam
+        float seamLen = ballRadius * 0.6f;
+        float seamCos = (float)Math.Cos(spinAngle) * seamLen;
+        float seamSin = (float)Math.Sin(spinAngle) * seamLen * 0.4f;
+        canvas.DrawLine(bx - seamCos, visualBy - seamSin, bx + seamCos, visualBy + seamSin);
+        // Perpendicular seam
+        float crossCos = (float)Math.Cos(spinAngle + Math.PI / 2) * seamLen * 0.7f;
+        float crossSin = (float)Math.Sin(spinAngle + Math.PI / 2) * seamLen * 0.3f;
+        canvas.DrawLine(bx - crossCos, visualBy - crossSin, bx + crossCos, visualBy + crossSin);
 
-        // Highlight
-        canvas.FillColor = Colors.White.WithAlpha(0.4f);
-        canvas.FillCircle(bx - 2, visualBy - 2, 3);
+        // Highlight (specular)
+        canvas.FillColor = Colors.White.WithAlpha(0.45f);
+        canvas.FillCircle(bx - 2, visualBy - 2, 2.5f);
+        // Secondary highlight
+        canvas.FillColor = Colors.White.WithAlpha(0.15f);
+        canvas.FillCircle(bx + 1, visualBy + 1, 1.5f);
     }
 
     void DrawPassIndicator(ICanvas canvas)
@@ -3243,43 +3571,75 @@ public class GameDrawable : IDrawable
         if (!_state.IsPassActive || _state.PassTargetTeammateIndex < 0) return;
 
         var target = _state.HomePlayers[_state.PassTargetTeammateIndex].Position;
+        float bx = (float)_state.BallPos.X;
+        float by = (float)_state.BallPos.Y;
+        float tx = (float)target.X;
+        float ty = (float)target.Y;
+
+        // Dashed line from ball to target
         canvas.StrokeColor = Color.FromArgb("#AAFFFFFF");
         canvas.StrokeSize = 2;
         canvas.StrokeDashPattern = [4, 4];
-        canvas.DrawLine((float)_state.BallPos.X, (float)_state.BallPos.Y, (float)target.X, (float)target.Y);
+        canvas.DrawLine(bx, by, tx, ty);
         canvas.StrokeDashPattern = null;
+
+        // Target indicator ring on receiving player
+        float pulse = (float)(0.5 + 0.5 * Math.Sin(Environment.TickCount / 120.0));
+        canvas.StrokeColor = Colors.LimeGreen.WithAlpha(pulse);
+        canvas.StrokeSize = 2;
+        canvas.DrawCircle(tx, ty + 2, 16);
     }
 
     void DrawScore(ICanvas canvas, RectF dirtyRect)
     {
-        // Enhanced score display with team names, clock, half indicator, and difficulty
-        float pillW = 220, pillH = 42;
+        // Enhanced score display with team colors, clock, half indicator, and difficulty
+        float pillW = 240, pillH = 46;
         float pillX = dirtyRect.Center.X - pillW / 2;
-        canvas.FillColor = Color.FromArgb("#DD2C1B0E");
-        canvas.FillRoundedRectangle(pillX, 4, pillW, pillH, 18);
+        float pillY = 3;
+
+        // Background with gradient-like effect
+        canvas.FillColor = ScoreboardBg;
+        canvas.FillRoundedRectangle(pillX, pillY, pillW, pillH, 20);
+
+        // Subtle inner highlight
+        canvas.FillColor = Color.FromArgb("#08FFFFFF");
+        canvas.FillRoundedRectangle(pillX + 1, pillY + 1, pillW - 2, pillH * 0.5f, 20);
 
         // Subtle border
-        canvas.StrokeColor = Color.FromArgb("#44FFFFFF");
+        canvas.StrokeColor = Color.FromArgb("#33FFFFFF");
         canvas.StrokeSize = 1;
-        canvas.DrawRoundedRectangle(pillX, 4, pillW, pillH, 18);
+        canvas.DrawRoundedRectangle(pillX, pillY, pillW, pillH, 20);
 
-        // Score with team names
+        // Team color dots
+        float dotY = pillY + 12;
+        canvas.FillColor = HomeColor;
+        canvas.FillCircle(pillX + 18, dotY, 5);
+        canvas.StrokeColor = Colors.White.WithAlpha(0.5f);
+        canvas.StrokeSize = 1;
+        canvas.DrawCircle(pillX + 18, dotY, 5);
+
+        canvas.FillColor = AwayColor;
+        canvas.FillCircle(pillX + pillW - 18, dotY, 5);
+        canvas.StrokeColor = Colors.White.WithAlpha(0.5f);
+        canvas.DrawCircle(pillX + pillW - 18, dotY, 5);
+
+        // Team labels next to dots
         canvas.FontColor = HomeColor;
-        canvas.FontSize = 11;
+        canvas.FontSize = 9;
         canvas.DrawString("HEM",
-            new RectF(pillX + 8, 8, 40, 14),
+            new RectF(pillX + 26, pillY + 5, 35, 14),
             G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
 
         canvas.FontColor = AwayColor;
         canvas.DrawString("BOR",
-            new RectF(pillX + pillW - 48, 8, 40, 14),
+            new RectF(pillX + pillW - 62, pillY + 5, 35, 14),
             G.HorizontalAlignment.Right, G.VerticalAlignment.Center);
 
         // Score numbers (larger and bolder)
         canvas.FontColor = AranasWhite;
         canvas.FontSize = 22;
         canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
-            new RectF(pillX, 6, pillW, 22),
+            new RectF(pillX, pillY + 3, pillW, 24),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
         // Match clock and difficulty below score
@@ -3287,8 +3647,26 @@ public class GameDrawable : IDrawable
         canvas.FontColor = Color.FromArgb("#AAFFFFFF");
         string clockText = $"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}  •  {_state.GetDifficultyLabel()}";
         canvas.DrawString(clockText,
-            new RectF(pillX, 28, pillW, 14),
+            new RectF(pillX, pillY + 28, pillW, 14),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Fast break lightning bolt indicator
+        if (_state.IsHomeFastBreak)
+        {
+            canvas.FontColor = Colors.Cyan;
+            canvas.FontSize = 12;
+            canvas.DrawString("⚡",
+                new RectF(pillX + 26, pillY + 14, 16, 14),
+                G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
+        }
+        if (_state.IsAwayFastBreak)
+        {
+            canvas.FontColor = Colors.Cyan;
+            canvas.FontSize = 12;
+            canvas.DrawString("⚡",
+                new RectF(pillX + pillW - 42, pillY + 14, 16, 14),
+                G.HorizontalAlignment.Right, G.VerticalAlignment.Center);
+        }
     }
 
     void DrawPassivePlayIndicator(ICanvas canvas, RectF dirtyRect)
@@ -3306,22 +3684,47 @@ public class GameDrawable : IDrawable
     {
         if (!_state.IsGoalCelebration) return;
 
-        // Semi-transparent overlay flash — pulsing
-        float flashAlpha = (float)(0.1 + 0.08 * Math.Sin(Environment.TickCount / 100.0));
+        // Screen shake effect via subtle offset
+        float shakeX = (float)(Math.Sin(Environment.TickCount / 30.0) * 2);
+        float shakeY = (float)(Math.Cos(Environment.TickCount / 25.0) * 1.5);
+        canvas.SaveState();
+        canvas.Translate(shakeX, shakeY);
+
+        // Semi-transparent overlay flash — pulsing gold
+        float flashAlpha = (float)(0.08 + 0.06 * Math.Sin(Environment.TickCount / 80.0));
         canvas.FillColor = Colors.Gold.WithAlpha(flashAlpha);
         canvas.FillRectangle(dirtyRect);
 
-        // Large celebration text with shadow
+        // Radial light burst from center
+        float burstAlpha = (float)(0.05 + 0.04 * Math.Sin(Environment.TickCount / 60.0));
+        canvas.FillColor = Colors.White.WithAlpha(burstAlpha);
+        canvas.FillCircle(dirtyRect.Center.X, dirtyRect.Center.Y, dirtyRect.Width * 0.3f);
+
+        // Large celebration text with shadow and glow
+        float textY = dirtyRect.Height * 0.35f;
+        // Glow behind text
+        canvas.FontColor = Colors.Gold.WithAlpha(0.3f);
+        canvas.FontSize = 42;
+        canvas.DrawString(_state.GoalCelebrationText,
+            new RectF(0, textY - 1, dirtyRect.Width, 54),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Shadow
         canvas.FontColor = Color.FromArgb("#88000000");
         canvas.FontSize = 38;
         canvas.DrawString(_state.GoalCelebrationText,
-            new RectF(2, dirtyRect.Height * 0.35f + 2, dirtyRect.Width, 50),
+            new RectF(2, textY + 2, dirtyRect.Width, 50),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Main text
         canvas.FontColor = Colors.Gold;
         canvas.FontSize = 38;
         canvas.DrawString(_state.GoalCelebrationText,
-            new RectF(0, dirtyRect.Height * 0.35f, dirtyRect.Width, 50),
+            new RectF(0, textY, dirtyRect.Width, 50),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Restore canvas state (undo translation)
+        canvas.RestoreState();
     }
 
     void DrawConfetti(ICanvas canvas)
@@ -3348,25 +3751,60 @@ public class GameDrawable : IDrawable
         if (_state.IsHalfTime)
         {
             // Half-time overlay
-            canvas.FillColor = Color.FromArgb("#CC2C1B0E");
+            canvas.FillColor = OverlayBg;
             canvas.FillRectangle(dirtyRect);
+
+            // Decorative line
+            canvas.StrokeColor = Colors.Gold.WithAlpha(0.3f);
+            canvas.StrokeSize = 1;
+            canvas.DrawLine(dirtyRect.Width * 0.2f, dirtyRect.Height * 0.22f, dirtyRect.Width * 0.8f, dirtyRect.Height * 0.22f);
 
             canvas.FontColor = Colors.Gold;
             canvas.FontSize = 32;
             canvas.DrawString("HALVTID",
-                new RectF(0, dirtyRect.Height * 0.3f, dirtyRect.Width, 40),
+                new RectF(0, dirtyRect.Height * 0.28f, dirtyRect.Width, 40),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // Team color dots + labels
+            float htScoreY = dirtyRect.Height * 0.42f;
+            canvas.FillColor = HomeColor;
+            canvas.FillCircle(dirtyRect.Width * 0.3f, htScoreY, 6);
+            canvas.FillColor = AwayColor;
+            canvas.FillCircle(dirtyRect.Width * 0.7f, htScoreY, 6);
+
+            canvas.FontColor = HomeColor;
+            canvas.FontSize = 12;
+            canvas.DrawString("HEM",
+                new RectF(dirtyRect.Width * 0.22f, htScoreY - 18, dirtyRect.Width * 0.16f, 14),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+            canvas.FontColor = AwayColor;
+            canvas.DrawString("BOR",
+                new RectF(dirtyRect.Width * 0.62f, htScoreY - 18, dirtyRect.Width * 0.16f, 14),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
             canvas.FontColor = AranasWhite;
-            canvas.FontSize = 24;
+            canvas.FontSize = 36;
             canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
-                new RectF(0, dirtyRect.Height * 0.45f, dirtyRect.Width, 36),
+                new RectF(0, htScoreY + 8, dirtyRect.Width, 44),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // Quick half-time stats
+            float htStatsY = dirtyRect.Height * 0.62f;
+            canvas.FontColor = Color.FromArgb("#88FFFFFF");
+            canvas.FontSize = 10;
+            canvas.DrawString($"Skott: {_state.ShotsHome} - {_state.ShotsAway}  •  Räddningar: {_state.SavesAway} - {_state.SavesHome}",
+                new RectF(0, htStatsY, dirtyRect.Width, 16),
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+            // Decorative line
+            canvas.StrokeColor = Colors.Gold.WithAlpha(0.3f);
+            canvas.StrokeSize = 1;
+            canvas.DrawLine(dirtyRect.Width * 0.2f, dirtyRect.Height * 0.72f, dirtyRect.Width * 0.8f, dirtyRect.Height * 0.72f);
 
             canvas.FontSize = 14;
             canvas.FontColor = Color.FromArgb("#AAFFFFFF");
             canvas.DrawString("Andra halvlek börjar snart...",
-                new RectF(0, dirtyRect.Height * 0.55f, dirtyRect.Width, 24),
+                new RectF(0, dirtyRect.Height * 0.78f, dirtyRect.Width, 24),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
         }
 
@@ -3427,11 +3865,11 @@ public class GameDrawable : IDrawable
 
             // Stats rows
             DrawStatRow(canvas, leftColX, centerColX, rightColX, colW, labelW, ref statsY, statsH,
-                "Skott", _state.ShotsHome, _state.ShotsAway);
+                "Skott", _state.ShotsHome, _state.ShotsAway, HomeColor, AwayColor);
             DrawStatRow(canvas, leftColX, centerColX, rightColX, colW, labelW, ref statsY, statsH,
-                "Räddningar", _state.SavesAway, _state.SavesHome); // opponent GK saves
+                "Räddningar", _state.SavesAway, _state.SavesHome, HomeColor, AwayColor); // opponent GK saves
             DrawStatRow(canvas, leftColX, centerColX, rightColX, colW, labelW, ref statsY, statsH,
-                "Passningar", _state.PassesHome, _state.PassesAway);
+                "Passningar", _state.PassesHome, _state.PassesAway, HomeColor, AwayColor);
 
             // Restart hint
             canvas.FontSize = 14;
@@ -3447,13 +3885,24 @@ public class GameDrawable : IDrawable
         if (!_state.IsPaused) return;
 
         // Semi-transparent overlay
-        canvas.FillColor = Color.FromArgb("#CC2C1B0E");
+        canvas.FillColor = OverlayBg;
         canvas.FillRectangle(dirtyRect);
 
-        // Pause icon (two vertical bars)
+        // Decorative top/bottom lines
+        canvas.StrokeColor = Colors.Gold.WithAlpha(0.3f);
+        canvas.StrokeSize = 1;
+        canvas.DrawLine(dirtyRect.Width * 0.2f, dirtyRect.Height * 0.25f, dirtyRect.Width * 0.8f, dirtyRect.Height * 0.25f);
+        canvas.DrawLine(dirtyRect.Width * 0.2f, dirtyRect.Height * 0.75f, dirtyRect.Width * 0.8f, dirtyRect.Height * 0.75f);
+
+        // Pause icon (two vertical bars) with shadow
         float cx = dirtyRect.Width / 2;
         float cy = dirtyRect.Height * 0.32f;
         float barW = 14, barH = 50, gap = 10;
+
+        canvas.FillColor = Color.FromArgb("#44000000");
+        canvas.FillRoundedRectangle(cx - gap - barW + 2, cy - barH / 2 + 2, barW, barH, 4);
+        canvas.FillRoundedRectangle(cx + gap + 2, cy - barH / 2 + 2, barW, barH, 4);
+
         canvas.FillColor = Colors.White;
         canvas.FillRoundedRectangle(cx - gap - barW, cy - barH / 2, barW, barH, 4);
         canvas.FillRoundedRectangle(cx + gap, cy - barH / 2, barW, barH, 4);
@@ -3465,23 +3914,41 @@ public class GameDrawable : IDrawable
             new RectF(0, dirtyRect.Height * 0.48f, dirtyRect.Width, 40),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
-        // Current score
+        // Current score with team colors
+        float scoreY = dirtyRect.Height * 0.58f;
+        canvas.FontColor = HomeColor;
+        canvas.FontSize = 14;
+        canvas.DrawString("HEM",
+            new RectF(dirtyRect.Width * 0.25f, scoreY - 16, dirtyRect.Width * 0.2f, 18),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+        canvas.FontColor = AwayColor;
+        canvas.DrawString("BOR",
+            new RectF(dirtyRect.Width * 0.55f, scoreY - 16, dirtyRect.Width * 0.2f, 18),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
         canvas.FontColor = AranasWhite;
-        canvas.FontSize = 24;
+        canvas.FontSize = 28;
         canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
-            new RectF(0, dirtyRect.Height * 0.58f, dirtyRect.Width, 36),
+            new RectF(0, scoreY, dirtyRect.Width, 36),
+            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        // Match clock
+        canvas.FontSize = 12;
+        canvas.FontColor = Color.FromArgb("#88FFFFFF");
+        canvas.DrawString($"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}",
+            new RectF(0, scoreY + 32, dirtyRect.Width, 18),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
         // Resume hint
         canvas.FontSize = 14;
         canvas.FontColor = Color.FromArgb("#AAFFFFFF");
         canvas.DrawString("Tryck för att fortsätta",
-            new RectF(0, dirtyRect.Height * 0.70f, dirtyRect.Width, 24),
+            new RectF(0, dirtyRect.Height * 0.78f, dirtyRect.Width, 24),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
     }
 
     static void DrawStatRow(ICanvas canvas, float leftX, float centerX, float rightX, float colW, float labelW,
-        ref float y, float h, string label, int homeVal, int awayVal)
+        ref float y, float h, string label, int homeVal, int awayVal, Color homeColor, Color awayColor)
     {
         canvas.FontSize = 12;
 
@@ -3503,45 +3970,71 @@ public class GameDrawable : IDrawable
             new RectF(rightX, y, colW, h),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
-        y += h;
+        // Stat comparison bar
+        float barY = y + h - 4;
+        float barMaxW = colW * 0.9f;
+        int total = homeVal + awayVal;
+        if (total > 0)
+        {
+            float homePct = (float)homeVal / total;
+            float awayPct = (float)awayVal / total;
+            canvas.FillColor = homeColor.WithAlpha(0.5f);
+            canvas.FillRoundedRectangle(leftX + (colW - barMaxW) / 2, barY, barMaxW * homePct, 3, 1.5f);
+            canvas.FillColor = awayColor.WithAlpha(0.5f);
+            canvas.FillRoundedRectangle(rightX + (colW - barMaxW) / 2, barY, barMaxW * awayPct, 3, 1.5f);
+        }
+
+        y += h + 2;
     }
 
     void DrawGoal(ICanvas canvas, RectF rect, Color color)
     {
-        // Goal depth/net background
-        canvas.FillColor = Color.FromArgb("#55000000");
-        canvas.FillRoundedRectangle(rect.X - 2, rect.Y + 2, rect.Width + 4, rect.Height - 4, 3);
+        // Goal depth/net background — deeper shadow for 3D effect
+        canvas.FillColor = Color.FromArgb("#66000000");
+        canvas.FillRoundedRectangle(rect.X - 3, rect.Y + 3, rect.Width + 6, rect.Height - 6, 3);
 
         canvas.FillColor = Color.FromArgb("#44000000");
         canvas.FillRoundedRectangle(rect, 2);
 
-        // Net pattern (horizontal + vertical lines for mesh effect)
-        canvas.StrokeColor = Colors.White.WithAlpha(0.18f);
-        canvas.StrokeSize = 1;
-        for (float ny = rect.Top + 10; ny < rect.Bottom; ny += 10)
+        // Net pattern (horizontal + vertical lines for mesh effect) — finer mesh
+        canvas.StrokeColor = Colors.White.WithAlpha(0.2f);
+        canvas.StrokeSize = 0.8f;
+        for (float ny = rect.Top + 8; ny < rect.Bottom; ny += 8)
         {
             canvas.DrawLine(rect.Left + 1, ny, rect.Right - 1, ny);
         }
-        for (float nx = rect.Left + 4; nx < rect.Right; nx += 6)
+        for (float nx = rect.Left + 4; nx < rect.Right; nx += 5)
         {
             canvas.DrawLine(nx, rect.Top + 1, nx, rect.Bottom - 1);
+        }
+
+        // Diagonal net lines for more realistic mesh
+        canvas.StrokeColor = Colors.White.WithAlpha(0.08f);
+        canvas.StrokeSize = 0.5f;
+        for (float nd = rect.Top - rect.Width; nd < rect.Bottom; nd += 12)
+        {
+            canvas.DrawLine(rect.Left + 1, nd, rect.Right - 1, nd + rect.Width);
         }
 
         // Goal celebration flash (net shakes on goal)
         if (_state.IsGoalCelebration)
         {
-            float flash = (float)(0.25 + 0.25 * Math.Sin(Environment.TickCount / 80.0));
+            float flash = (float)(0.3 + 0.3 * Math.Sin(Environment.TickCount / 60.0));
             canvas.FillColor = Colors.Gold.WithAlpha(flash);
             canvas.FillRoundedRectangle(rect, 2);
         }
 
-        // Goal frame (posts + crossbar)
+        // Goal frame (posts + crossbar) — thicker with shadow
+        canvas.StrokeColor = Color.FromArgb("#44000000");
+        canvas.StrokeSize = 6;
+        canvas.DrawRoundedRectangle(rect.X + 1, rect.Y + 1, rect.Width, rect.Height, 2);
+
         canvas.StrokeColor = color;
         canvas.StrokeSize = 4;
         canvas.DrawRoundedRectangle(rect, 2);
 
-        // Inner frame highlight
-        canvas.StrokeColor = Colors.White.WithAlpha(0.15f);
+        // Inner frame highlight (sheen)
+        canvas.StrokeColor = Colors.White.WithAlpha(0.2f);
         canvas.StrokeSize = 1;
         canvas.DrawRoundedRectangle(rect.X + 2, rect.Y + 2, rect.Width - 4, rect.Height - 4, 1);
     }
@@ -3574,15 +4067,21 @@ public class GameDrawable : IDrawable
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
         if (dist < 1) return;
 
-        // Draw 5 trailing dots behind the ball
-        for (int t = 1; t <= 5; t++)
+        // Motion blur line
+        canvas.StrokeColor = BallColor.WithAlpha(0.15f);
+        canvas.StrokeSize = 8;
+        float blurLen = Math.Min(40, dist * 0.5f);
+        canvas.DrawLine(bx, by, bx - (dx / dist) * blurLen, by - (dy / dist) * blurLen);
+
+        // Draw 6 trailing dots behind the ball with decreasing size
+        for (int t = 1; t <= 6; t++)
         {
-            float trailX = bx - (dx / dist) * t * 7;
-            float trailY = by - (dy / dist) * t * 7;
-            float alpha = 0.35f - t * 0.06f;
-            float radius = 4.5f - t * 0.7f;
+            float trailX = bx - (dx / dist) * t * 6;
+            float trailY = by - (dy / dist) * t * 6;
+            float alpha = 0.4f - t * 0.06f;
+            float radius = 5f - t * 0.7f;
             if (alpha <= 0 || radius <= 0) break;
-            canvas.FillColor = Color.FromArgb("#FF8C00").WithAlpha(alpha);
+            canvas.FillColor = BallColor.WithAlpha(alpha);
             canvas.FillCircle(trailX, trailY, radius);
         }
     }

@@ -30,6 +30,8 @@ public partial class MainMenuPage : ContentPage
         InitializeComponent();
         _soundManager = soundManager;
 
+        VersionLabel.Text = $"v{AppInfo.Current.VersionString}  •  HK Aranäs  •  Open Source";
+
         Loaded += OnPageLoaded;
         UpdateDifficultyButtons();
         BuildColorSwatches();
