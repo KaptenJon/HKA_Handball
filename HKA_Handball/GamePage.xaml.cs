@@ -3007,9 +3007,6 @@ public class GameDrawable : IDrawable
     static readonly Color ShadowColor = Color.FromArgb("#33000000");
     static readonly Color ShoesColor = Color.FromArgb("#333333");
     static readonly Color ShortsColor = Color.FromArgb("#1A237E");
-    static readonly Color LightOverlay = Color.FromArgb("#AAFFFFFF");
-    static readonly Color DimOverlay = Color.FromArgb("#88FFFFFF");
-    static readonly Color FaintOverlay = Color.FromArgb("#55FFFFFF");
     static readonly Color ScoreboardBg = Color.FromArgb("#EE1A1208");
     static readonly Color OverlayBg = Color.FromArgb("#CC2C1B0E");
 
