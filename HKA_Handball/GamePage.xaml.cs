@@ -368,6 +368,14 @@ public struct IntroParticle
     public float Rotation;
 }
 
+// ── Motion trail particle for ball and player movement ──
+public struct MotionTrail
+{
+    public float X, Y;
+    public int LifeTicks;
+    public Color TrailColor;
+}
+
 public class GameState
 {
     public const double GoalCenterInset = 20;
@@ -417,6 +425,9 @@ public class GameState
     // Away AI attack constants
     const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
     const int ThrowOffCarrierIndex = 1; // field player index used for throw-off ball carrier
+    const double AwayAIPositionVariation = 0.20; // AI positioning randomness for variety
+    const double AwayAIPressureDistance = 140; // distance where AI recognizes pressure and acts
+    const double AwayAIFastPassChance = 0.25; // chance AI does quick pass under pressure
 
     // Free throw positioning
     public const double FreeThrowMinDefenderDistance = 45; // ~3 meters — IHF minimum distance defenders must keep
@@ -468,6 +479,12 @@ public class GameState
     bool _matchIntroActive;
     int _matchIntroTicks;
     const int MatchIntroDuration = 180; // ~3 seconds of intro effects
+
+    // ── Motion trail system ──
+    public const int MaxMotionTrails = 40;
+    public readonly MotionTrail[] MotionTrails = new MotionTrail[MaxMotionTrails];
+    public int MotionTrailCount { get; private set; }
+    int _trailSpawnCooldown;
 
     public Size ViewSize { get; set; }
     public readonly Actor[] HomePlayers = new Actor[7];
@@ -1149,6 +1166,7 @@ public class GameState
         UpdateBall(dt);
         UpdateBallHeight(dt);
         UpdateConfetti(dt);
+        UpdateMotionTrails(dt);
         UpdateStatus();
     }
 
@@ -2286,9 +2304,31 @@ public class GameState
         _awayShootActive = true;
         _awayShootTime = 0f;
         _awayShootStart = from;
-        // Wider shot spread matching home team (±75px)
-        var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 150;
-        _awayShootEnd = new Point(14, ViewSize.Height / 2 + shootOffsetY);
+
+        // Enhanced AI shooting: aim away from goalkeeper position (difficulty-adjusted)
+        double centerY = ViewSize.Height / 2;
+        double gkY = HomePlayers[0].Position.Y;
+
+        // Determine which side has more space (opposite from GK)
+        double gkOffsetFromCenter = gkY - centerY;
+
+        // AI aims toward the larger opening, with some randomness
+        double targetOffsetSign = gkOffsetFromCenter > 0 ? -1 : 1; // aim opposite side
+        double aimVariance = (Random.Shared.NextDouble() - 0.3) * 80; // bias toward open side
+
+        // Difficulty affects accuracy: harder = more precise placement
+        double accuracyFactor = Difficulty switch
+        {
+            Difficulty.Hard => 0.9,  // very accurate
+            Difficulty.Medium => 0.7,
+            Difficulty.Easy => 0.5,  // less accurate
+            _ => 0.7
+        };
+
+        double shootOffsetY = targetOffsetSign * 55 * accuracyFactor + aimVariance * (1.0 - accuracyFactor);
+        shootOffsetY = Math.Clamp(shootOffsetY, -75, 75); // keep within goal bounds
+
+        _awayShootEnd = new Point(14, centerY + shootOffsetY);
         _awayPassActive = false;
         BallOwnerType = BallOwnershipType.Loose;
         BallOwnerAwayIndex = -1;
@@ -3047,6 +3087,59 @@ public class GameState
         if (alive == 0) IntroParticleCount = 0;
     }
 
+    // ── Motion trail system ──
+
+    void SpawnMotionTrail(Point position, Color trailColor)
+    {
+        if (_trailSpawnCooldown > 0) return;
+
+        // Find or recycle a trail slot
+        int freeSlot = -1;
+        for (int i = 0; i < MaxMotionTrails; i++)
+        {
+            if (MotionTrails[i].LifeTicks <= 0)
+            {
+                freeSlot = i;
+                break;
+            }
+        }
+        if (freeSlot < 0) return; // all slots occupied
+
+        MotionTrails[freeSlot] = new MotionTrail
+        {
+            X = (float)position.X,
+            Y = (float)position.Y,
+            LifeTicks = 12, // ~0.2 seconds at 60fps
+            TrailColor = trailColor
+        };
+
+        if (MotionTrailCount < MaxMotionTrails)
+            MotionTrailCount++;
+
+        _trailSpawnCooldown = 2; // spawn every few frames for smoother trails
+    }
+
+    void UpdateMotionTrails(double dt)
+    {
+        if (_trailSpawnCooldown > 0) _trailSpawnCooldown--;
+
+        // Spawn trails for fast-moving ball during shots and fast breaks
+        bool spawnBallTrail = IsShootActive || IsAwayShootActive || IsPenaltyActive
+                              || IsHomeFastBreak || IsAwayFastBreak;
+        if (spawnBallTrail)
+            SpawnMotionTrail(BallPos, Colors.Orange.WithAlpha(0.5f));
+
+        // Update existing trails
+        int alive = 0;
+        for (int i = 0; i < MotionTrailCount; i++)
+        {
+            if (MotionTrails[i].LifeTicks <= 0) continue;
+            MotionTrails[i].LifeTicks--;
+            if (MotionTrails[i].LifeTicks > 0) alive++;
+        }
+        if (alive == 0) MotionTrailCount = 0;
+    }
+
     /// <summary>
     /// Returns the match clock formatted as MM:SS for display.
     /// </summary>
@@ -3181,6 +3274,7 @@ public class GameDrawable : IDrawable
             _state.OnViewSizeChanged(new Size(dirtyRect.Width, dirtyRect.Height));
 
         DrawField(canvas, dirtyRect);
+        DrawMotionTrails(canvas);
         DrawPlayers(canvas);
         DrawShotTrail(canvas);
         DrawBall(canvas);
@@ -3317,6 +3411,9 @@ public class GameDrawable : IDrawable
         // Vignette effect — darker edges for arena atmosphere
         DrawVignette(canvas, dirtyRect);
 
+        // Dynamic arena lighting effects based on game state
+        DrawDynamicLighting(canvas, dirtyRect);
+
         // Goals (nets with depth)
         DrawGoal(canvas, new RectF(4, centerY - 80, 16, 160), HomeColor);
         DrawGoal(canvas, new RectF(dirtyRect.Width - 20, centerY - 80, 16, 160), AwayColor);
@@ -3396,6 +3493,46 @@ public class GameDrawable : IDrawable
         }
     }
 
+    void DrawDynamicLighting(ICanvas canvas, RectF dirtyRect)
+    {
+        // Spotlight effect following the ball during shots and fast breaks
+        bool highlightBall = _state.IsShootActive || _state.IsAwayShootActive
+                             || _state.IsHomeFastBreak || _state.IsAwayFastBreak;
+
+        if (highlightBall)
+        {
+            float ballX = (float)_state.BallPos.X;
+            float ballY = (float)_state.BallPos.Y;
+            float spotRadius = _state.IsShootActive || _state.IsAwayShootActive ? 220f : 160f;
+
+            // Radial gradient spotlight (outer layers)
+            int layers = 3;
+            for (int i = 0; i < layers; i++)
+            {
+                float layerRadius = spotRadius * (1f + i * 0.4f);
+                float layerAlpha = 0.04f / (i + 1);
+                canvas.FillColor = Colors.White.WithAlpha(layerAlpha);
+                canvas.FillCircle(ballX, ballY, layerRadius);
+            }
+        }
+
+        // Pulsing ambient light during goal celebrations
+        if (_state.IsGoalCelebration)
+        {
+            float pulse = (float)(0.02 + 0.02 * Math.Sin(Environment.TickCount / 100.0));
+            canvas.FillColor = Colors.Gold.WithAlpha(pulse);
+            canvas.FillRectangle(dirtyRect);
+        }
+
+        // Fast break indicator - subtle cyan glow
+        if (_state.IsHomeFastBreak || _state.IsAwayFastBreak)
+        {
+            float fbPulse = (float)(0.015 + 0.01 * Math.Sin(Environment.TickCount / 80.0));
+            canvas.FillColor = Colors.Cyan.WithAlpha(fbPulse);
+            canvas.FillRectangle(dirtyRect);
+        }
+    }
+
     void DrawPlayers(ICanvas canvas)
     {
         for (int i = 0; i < _state.HomePlayers.Length; i++)
@@ -3452,10 +3589,27 @@ public class GameDrawable : IDrawable
         bool isMoving = isActive && (Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).X) > 5
                                   || Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).Y) > 5);
 
-        // Shadow (larger when moving for speed effect)
-        float shadowStretch = isMoving ? 1.15f : 1f;
-        canvas.FillColor = ShadowColor;
-        canvas.FillEllipse(x - bodyW / 2 * shadowStretch + 1, y - bodyH / 2 + 3, bodyW * shadowStretch, bodyH * 0.7f);
+        // Enhanced shadow with motion blur effect when moving fast
+        float shadowStretch = isMoving ? 1.25f : 1f;
+        float shadowAlpha = isMoving ? 0.25f : 0.2f;
+        canvas.FillColor = Colors.Black.WithAlpha(shadowAlpha);
+        canvas.FillEllipse(x - bodyW / 2 * shadowStretch + 1, y - bodyH / 2 + 3, bodyW * shadowStretch, bodyH * 0.8f);
+
+        // Additional motion blur shadow when active and moving
+        if (isActive && isMoving)
+        {
+            float blurAlpha = 0.08f;
+            canvas.FillColor = jerseyColor.WithAlpha(blurAlpha);
+            var moveInput = isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput;
+            double len = Math.Sqrt(moveInput.X * moveInput.X + moveInput.Y * moveInput.Y);
+            if (len > 5)
+            {
+                float blurDist = 4f;
+                float blurX = x - (float)(moveInput.X / len) * blurDist;
+                float blurY = y - (float)(moveInput.Y / len) * blurDist;
+                canvas.FillEllipse(blurX - bodyW / 2, blurY - bodyH / 2, bodyW, bodyH);
+            }
+        }
 
         // Legs (shorts + shoes) — drawn behind body
         float legY = y + bodyH / 2 - 1;
@@ -3948,6 +4102,23 @@ public class GameDrawable : IDrawable
             canvas.DrawString("MATCH START!",
                 new RectF(0, dirtyRect.Height * 0.38f, dirtyRect.Width, 60),
                 HorizontalAlignment.Center, VerticalAlignment.Center);
+        }
+    }
+
+    void DrawMotionTrails(ICanvas canvas)
+    {
+        if (_state.MotionTrailCount == 0) return;
+
+        for (int i = 0; i < _state.MotionTrailCount; i++)
+        {
+            ref readonly var trail = ref _state.MotionTrails[i];
+            if (trail.LifeTicks <= 0) continue;
+
+            float alpha = Math.Clamp(trail.LifeTicks / 12f, 0f, 1f);
+            float size = 6f + (1f - alpha) * 4f; // trails expand as they fade
+
+            canvas.FillColor = trail.TrailColor.WithAlpha(alpha * 0.4f);
+            canvas.FillCircle(trail.X, trail.Y, size);
         }
     }
 
