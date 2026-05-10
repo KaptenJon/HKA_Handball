@@ -401,22 +401,22 @@ public class GameState
     const int FullTimeDisplayTicks = 300; // ~5 seconds display
 
     // Passive play constants
-    const double PassivePlayWarningSeconds = 35; // warn after 35 game-seconds of possession
-    const double PassivePlayTurnoverSeconds = 45; // turnover after 45 game-seconds
+    const double PassivePlayWarningSeconds = 28; // warn after 28 game-seconds of possession
+    const double PassivePlayTurnoverSeconds = 34; // turnover after 34 game-seconds
 
     // Fast break constants
-    const int FastBreakDurationTicks = 90; // ~1.5 seconds of speed boost
-    const double FastBreakSpeedMultiplier = 1.6;
+    const int FastBreakDurationTicks = 135; // ~2.2 seconds of speed boost
+    const double FastBreakSpeedMultiplier = 1.75;
 
     // Penalty (7m) constants
     const double PenaltyFoulZoneRadius = 50; // foul within this distance of goal area triggers 7m
     const double PenaltyShotDuration = 0.7f;
     const double PenaltySaveChance = 0.45; // 45% GK save on penalties
-    const double PenaltyAwardChance = 0.4; // 40% chance foul near goal area awards penalty
+    const double PenaltyAwardChance = 0.45; // 45% chance foul near goal area awards penalty
 
     // 2-minute suspension constants (approximate at ~62.5fps from 0.016f dt)
     const int SuspensionDurationTicks = 7500; // ~2 real minutes at ~62.5fps
-    const double SuspensionChance = 0.0; // suspensions disabled for now
+    const double SuspensionChance = 0.12; // allow realistic 2-minute suspensions on harsher fouls
 
     // Shot distance factor constants
     const double MaxShotDistance = 400; // beyond this distance, shots are very unlikely to score
@@ -428,14 +428,26 @@ public class GameState
     const double AwayAIPositionVariation = 0.20; // AI positioning randomness for variety
     const double AwayAIPressureDistance = 140; // distance where AI recognizes pressure and acts
     const double AwayAIFastPassChance = 0.25; // chance AI does quick pass under pressure
-    const int GoalResetDurationTicks = 210; // ~3.5 seconds for teams to run back after goals
-    const double GoalResetKeeperSpeed = 360;
-    const double GoalResetCarrierSpeed = 320;
-    const double GoalResetBaseFieldSpeed = 230;
-    const double GoalResetSpeedStepPerLane = 18;
+    const int GoalResetDurationTicks = 135; // ~2.2 seconds for teams to reset after goals
+    const double GoalResetKeeperSpeed = 420;
+    const double GoalResetCarrierSpeed = 380;
+    const double GoalResetBaseFieldSpeed = 260;
+    const double GoalResetSpeedStepPerLane = 22;
 
     // Free throw positioning
     public const double FreeThrowMinDefenderDistance = 45; // ~3 meters — IHF minimum distance defenders must keep
+    const int FreeThrowQuickAttackTicks = 90; // brief set-play window after a whistle restart
+    const int GoalkeeperOutletHoldTicks = 28;
+    const int HomeGoalkeeperOutletHoldTicks = 32;
+
+    // Away-team attack tuning
+    const double AwayBaseShotChance = 0.04;
+    const double AwayCentralShotBonus = 0.05;
+    const double AwayWingShotBonus = 0.09;
+    const double AwayFastBreakShotBonus = 0.14;
+    const double AwayPassivePlayShotBonus = 0.18;
+    const double AwayFreeThrowShotBonus = 0.16;
+    const int AwayFreeThrowPassCooldownTicks = 18;
 
     // Pivot (circle runner) positioning constants
     const double PivotOscillationPeriod = 800.0; // milliseconds per oscillation cycle
@@ -604,6 +616,7 @@ public class GameState
     // Free throw cooldown — prevents consecutive free throws from rapid re-collision
     int _freeThrowCooldownTicks;
     const int FreeThrowCooldownDuration = 75; // ~1.25 seconds at 60fps
+    int _awayFreeThrowAttackTicks;
 
     // Smoothed press line to prevent abrupt target jumps on possession change
     double _smoothedPressLineX = 350;
@@ -989,6 +1002,9 @@ public class GameState
         if (_awayPassCooldownTicks > 0)
             _awayPassCooldownTicks--;
 
+        if (_awayFreeThrowAttackTicks > 0)
+            _awayFreeThrowAttackTicks--;
+
         // Away goalkeeper hold: auto-throw to wing for fast break after hold expires
         if (_keeperHoldTicks > 0)
         {
@@ -1124,7 +1140,9 @@ public class GameState
                 if (a.SuspensionTicks > 0) a.SuspensionTicks--;
 
         // Passive play tracking
-        if (BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive)
+        bool trackHomePassivePlay = BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive;
+        bool trackAwayPassivePlay = BallOwnerType == BallOwnershipType.Opponent && !_awayShootActive && !_awayPassActive;
+        if (trackHomePassivePlay || trackAwayPassivePlay)
         {
             _possessionTimer += dt * GameTimeMultiplier;
             if (_possessionTimer >= PassivePlayTurnoverSeconds)
@@ -1132,14 +1150,19 @@ public class GameState
                 // Passive play turnover
                 _possessionTimer = 0;
                 PassivePlayWarningActive = false;
-                GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarboll");
+                if (trackHomePassivePlay)
+                    GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarboll");
+                else
+                    GiveBallToPlayer(GetNearestHomeIndex(BallPos), "Passivt spel: hemmaboll");
                 GameEvent?.Invoke(GameEventType.Whistle);
                 return;
             }
             else if (_possessionTimer >= PassivePlayWarningSeconds && !PassivePlayWarningActive)
             {
                 PassivePlayWarningActive = true;
-                SetStatusOverride("⚠ Passivt spel - varning!", 90);
+                SetStatusOverride(trackHomePassivePlay
+                    ? "⚠ Passivt spel - skjut!"
+                    : "⚠ Passivt spel - borta måste avsluta!", 90);
                 GameEvent?.Invoke(GameEventType.Whistle);
             }
         }
@@ -1690,11 +1713,18 @@ public class GameState
                     // Pass or breakthrough decision (only when near arc) — difficulty adjusted
                     if (!_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
                     {
+                        if (TryStartAwayDirectShot(i, a.Position, arcPos.X))
+                        {
+                            return;
+                        }
+
                         // After enough passes, chance to break through
                         double breakChance = _awayBuildupPasses >= 3 ? 0.015 * _diffBreakthroughMult : 0.0;
                         if (_awayBuildupPasses >= 6) breakChance = 0.04 * _diffBreakthroughMult;
                         // Fast break: higher breakthrough chance when on fast break
                         if (_awayFastBreakTicks > 0) breakChance = 0.08 * _diffBreakthroughMult;
+                        if (_awayFreeThrowAttackTicks > 0) breakChance += 0.04 * _diffBreakthroughMult;
+                        if (PassivePlayWarningActive) breakChance += 0.03 * _diffBreakthroughMult;
 
                         if (Random.Shared.NextDouble() < breakChance)
                         {
@@ -1813,7 +1843,7 @@ public class GameState
                         SavesHome++;
                         BallPos = homeKeeper.Position;
                         GiveBallToPlayer(0, "Målvaktsräddning!");
-                        _homeKeeperHoldTicks = 45; // hold briefly before fast-break throw
+                        _homeKeeperHoldTicks = HomeGoalkeeperOutletHoldTicks; // hold briefly before fast-break throw
                         return;
                     }
                 }
@@ -1869,7 +1899,7 @@ public class GameState
                         SavesAway++;
                         BallPos = awayKeeper.Position;
                         GiveBallToOpponent(0, "Målvaktsräddning");
-                        _keeperHoldTicks = 40;
+                        _keeperHoldTicks = GoalkeeperOutletHoldTicks;
                         return;
                     }
                 }
@@ -2055,7 +2085,13 @@ public class GameState
         if (_shootActive) { StatusText = "Skott!"; return; }
         if (_awayShootActive) { StatusText = "Motståndaren skjuter!"; return; }
         if (_passActive) { StatusText = "Pass i luften"; return; }
-        if (PassivePlayWarningActive) { StatusText = "⚠ Passivt spel - skjut!"; return; }
+        if (PassivePlayWarningActive)
+        {
+            StatusText = BallOwnerType == BallOwnershipType.Opponent
+                ? "⚠ Passivt spel - borta måste avsluta!"
+                : "⚠ Passivt spel - skjut!";
+            return;
+        }
 
         string fastBreakIndicator = _homeFastBreakTicks > 0 ? " ⚡ Kontring!" : "";
         StatusText = BallOwnerType switch
@@ -2148,6 +2184,7 @@ public class GameState
         _attackDiagonalBoostY = 0;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
+        _awayFreeThrowAttackTicks = 0;
         // Fast break for away team on turnover
         _awayFastBreakTicks = FastBreakDurationTicks;
         _homeFastBreakTicks = 0;
@@ -2174,6 +2211,7 @@ public class GameState
         _defenderSideBoostY = 0;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
+        _awayFreeThrowAttackTicks = 0;
         // Fast break for home team on turnover
         _homeFastBreakTicks = FastBreakDurationTicks;
         _awayFastBreakTicks = 0;
@@ -2204,6 +2242,7 @@ public class GameState
 
         // Score candidates based on proximity AND defender avoidance
         var ownerPos = AwayPlayers[ownerIndex].Position;
+        double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
         var scored = candidates.Select(i =>
         {
             double dist = Distance(ownerPos, AwayPlayers[i].Position);
@@ -2218,6 +2257,14 @@ public class GameState
             }
             // Lower score is better: prefer short passes through open lanes
             double score = dist + interceptRisk * 120;
+            double forwardGain = Math.Max(0, ownerPos.X - AwayPlayers[i].Position.X);
+            score -= forwardGain * 0.25;
+            if (_awayFastBreakTicks > 0 && IsAwayWing(i))
+                score -= 45;
+            if (_awayFreeThrowAttackTicks > 0 && Math.Abs(AwayPlayers[i].Position.Y - centerY) < 110)
+                score -= 25;
+            if (PassivePlayWarningActive && forwardGain > 0)
+                score -= 20;
             return (index: i, score);
         }).OrderBy(x => x.score).ToArray();
 
@@ -2301,11 +2348,57 @@ public class GameState
         return new Point(x, y + drift);
     }
 
+    static bool IsAwayWing(int playerIndex) => playerIndex == 1 || playerIndex == 6;
+
+    bool TryStartAwayDirectShot(int ownerIndex, Point from, double arcPosX)
+    {
+        if (Mode == GameMode.TwoPlayerLocal || ViewSize.Height <= 0) return false;
+
+        double centerY = ViewSize.Height / 2;
+        double distToGoalArea = Distance(from, new Point(GoalCenterInset, centerY)) - GoalAreaRadius;
+        bool nearArc = from.X <= arcPosX + AwayPushForwardThreshold;
+        bool wingLane = IsAwayWing(ownerIndex) && Math.Abs(from.Y - centerY) > 95;
+        bool centralLane = !wingLane && Math.Abs(from.Y - centerY) < 90;
+
+        if (!nearArc && _awayFastBreakTicks == 0 && _awayFreeThrowAttackTicks == 0 && !PassivePlayWarningActive)
+            return false;
+
+        double shotChance = AwayBaseShotChance;
+        if (centralLane) shotChance += AwayCentralShotBonus;
+        if (wingLane) shotChance += AwayWingShotBonus;
+        if (_awayFastBreakTicks > 0) shotChance += AwayFastBreakShotBonus;
+        if (PassivePlayWarningActive) shotChance += AwayPassivePlayShotBonus;
+        if (_awayFreeThrowAttackTicks > 0) shotChance += AwayFreeThrowShotBonus;
+        if (_awayBuildupPasses >= 2) shotChance += 0.03;
+        if (_awayBuildupPasses >= 5) shotChance += 0.04;
+        if (distToGoalArea < 30) shotChance += 0.10;
+        else if (distToGoalArea < 75) shotChance += 0.05;
+        else if (distToGoalArea > 120) shotChance -= 0.03;
+
+        shotChance = Math.Clamp(shotChance, 0.03, 0.58);
+        if (Random.Shared.NextDouble() >= shotChance)
+            return false;
+
+        _awayFreeThrowAttackTicks = 0;
+        if (_awayFastBreakTicks > 0)
+            SetStatusOverride("Kontringsavslut!", 55);
+        else if (wingLane)
+            SetStatusOverride("Kantavslut!", 55);
+        else if (centralLane)
+            SetStatusOverride("Distansskott!", 55);
+        else
+            SetStatusOverride("Snabbt avslut!", 55);
+
+        StartAwayShoot(from);
+        return true;
+    }
+
     void StartAwayShoot(Point from)
     {
         _awayShootActive = true;
         _awayShootTime = 0f;
         _awayShootStart = from;
+        _awayFreeThrowAttackTicks = 0;
 
         // Enhanced AI shooting: aim away from goalkeeper position (difficulty-adjusted)
         double centerY = ViewSize.Height / 2;
@@ -2345,6 +2438,7 @@ public class GameState
         _awayShootActive = true;
         _awayShootTime = 0f;
         _awayShootStart = from;
+        _awayFreeThrowAttackTicks = 0;
         // Map normalized aim to actual goal Y position (away attacks left goal)
         double centerY = ViewSize.Height / 2;
         double aimY = centerY - GoalMouthHalf + normalizedAimX * (GoalMouthHalf * 2);
@@ -2453,6 +2547,7 @@ public class GameState
                     owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
                     BallPos = owner.Position;
                     PushDefendersBackFromFreeThrow(owner.Position, AwayPlayers);
+                    _awayFreeThrowAttackTicks = 0;
                     SetStatusOverride("2 min utvisning + frikast!", 120);
                     GameEvent?.Invoke(GameEventType.Suspension);
                     return true;
@@ -2466,7 +2561,8 @@ public class GameState
                     owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
                     BallPos = owner.Position;
                     PushDefendersBackFromFreeThrow(owner.Position, AwayPlayers);
-                    SetStatusOverride("Frikast - börja om utanför");
+                    _awayFreeThrowAttackTicks = 0;
+                    SetStatusOverride("Frikast - snabbt uppspel!", 90);
                     GameEvent?.Invoke(GameEventType.Whistle);
                 }
                 else
@@ -2534,7 +2630,7 @@ public class GameState
                 }
                 else
                 {
-                    SetStatusOverride("Frikast - motståndarboll");
+                    SetStatusOverride("Frikast - snabbt avslut!", 90);
                     GameEvent?.Invoke(GameEventType.Whistle);
                 }
                 var freeThrowX = GoalCenterInset + FreeThrowRadius + 8;
@@ -2542,8 +2638,9 @@ public class GameState
                     Math.Clamp(carrier.Position.Y, 70, ViewSize.Height - 70));
                 BallPos = carrier.Position;
                 PushDefendersBackFromFreeThrow(carrier.Position, HomePlayers);
-                _awayPassCooldownTicks = 50;
+                _awayPassCooldownTicks = AwayFreeThrowPassCooldownTicks;
                 _awayBreakthrough = false;
+                _awayFreeThrowAttackTicks = FreeThrowQuickAttackTicks;
                 return true;
             }
             else
@@ -2637,6 +2734,7 @@ public class GameState
         _homeKeeperHoldTicks = 0;
         _tackleCooldownTicks = 0;
         _freeThrowCooldownTicks = 0;
+        _awayFreeThrowAttackTicks = 0;
     }
 
     /// <summary>Sets a player's base position to center court for a throw-off.</summary>
@@ -2886,7 +2984,7 @@ public class GameState
                         SavesAway++;
                         BallPos = AwayPlayers[0].Position;
                         GiveBallToOpponent(0, "Straffskytte: Målvaktsräddning!");
-                        _keeperHoldTicks = 40;
+                        _keeperHoldTicks = GoalkeeperOutletHoldTicks;
                     }
                     else
                     {
