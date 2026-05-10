@@ -428,6 +428,11 @@ public class GameState
     const double AwayAIPositionVariation = 0.20; // AI positioning randomness for variety
     const double AwayAIPressureDistance = 140; // distance where AI recognizes pressure and acts
     const double AwayAIFastPassChance = 0.25; // chance AI does quick pass under pressure
+    const int GoalResetDurationTicks = 210; // ~3.5 seconds for teams to run back after goals
+    const double GoalResetKeeperSpeed = 360;
+    const double GoalResetCarrierSpeed = 320;
+    const double GoalResetBaseFieldSpeed = 230;
+    const double GoalResetSpeedStepPerLane = 18;
 
     // Free throw positioning
     public const double FreeThrowMinDefenderDistance = 45; // ~3 meters — IHF minimum distance defenders must keep
@@ -1089,12 +1094,11 @@ public class GameState
         // Full-time: stop the game
         if (IsMatchOver) return;
 
-        // Goal celebration pause
+        // Goal celebration visuals (do not freeze gameplay transitions)
         if (_goalCelebrationTicks > 0)
         {
             _goalCelebrationTicks--;
             UpdateConfetti(dt);
-            return;
         }
 
         // Match intro pause — effects at start of match.
@@ -1189,17 +1193,16 @@ public class GameState
                         allArrived = false;
                         double speed;
                         if (actor.IsGoalkeeper)
-                            speed = 600;
+                            speed = GoalResetKeeperSpeed;
                         else if ((BallOwnerPlayerIndex >= 0 && team == HomePlayers && pi == BallOwnerPlayerIndex)
                               || (BallOwnerAwayIndex >= 0 && team == AwayPlayers && pi == BallOwnerAwayIndex))
-                            speed = 500;
+                            speed = GoalResetCarrierSpeed;
                         else
-                            speed = 300 + (pi * 25);
+                            speed = GoalResetBaseFieldSpeed + (pi * GoalResetSpeedStepPerLane);
                         var step = Math.Min(speed * dt, dist);
-                        double wobble = Math.Sin(Environment.TickCount / 200.0 + pi * 1.7) * 1.2;
                         actor.Position = new Point(
                             actor.Position.X + dx / dist * step,
-                            actor.Position.Y + dy / dist * step + wobble);
+                            actor.Position.Y + dy / dist * step);
                     }
                     else
                     {
@@ -1209,9 +1212,9 @@ public class GameState
             }
 
             if (BallOwnerPlayerIndex >= 0)
-                BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
+                BallPos = LerpPoint(BallPos, HomePlayers[BallOwnerPlayerIndex].Position, 0.35);
             else if (BallOwnerAwayIndex >= 0)
-                BallPos = AwayPlayers[BallOwnerAwayIndex].Position;
+                BallPos = LerpPoint(BallPos, AwayPlayers[BallOwnerAwayIndex].Position, 0.35);
 
             if (allArrived || _resetCountdown <= 0)
             {
@@ -2000,7 +2003,7 @@ public class GameState
         ClearAllActiveActions();
         _viewInitialized = true;
         _resettingAfterGoal = true;
-        _resetCountdown = 150;
+        _resetCountdown = GoalResetDurationTicks;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
 
