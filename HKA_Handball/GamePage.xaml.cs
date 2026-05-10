@@ -1719,7 +1719,7 @@ public class GameState
                     {
                         if (TryStartAwayDirectShot(i, a.Position, arcPos.X))
                         {
-                            return;
+                            continue;
                         }
 
                         // After enough passes, chance to break through
