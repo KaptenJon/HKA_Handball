@@ -2091,7 +2091,8 @@ public class GameState
         if (_passActive) { StatusText = "Pass i luften"; return; }
         if (PassivePlayWarningActive)
         {
-            StatusText = BallOwnerType == BallOwnershipType.Opponent
+            bool awayHasEffectivePossession = BallOwnerType == BallOwnershipType.Opponent || _awayPassActive || _awayShootActive;
+            StatusText = awayHasEffectivePossession
                 ? "⚠ Passivt spel - avsluta!"
                 : "⚠ Passivt spel - skjut!";
             return;
