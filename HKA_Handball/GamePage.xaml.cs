@@ -1164,7 +1164,7 @@ public class GameState
                 PassivePlayWarningActive = true;
                 SetStatusOverride(isHomePassivePossession
                     ? "⚠ Passivt spel - skjut!"
-                    : "⚠ Passivt spel - borta måste avsluta!", 90);
+                    : "⚠ Passivt spel - avsluta!", 90);
                 GameEvent?.Invoke(GameEventType.Whistle);
             }
         }
@@ -2090,7 +2090,7 @@ public class GameState
         if (PassivePlayWarningActive)
         {
             StatusText = BallOwnerType == BallOwnershipType.Opponent
-                ? "⚠ Passivt spel - borta måste avsluta!"
+                ? "⚠ Passivt spel - avsluta!"
                 : "⚠ Passivt spel - skjut!";
             return;
         }
@@ -2350,6 +2350,7 @@ public class GameState
         return new Point(x, y + drift);
     }
 
+    /// <summary>Returns true for the away team's wing positions (indices 1 and 6).</summary>
     static bool IsAwayWing(int playerIndex) => playerIndex == 1 || playerIndex == 6;
 
     bool TryStartAwayDirectShot(int ownerIndex, Point from, double arcPosX)
@@ -2633,7 +2634,7 @@ public class GameState
                 }
                 else
                 {
-                    SetStatusOverride("Frikast - snabbt avslut!", 90);
+                    SetStatusOverride("Frikast - snabbt uppspel!", 90);
                     GameEvent?.Invoke(GameEventType.Whistle);
                 }
                 var freeThrowX = GoalCenterInset + FreeThrowRadius + 8;
