@@ -416,7 +416,7 @@ public class GameState
 
     // 2-minute suspension constants (approximate at ~62.5fps from 0.016f dt)
     const int SuspensionDurationTicks = 7500; // ~2 real minutes at ~62.5fps
-    const double SuspensionChance = 0.05; // reduced from 0.12 for fewer suspensions
+    const double SuspensionChance = 0.05; // general foul-check chance for a suspension; reduced from 0.12 for fewer suspensions
 
     // Shot distance factor constants
     const double MaxShotDistance = 400; // beyond this distance, shots are very unlikely to score
