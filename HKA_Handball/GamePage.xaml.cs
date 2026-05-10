@@ -412,11 +412,11 @@ public class GameState
     const double PenaltyFoulZoneRadius = 50; // foul within this distance of goal area triggers 7m
     const double PenaltyShotDuration = 0.7f;
     const double PenaltySaveChance = 0.45; // 45% GK save on penalties
-    const double PenaltyAwardChance = 0.45; // 45% chance foul near goal area awards penalty
+    const double PenaltyAwardChance = 0.12; // reduced by 60% (was 0.30) for fewer penalty calls
 
     // 2-minute suspension constants (approximate at ~62.5fps from 0.016f dt)
     const int SuspensionDurationTicks = 7500; // ~2 real minutes at ~62.5fps
-    const double SuspensionChance = 0.12; // allow realistic 2-minute suspensions on harsher fouls
+    const double SuspensionChance = 0.05; // reduced from 0.12 for fewer suspensions
 
     // Shot distance factor constants
     const double MaxShotDistance = 400; // beyond this distance, shots are very unlikely to score
@@ -458,7 +458,9 @@ public class GameState
     // Defensive tackle constants
     const double TackleDistance = 22;
     const double TackleStealChance = 0.30;
-    const double TackleFoulChance = 0.20;
+    const double TackleFoulChance = 0.10; // reduced from 0.20 for fewer fouls
+    // Free-throw award chance on frontal collision (after suspension check); reduced from 0.30
+    const double FrontalFoulFreeThrowChance = 0.15;
     const double ControlledDefenderInterceptBonus = 0.25;
     const double GoalkeeperSaveRadius = 32;
     const int TackleCooldownDuration = 25;
@@ -2557,7 +2559,7 @@ public class GameState
                     return true;
                 }
 
-                if (Random.Shared.NextDouble() < 0.30)
+                if (Random.Shared.NextDouble() < FrontalFoulFreeThrowChance)
                 {
                     // Free throw at foul position, but no closer than the 9m line
                     var freeThrowLineX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
