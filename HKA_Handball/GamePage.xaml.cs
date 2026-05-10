@@ -1098,7 +1098,6 @@ public class GameState
         if (_goalCelebrationTicks > 0)
         {
             _goalCelebrationTicks--;
-            UpdateConfetti(dt);
         }
 
         // Match intro pause — effects at start of match.
