@@ -447,6 +447,8 @@ public class GameState
     const double AwayFastBreakShotBonus = 0.14;
     const double AwayPassivePlayShotBonus = 0.18;
     const double AwayFreeThrowShotBonus = 0.16;
+    const double AwayMinShotChance = 0.03; // AI still threatens when a lane opens
+    const double AwayMaxShotChance = 0.58; // cap to avoid unrealistic shot spam
     const int AwayFreeThrowPassCooldownTicks = 18;
 
     // Pivot (circle runner) positioning constants
@@ -1140,9 +1142,9 @@ public class GameState
                 if (a.SuspensionTicks > 0) a.SuspensionTicks--;
 
         // Passive play tracking
-        bool trackHomePassivePlay = BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive;
-        bool trackAwayPassivePlay = BallOwnerType == BallOwnershipType.Opponent && !_awayShootActive && !_awayPassActive;
-        if (trackHomePassivePlay || trackAwayPassivePlay)
+        bool isHomePassivePossession = BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive;
+        bool isAwayPassivePossession = BallOwnerType == BallOwnershipType.Opponent && !_awayShootActive && !_awayPassActive;
+        if (isHomePassivePossession || isAwayPassivePossession)
         {
             _possessionTimer += dt * GameTimeMultiplier;
             if (_possessionTimer >= PassivePlayTurnoverSeconds)
@@ -1150,7 +1152,7 @@ public class GameState
                 // Passive play turnover
                 _possessionTimer = 0;
                 PassivePlayWarningActive = false;
-                if (trackHomePassivePlay)
+                if (isHomePassivePossession)
                     GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarboll");
                 else
                     GiveBallToPlayer(GetNearestHomeIndex(BallPos), "Passivt spel: hemmaboll");
@@ -1160,7 +1162,7 @@ public class GameState
             else if (_possessionTimer >= PassivePlayWarningSeconds && !PassivePlayWarningActive)
             {
                 PassivePlayWarningActive = true;
-                SetStatusOverride(trackHomePassivePlay
+                SetStatusOverride(isHomePassivePossession
                     ? "⚠ Passivt spel - skjut!"
                     : "⚠ Passivt spel - borta måste avsluta!", 90);
                 GameEvent?.Invoke(GameEventType.Whistle);
@@ -2359,8 +2361,9 @@ public class GameState
         bool nearArc = from.X <= arcPosX + AwayPushForwardThreshold;
         bool wingLane = IsAwayWing(ownerIndex) && Math.Abs(from.Y - centerY) > 95;
         bool centralLane = !wingLane && Math.Abs(from.Y - centerY) < 90;
+        bool hasAttackingOpportunity = nearArc || _awayFastBreakTicks > 0 || _awayFreeThrowAttackTicks > 0 || PassivePlayWarningActive;
 
-        if (!nearArc && _awayFastBreakTicks == 0 && _awayFreeThrowAttackTicks == 0 && !PassivePlayWarningActive)
+        if (!hasAttackingOpportunity)
             return false;
 
         double shotChance = AwayBaseShotChance;
@@ -2375,7 +2378,7 @@ public class GameState
         else if (distToGoalArea < 75) shotChance += 0.05;
         else if (distToGoalArea > 120) shotChance -= 0.03;
 
-        shotChance = Math.Clamp(shotChance, 0.03, 0.58);
+        shotChance = Math.Clamp(shotChance, AwayMinShotChance, AwayMaxShotChance);
         if (Random.Shared.NextDouble() >= shotChance)
             return false;
 
