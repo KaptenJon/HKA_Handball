@@ -428,6 +428,11 @@ public class GameState
     const double AwayAIPositionVariation = 0.20; // AI positioning randomness for variety
     const double AwayAIPressureDistance = 140; // distance where AI recognizes pressure and acts
     const double AwayAIFastPassChance = 0.25; // chance AI does quick pass under pressure
+    const int GoalResetDurationTicks = 210; // ~3.5 seconds for teams to run back after goals
+    const double GoalResetKeeperSpeed = 360;
+    const double GoalResetCarrierSpeed = 320;
+    const double GoalResetBaseFieldSpeed = 230;
+    const double GoalResetSpeedStepPerLane = 18;
 
     // Free throw positioning
     public const double FreeThrowMinDefenderDistance = 45; // ~3 meters — IHF minimum distance defenders must keep
@@ -468,17 +473,17 @@ public class GameState
     public int PassesAway { get; private set; }
 
     // ── Confetti system ──
-    public const int MaxConfetti = 60;
+    public const int MaxConfetti = 30;
     public readonly ConfettiParticle[] Confetti = new ConfettiParticle[MaxConfetti];
     public int ConfettiCount { get; private set; }
 
     // ── Match intro system ──
-    public const int MaxIntroParticles = 120;
+    public const int MaxIntroParticles = 60;
     public readonly IntroParticle[] IntroParticles = new IntroParticle[MaxIntroParticles];
     public int IntroParticleCount { get; private set; }
     bool _matchIntroActive;
     int _matchIntroTicks;
-    const int MatchIntroDuration = 180; // ~3 seconds of intro effects
+    const int MatchIntroDuration = 90; // ~1.5 seconds of intro effects
 
     // ── Motion trail system ──
     public const int MaxMotionTrails = 40;
@@ -1089,12 +1094,10 @@ public class GameState
         // Full-time: stop the game
         if (IsMatchOver) return;
 
-        // Goal celebration pause
+        // Goal celebration visuals (do not freeze gameplay transitions)
         if (_goalCelebrationTicks > 0)
         {
             _goalCelebrationTicks--;
-            UpdateConfetti(dt);
-            return;
         }
 
         // Match intro pause — effects at start of match.
@@ -1189,17 +1192,16 @@ public class GameState
                         allArrived = false;
                         double speed;
                         if (actor.IsGoalkeeper)
-                            speed = 600;
+                            speed = GoalResetKeeperSpeed;
                         else if ((BallOwnerPlayerIndex >= 0 && team == HomePlayers && pi == BallOwnerPlayerIndex)
                               || (BallOwnerAwayIndex >= 0 && team == AwayPlayers && pi == BallOwnerAwayIndex))
-                            speed = 500;
+                            speed = GoalResetCarrierSpeed;
                         else
-                            speed = 300 + (pi * 25);
+                            speed = GoalResetBaseFieldSpeed + (pi * GoalResetSpeedStepPerLane);
                         var step = Math.Min(speed * dt, dist);
-                        double wobble = Math.Sin(Environment.TickCount / 200.0 + pi * 1.7) * 1.2;
                         actor.Position = new Point(
                             actor.Position.X + dx / dist * step,
-                            actor.Position.Y + dy / dist * step + wobble);
+                            actor.Position.Y + dy / dist * step);
                     }
                     else
                     {
@@ -1209,9 +1211,9 @@ public class GameState
             }
 
             if (BallOwnerPlayerIndex >= 0)
-                BallPos = HomePlayers[BallOwnerPlayerIndex].Position;
+                BallPos = LerpPoint(BallPos, HomePlayers[BallOwnerPlayerIndex].Position, 0.35);
             else if (BallOwnerAwayIndex >= 0)
-                BallPos = AwayPlayers[BallOwnerAwayIndex].Position;
+                BallPos = LerpPoint(BallPos, AwayPlayers[BallOwnerAwayIndex].Position, 0.35);
 
             if (allArrived || _resetCountdown <= 0)
             {
@@ -1986,7 +1988,7 @@ public class GameState
 
     void ResetAfterScore(bool homeScored)
     {
-        _goalCelebrationTicks = 75;
+        _goalCelebrationTicks = 45;
         GoalCelebrationText = homeScored ? "MÅL! 🎉" : "Motståndarens mål!";
 
         // Spawn confetti from the goal area
@@ -2000,7 +2002,7 @@ public class GameState
         ClearAllActiveActions();
         _viewInitialized = true;
         _resettingAfterGoal = true;
-        _resetCountdown = 150;
+        _resetCountdown = GoalResetDurationTicks;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
 
@@ -2981,15 +2983,15 @@ public class GameState
         for (int i = 0; i < MaxConfetti; i++)
         {
             float angle = (float)(Random.Shared.NextDouble() * Math.PI * 2);
-            float speed = 60f + (float)(Random.Shared.NextDouble() * 120);
+            float speed = 45f + (float)(Random.Shared.NextDouble() * 90);
             Confetti[i] = new ConfettiParticle
             {
-                X = goalX + (float)(Random.Shared.NextDouble() - 0.5) * 40,
-                Y = centerY + (float)(Random.Shared.NextDouble() - 0.5) * 100,
+                X = goalX + (float)(Random.Shared.NextDouble() - 0.5) * 28,
+                Y = centerY + (float)(Random.Shared.NextDouble() - 0.5) * 70,
                 VX = (float)Math.Cos(angle) * speed,
                 VY = (float)Math.Sin(angle) * speed - 60f, // upward bias
                 ColorIndex = Random.Shared.Next(5),
-                LifeTicks = 60 + Random.Shared.Next(60)
+                LifeTicks = 28 + Random.Shared.Next(28)
             };
         }
     }
@@ -3029,9 +3031,9 @@ public class GameState
         // Spawn particles in waves for dramatic effect
         for (int i = 0; i < MaxIntroParticles; i++)
         {
-            int waveDelay = (i / 30) * 20; // stagger waves
+            int waveDelay = (i / 20) * 10; // shorter staggered waves
             float angle = (float)(Random.Shared.NextDouble() * Math.PI * 2);
-            float speed = 80f + (float)(Random.Shared.NextDouble() * 200);
+            float speed = 60f + (float)(Random.Shared.NextDouble() * 140);
 
             // Mix of particle types: 50% fire, 30% sparks, 20% smoke
             double particleRoll = Random.Shared.NextDouble();
@@ -3039,15 +3041,15 @@ public class GameState
 
             IntroParticles[i] = new IntroParticle
             {
-                X = centerX + (float)(Random.Shared.NextDouble() - 0.5) * 60,
-                Y = centerY + (float)(Random.Shared.NextDouble() - 0.5) * 60,
+                X = centerX + (float)(Random.Shared.NextDouble() - 0.5) * 42,
+                Y = centerY + (float)(Random.Shared.NextDouble() - 0.5) * 42,
                 VX = (float)Math.Cos(angle) * speed,
                 VY = (float)Math.Sin(angle) * speed - 40f, // slight upward bias
                 ParticleType = particleType,
-                LifeTicks = 90 + Random.Shared.Next(90) - waveDelay,
-                Size = particleType == 0 ? 8f + (float)Random.Shared.NextDouble() * 8f : // fire
+                LifeTicks = 38 + Random.Shared.Next(42) - waveDelay,
+                Size = particleType == 0 ? 6f + (float)Random.Shared.NextDouble() * 6f : // fire
                        particleType == 1 ? 2f + (float)Random.Shared.NextDouble() * 3f : // spark
-                       12f + (float)Random.Shared.NextDouble() * 12f, // smoke
+                       8f + (float)Random.Shared.NextDouble() * 8f, // smoke
                 Rotation = (float)(Random.Shared.NextDouble() * Math.PI * 2)
             };
         }
