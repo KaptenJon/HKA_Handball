@@ -378,6 +378,7 @@ public struct MotionTrail
 
 public class GameState
 {
+    const int TeamSize = 7;
     public const double GoalCenterInset = 20;
     public const double GoalAreaRadius = 160;
     public const double FreeThrowRadius = 240;
@@ -425,6 +426,7 @@ public class GameState
     // Away AI attack constants
     const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
     const int ThrowOffCarrierIndex = 1; // field player index used for throw-off ball carrier
+    const double GoalResetLineupOffsetX = 72;
     const double AwayAIPositionVariation = 0.20; // AI positioning randomness for variety
     const double AwayAIPressureDistance = 140; // distance where AI recognizes pressure and acts
     const double AwayAIFastPassChance = 0.25; // chance AI does quick pass under pressure
@@ -497,8 +499,8 @@ public class GameState
     public const int MaxIntroParticles = 60;
     public readonly IntroParticle[] IntroParticles = new IntroParticle[MaxIntroParticles];
     public int IntroParticleCount { get; private set; }
-    readonly Point[] _goalResetHomeTargets = new Point[7];
-    readonly Point[] _goalResetAwayTargets = new Point[7];
+    readonly Point[] _goalResetHomeTargets = new Point[TeamSize];
+    readonly Point[] _goalResetAwayTargets = new Point[TeamSize];
     bool _matchIntroActive;
     int _matchIntroTicks;
     const int MatchIntroDuration = 90; // ~1.5 seconds of intro effects
@@ -510,8 +512,8 @@ public class GameState
     int _trailSpawnCooldown;
 
     public Size ViewSize { get; set; }
-    public readonly Actor[] HomePlayers = new Actor[7];
-    public readonly Actor[] AwayPlayers = new Actor[7];
+    public readonly Actor[] HomePlayers = new Actor[TeamSize];
+    public readonly Actor[] AwayPlayers = new Actor[TeamSize];
     public readonly GameMode Mode;
     public readonly Difficulty Difficulty;
 
@@ -2755,16 +2757,14 @@ public class GameState
 
     void PrepareGoalResetTargets(bool homeThrowOff, double centerX, double centerY)
     {
-        const double lineupOffsetX = 72;
-
         for (int i = 0; i < HomePlayers.Length; i++)
         {
             _goalResetHomeTargets[i] = HomePlayers[i].IsGoalkeeper
                 ? new Point(HomePlayers[i].BaseX, HomePlayers[i].BaseY)
-                : new Point(centerX - lineupOffsetX, HomePlayers[i].BaseY);
+                : new Point(centerX - GoalResetLineupOffsetX, HomePlayers[i].BaseY);
             _goalResetAwayTargets[i] = AwayPlayers[i].IsGoalkeeper
                 ? new Point(AwayPlayers[i].BaseX, AwayPlayers[i].BaseY)
-                : new Point(centerX + lineupOffsetX, AwayPlayers[i].BaseY);
+                : new Point(centerX + GoalResetLineupOffsetX, AwayPlayers[i].BaseY);
         }
 
         if (homeThrowOff)
