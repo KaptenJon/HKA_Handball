@@ -2767,9 +2767,9 @@ public class GameState
                 : new Point(centerX + GoalResetLineupOffsetX, AwayPlayers[i].BaseY);
         }
 
-        if (homeThrowOff)
+        if (homeThrowOff && !HomePlayers[ThrowOffCarrierIndex].IsGoalkeeper)
             _goalResetHomeTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
-        else
+        else if (!homeThrowOff && !AwayPlayers[ThrowOffCarrierIndex].IsGoalkeeper)
             _goalResetAwayTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
     }
 
