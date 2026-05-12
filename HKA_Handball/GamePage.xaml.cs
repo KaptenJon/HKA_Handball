@@ -1136,6 +1136,8 @@ public class GameState
             UpdateIntroParticles(dt);
             if (_matchIntroTicks <= 0)
                 _matchIntroActive = false;
+            if (!_viewInitialized && ViewSize.Width <= 0)
+                return;
         }
 
         // Fast break timers
@@ -2847,11 +2849,17 @@ public class GameState
                 : new Point(centerX + GoalResetLineupOffsetX, AwayPlayers[i].BaseY);
         }
 
-        if (homeThrowOff && !HomePlayers[ThrowOffCarrierIndex].IsGoalkeeper)
+        if (homeThrowOff && IsEligibleThrowOffCarrier(HomePlayers))
             _goalResetHomeTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
-        else if (!homeThrowOff && !AwayPlayers[ThrowOffCarrierIndex].IsGoalkeeper)
+        else if (!homeThrowOff && IsEligibleThrowOffCarrier(AwayPlayers))
             _goalResetAwayTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
     }
+
+    static bool IsEligibleThrowOffCarrier(Actor[] team) =>
+        ThrowOffCarrierIndex > 0
+        && ThrowOffCarrierIndex < team.Length
+        && !team[ThrowOffCarrierIndex].IsGoalkeeper
+        && !team[ThrowOffCarrierIndex].IsSuspended;
 
     void StartSecondHalf()
     {
