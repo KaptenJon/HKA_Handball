@@ -497,6 +497,8 @@ public class GameState
     public const int MaxIntroParticles = 60;
     public readonly IntroParticle[] IntroParticles = new IntroParticle[MaxIntroParticles];
     public int IntroParticleCount { get; private set; }
+    readonly Point[] _goalResetHomeTargets = new Point[7];
+    readonly Point[] _goalResetAwayTargets = new Point[7];
     bool _matchIntroActive;
     int _matchIntroTicks;
     const int MatchIntroDuration = 90; // ~1.5 seconds of intro effects
@@ -1129,9 +1131,6 @@ public class GameState
             UpdateIntroParticles(dt);
             if (_matchIntroTicks <= 0)
                 _matchIntroActive = false;
-
-            if (_viewInitialized)
-                return;
         }
 
         // Fast break timers
@@ -1211,8 +1210,9 @@ public class GameState
                 for (int pi = 0; pi < team.Length; pi++)
                 {
                     var actor = team[pi];
-                    var dx = actor.BaseX - actor.Position.X;
-                    var dy = actor.BaseY - actor.Position.Y;
+                    var target = team == HomePlayers ? _goalResetHomeTargets[pi] : _goalResetAwayTargets[pi];
+                    var dx = target.X - actor.Position.X;
+                    var dy = target.Y - actor.Position.Y;
                     var dist = Math.Sqrt(dx * dx + dy * dy);
                     if (dist > 3)
                     {
@@ -1232,7 +1232,7 @@ public class GameState
                     }
                     else
                     {
-                        actor.Position = new Point(actor.BaseX, actor.BaseY);
+                        actor.Position = target;
                     }
                 }
             }
@@ -2057,6 +2057,7 @@ public class GameState
                 double staggerX = ViewSize.Width > 0 ? ViewSize.Width * 0.6 + i * 15 : 500;
                 AwayPlayers[i].BaseX = Math.Min(staggerX, AwayPlayers[i].BaseX);
             }
+            PrepareGoalResetTargets(false, throwOffCenterX, throwOffCenterY);
         }
         else
         {
@@ -2070,6 +2071,7 @@ public class GameState
                 double staggerX = ViewSize.Width > 0 ? ViewSize.Width * 0.4 - i * 15 : 200;
                 HomePlayers[i].BaseX = Math.Max(staggerX, HomePlayers[i].BaseX);
             }
+            PrepareGoalResetTargets(true, throwOffCenterX, throwOffCenterY);
         }
         SetStatusOverride("Avkast", 75);
     }
@@ -2749,6 +2751,26 @@ public class GameState
     {
         player.BaseX = centerX;
         player.BaseY = centerY;
+    }
+
+    void PrepareGoalResetTargets(bool homeThrowOff, double centerX, double centerY)
+    {
+        const double lineupOffsetX = 72;
+
+        for (int i = 0; i < HomePlayers.Length; i++)
+        {
+            _goalResetHomeTargets[i] = HomePlayers[i].IsGoalkeeper
+                ? new Point(HomePlayers[i].BaseX, HomePlayers[i].BaseY)
+                : new Point(centerX - lineupOffsetX, HomePlayers[i].BaseY);
+            _goalResetAwayTargets[i] = AwayPlayers[i].IsGoalkeeper
+                ? new Point(AwayPlayers[i].BaseX, AwayPlayers[i].BaseY)
+                : new Point(centerX + lineupOffsetX, AwayPlayers[i].BaseY);
+        }
+
+        if (homeThrowOff)
+            _goalResetHomeTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
+        else
+            _goalResetAwayTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
     }
 
     void StartSecondHalf()
