@@ -378,6 +378,7 @@ public struct MotionTrail
 
 public class GameState
 {
+    const int TeamSize = 7;
     public const double GoalCenterInset = 20;
     public const double GoalAreaRadius = 160;
     public const double FreeThrowRadius = 240;
@@ -425,6 +426,10 @@ public class GameState
     // Away AI attack constants
     const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
     const int ThrowOffCarrierIndex = 1; // field player index used for throw-off ball carrier
+    const double GoalResetLineupOffsetX = 72;
+    const double RollingPlayRunLeadX = 34;
+    const double DefenderMarkingGapX = 34;
+    const double DefenderMarkingStepX = 46;
     const double AwayAIPositionVariation = 0.20; // AI positioning randomness for variety
     const double AwayAIPressureDistance = 140; // distance where AI recognizes pressure and acts
     const double AwayAIFastPassChance = 0.25; // chance AI does quick pass under pressure
@@ -497,6 +502,8 @@ public class GameState
     public const int MaxIntroParticles = 60;
     public readonly IntroParticle[] IntroParticles = new IntroParticle[MaxIntroParticles];
     public int IntroParticleCount { get; private set; }
+    readonly Point[] _goalResetHomeTargets = new Point[TeamSize];
+    readonly Point[] _goalResetAwayTargets = new Point[TeamSize];
     bool _matchIntroActive;
     int _matchIntroTicks;
     const int MatchIntroDuration = 90; // ~1.5 seconds of intro effects
@@ -508,8 +515,8 @@ public class GameState
     int _trailSpawnCooldown;
 
     public Size ViewSize { get; set; }
-    public readonly Actor[] HomePlayers = new Actor[7];
-    public readonly Actor[] AwayPlayers = new Actor[7];
+    public readonly Actor[] HomePlayers = new Actor[TeamSize];
+    public readonly Actor[] AwayPlayers = new Actor[TeamSize];
     public readonly GameMode Mode;
     public readonly Difficulty Difficulty;
 
@@ -1129,8 +1136,7 @@ public class GameState
             UpdateIntroParticles(dt);
             if (_matchIntroTicks <= 0)
                 _matchIntroActive = false;
-
-            if (_viewInitialized)
+            if (!_viewInitialized && ViewSize.Width <= 0)
                 return;
         }
 
@@ -1211,8 +1217,9 @@ public class GameState
                 for (int pi = 0; pi < team.Length; pi++)
                 {
                     var actor = team[pi];
-                    var dx = actor.BaseX - actor.Position.X;
-                    var dy = actor.BaseY - actor.Position.Y;
+                    var target = team == HomePlayers ? _goalResetHomeTargets[pi] : _goalResetAwayTargets[pi];
+                    var dx = target.X - actor.Position.X;
+                    var dy = target.Y - actor.Position.Y;
                     var dist = Math.Sqrt(dx * dx + dy * dy);
                     if (dist > 3)
                     {
@@ -1232,7 +1239,7 @@ public class GameState
                     }
                     else
                     {
-                        actor.Position = new Point(actor.BaseX, actor.BaseY);
+                        actor.Position = target;
                     }
                 }
             }
@@ -1302,6 +1309,11 @@ public class GameState
         }
 
         // Supporting players
+        int homeAttackFocusIndex = GetHomeAttackFocusIndex();
+        Point homeAttackFocusPoint = homeAttackFocusIndex >= 0
+            ? HomePlayers[homeAttackFocusIndex].Position
+            : new Point(ViewSize.Width > 0 ? ViewSize.Width / 2 : 350, ViewSize.Height > 0 ? ViewSize.Height / 2 : 300);
+        int awayAttackFocusIndex = GetAwayAttackFocusIndex();
         for (int i = 1; i < HomePlayers.Length; i++)
         {
             // Suspended players stay off-field
@@ -1341,8 +1353,9 @@ public class GameState
             {
                 // Form defensive arc just outside the goal area, between attackers and goalkeeper
                 var defPos = GetDefensiveArcPosition(i - 1, HomePlayers.Length - 1);
-                desiredX = defPos.X;
-                desiredY = defPos.Y;
+                var markedPos = GetMarkedDefensiveTarget(defPos, AwayPlayers, i, awayAttackFocusIndex, homeDefending: true);
+                desiredX = markedPos.X;
+                desiredY = markedPos.Y;
             }
             else
             {
@@ -1364,14 +1377,14 @@ public class GameState
                 double slotY = topY + activeFieldIdx * ((bottomY - topY) / Math.Max(activeFieldCount - 1, 1));
 
                 // Shift toward ball carrier Y position (gentle attraction to keep formation wide)
-                double carrierY = BallOwnerPlayerIndex >= 0 ? HomePlayers[BallOwnerPlayerIndex].Position.Y : ViewSize.Height / 2;
+                double carrierY = homeAttackFocusPoint.Y;
                 slotY = Lerp(slotY, carrierY, 0.10);
 
                 // Differentiate run-up: 6m players (wings 1,5 + pivot 6) go all the way,
                 // 9m players (backs 2,3,4) stay approximately with the ball carrier
                 bool isPivot = (i == 6);
                 bool is6mPlayer = (i == 1 || i == 5 || isPivot);
-                double carrierX = BallOwnerPlayerIndex >= 0 ? HomePlayers[BallOwnerPlayerIndex].Position.X : ViewSize.Width / 2;
+                double carrierX = homeAttackFocusPoint.X;
                 if (isPivot)
                 {
                     // Pivot positions just outside the opponent's 6m zone, between defenders
@@ -1393,6 +1406,13 @@ public class GameState
                     double backMaxX = Math.Min(carrierX + 40, ViewSize.Width - 200);
                     desiredX = Math.Max(p.BaseX + 20, backMaxX);
                 }
+
+                if (_passActive && i == _passTargetHomeIndex)
+                {
+                    desiredX = Math.Min(desiredX + RollingPlayRunLeadX, ViewSize.Width - 180);
+                    desiredY = Lerp(desiredY, BallPos.Y, 0.18);
+                }
+
                 if (!isPivot)
                 {
                     // Wings stay wide near the sidelines, but cut inside when near the goal area
@@ -1418,8 +1438,9 @@ public class GameState
                         desiredY = slotY;
                 }
             }
-            double newX = p.Position.X + (desiredX - p.Position.X) * 0.04;
-            double newY = p.Position.Y + (desiredY - p.Position.Y) * 0.04;
+            double movementLerp = (_passActive && i == _passTargetHomeIndex) ? 0.07 : 0.04;
+            double newX = p.Position.X + (desiredX - p.Position.X) * movementLerp;
+            double newY = p.Position.Y + (desiredY - p.Position.Y) * movementLerp;
             p.Position = new Point(newX, newY);
             ClampActor(p);
         }
@@ -1619,9 +1640,15 @@ public class GameState
                     double drift = Math.Sin(Environment.TickCount / 600.0 + i * 1.2) * 10;
 
                     // Faster lerp rate toward defensive positions for snappier defense
+                    var markedPos = GetMarkedDefensiveTarget(
+                        new Point(defX, defY + drift),
+                        HomePlayers,
+                        i,
+                        trackedIdx,
+                        homeDefending: false);
                     a.Position = new Point(
-                        Lerp(a.Position.X, defX, 0.08),
-                        Lerp(a.Position.Y, defY + drift, 0.08));
+                        Lerp(a.Position.X, markedPos.X, 0.08),
+                        Lerp(a.Position.Y, markedPos.Y, 0.08));
                 }
                 else
                 {
@@ -1750,16 +1777,25 @@ public class GameState
                 // Support: advance toward arc formation, shift toward ball carrier
                 var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
                 double shiftY = 0;
-                if (BallOwnerAwayIndex >= 0)
+                if (awayAttackFocusIndex >= 0)
                 {
-                    var carrierY = AwayPlayers[BallOwnerAwayIndex].Position.Y;
+                    var carrierY = AwayPlayers[awayAttackFocusIndex].Position.Y;
                     shiftY = (carrierY - arcPos.Y) * 0.15;
                 }
+                double supportX = arcPos.X;
+                double supportY = arcPos.Y + shiftY;
+                if (_awayPassActive && i == _awayPassTargetIndex)
+                {
+                    supportX = Math.Max(GoalCenterInset + GoalAreaRadius + 20, supportX - RollingPlayRunLeadX);
+                    supportY = Lerp(supportY, BallPos.Y, 0.18);
+                }
                 // Use faster lerp during fast break to match home team transition speed
-                double supportLerp = _awayFastBreakTicks > 0 ? 0.07 : 0.05;
+                double supportLerp = _awayPassActive && i == _awayPassTargetIndex
+                    ? 0.08
+                    : (_awayFastBreakTicks > 0 ? 0.07 : 0.05);
                 a.Position = new Point(
-                    Lerp(a.Position.X, arcPos.X, supportLerp),
-                    Lerp(a.Position.Y, arcPos.Y + shiftY, supportLerp));
+                    Lerp(a.Position.X, supportX, supportLerp),
+                    Lerp(a.Position.Y, supportY, supportLerp));
             }
             ClampActor(a);
         }
@@ -2057,6 +2093,7 @@ public class GameState
                 double staggerX = ViewSize.Width > 0 ? ViewSize.Width * 0.6 + i * 15 : 500;
                 AwayPlayers[i].BaseX = Math.Min(staggerX, AwayPlayers[i].BaseX);
             }
+            PrepareGoalResetTargets(false, throwOffCenterX, throwOffCenterY);
         }
         else
         {
@@ -2070,6 +2107,7 @@ public class GameState
                 double staggerX = ViewSize.Width > 0 ? ViewSize.Width * 0.4 - i * 15 : 200;
                 HomePlayers[i].BaseX = Math.Max(staggerX, HomePlayers[i].BaseX);
             }
+            PrepareGoalResetTargets(true, throwOffCenterX, throwOffCenterY);
         }
         SetStatusOverride("Avkast", 75);
     }
@@ -2750,6 +2788,78 @@ public class GameState
         player.BaseX = centerX;
         player.BaseY = centerY;
     }
+
+    int GetHomeAttackFocusIndex()
+    {
+        if (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
+            return BallOwnerPlayerIndex;
+        if (_passActive && _passTargetHomeIndex >= 0)
+            return _passTargetHomeIndex;
+        return -1;
+    }
+
+    int GetAwayAttackFocusIndex()
+    {
+        if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 0)
+            return BallOwnerAwayIndex;
+        if (_awayPassActive && _awayPassTargetIndex >= 0)
+            return _awayPassTargetIndex;
+        return -1;
+    }
+
+    Point GetMarkedDefensiveTarget(Point baseTarget, Actor[] attackers, int defenderIndex, int focusIndex, bool homeDefending)
+    {
+        int markedIndex = GetActiveFieldIndex(attackers, defenderIndex, focusIndex);
+        if (markedIndex < 1)
+            return baseTarget;
+
+        var attacker = attackers[markedIndex];
+        double markedX = homeDefending
+            ? Math.Min(baseTarget.X + DefenderMarkingStepX, attacker.Position.X - DefenderMarkingGapX)
+            : Math.Max(baseTarget.X - DefenderMarkingStepX, attacker.Position.X + DefenderMarkingGapX);
+        double markedY = Lerp(baseTarget.Y, attacker.Position.Y, 0.28);
+        return new Point(markedX, markedY);
+    }
+
+    static int GetActiveFieldIndex(Actor[] team, int preferredIndex, int fallbackIndex)
+    {
+        if (preferredIndex > 0 && preferredIndex < team.Length && !team[preferredIndex].IsGoalkeeper && !team[preferredIndex].IsSuspended)
+            return preferredIndex;
+        if (fallbackIndex > 0 && fallbackIndex < team.Length && !team[fallbackIndex].IsGoalkeeper && !team[fallbackIndex].IsSuspended)
+            return fallbackIndex;
+
+        for (int i = 1; i < team.Length; i++)
+        {
+            if (!team[i].IsGoalkeeper && !team[i].IsSuspended)
+                return i;
+        }
+
+        return -1;
+    }
+
+    void PrepareGoalResetTargets(bool homeThrowOff, double centerX, double centerY)
+    {
+        for (int i = 0; i < HomePlayers.Length; i++)
+        {
+            _goalResetHomeTargets[i] = HomePlayers[i].IsGoalkeeper
+                ? new Point(HomePlayers[i].BaseX, HomePlayers[i].BaseY)
+                : new Point(centerX - GoalResetLineupOffsetX, HomePlayers[i].BaseY);
+            _goalResetAwayTargets[i] = AwayPlayers[i].IsGoalkeeper
+                ? new Point(AwayPlayers[i].BaseX, AwayPlayers[i].BaseY)
+                : new Point(centerX + GoalResetLineupOffsetX, AwayPlayers[i].BaseY);
+        }
+
+        if (homeThrowOff && IsEligibleThrowOffCarrier(HomePlayers))
+            _goalResetHomeTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
+        else if (!homeThrowOff && IsEligibleThrowOffCarrier(AwayPlayers))
+            _goalResetAwayTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
+    }
+
+    static bool IsEligibleThrowOffCarrier(Actor[] team) =>
+        ThrowOffCarrierIndex > 0
+        && ThrowOffCarrierIndex < team.Length
+        && !team[ThrowOffCarrierIndex].IsGoalkeeper
+        && !team[ThrowOffCarrierIndex].IsSuspended;
 
     void StartSecondHalf()
     {
