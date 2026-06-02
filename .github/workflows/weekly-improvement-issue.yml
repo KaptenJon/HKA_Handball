@@ -2,10 +2,11 @@ name: Weekly Improvement Issue
 
 on:
   schedule:
-    # Tuesday 15:15 in Sweden (Europe/Stockholm):
-    # - 13:15 UTC during CEST (summer)
-    # - 14:15 UTC during CET (winter)
-    - cron: '10 15 * * 2'
+    # Tuesday 16:30 in Sweden (Europe/Stockholm):
+    # - 14:30 UTC during CEST (summer, late Mar - late Oct)
+    # - 15:30 UTC during CET (winter, late Oct - late Mar)
+    - cron: '30 14 * * 2'  # CEST (UTC+2)
+    - cron: '30 15 * * 2'  # CET (UTC+1)
   workflow_dispatch:
 
 permissions:
@@ -27,7 +28,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // Ensure execution happens only at 15:15 Tuesday in Sweden local time,
+            // Ensure execution happens only at 16:30 Tuesday in Sweden local time,
             // while cron is defined in UTC with dual entries for DST.
             const weekday = new Intl.DateTimeFormat("en-US", {
               timeZone: "Europe/Stockholm",
@@ -43,8 +44,8 @@ jobs:
               minute: "2-digit"
             }).format(new Date()));
 
-            if (!(weekday === "Tue" && hour === 15 && minute === 15)) {
-              core.info("Not 15:15 Tuesday in Europe/Stockholm; skipping run.");
+            if (!(weekday === "Tue" && hour === 16 && minute === 30)) {
+              core.info("Not 16:30 Tuesday in Europe/Stockholm; skipping run.");
               return;
             }
 
