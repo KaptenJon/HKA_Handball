@@ -1,0 +1,162 @@
+name: Weekly Improvement Issue
+
+on:
+  schedule:
+    # Tuesday 15:15 in Sweden (Europe/Stockholm):
+    # - 13:15 UTC during CEST (summer)
+    # - 14:15 UTC during CET (winter)
+    - cron: '15 13 * * 2'
+    - cron: '15 14 * * 2'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: weekly-improvement-issue-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  create-weekly-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create this week's improvement issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Ensure execution happens only at 15:15 Tuesday in Sweden local time,
+            // while cron is defined in UTC with dual entries for DST.
+            const weekday = new Intl.DateTimeFormat("en-US", {
+              timeZone: "Europe/Stockholm",
+              weekday: "short"
+            }).format(new Date());
+            const hour = Number(new Intl.DateTimeFormat("en-US", {
+              timeZone: "Europe/Stockholm",
+              hour: "2-digit",
+              hourCycle: "h23"
+            }).format(new Date()));
+            const minute = Number(new Intl.DateTimeFormat("en-US", {
+              timeZone: "Europe/Stockholm",
+              minute: "2-digit"
+            }).format(new Date()));
+
+            if (!(weekday === "Tue" && hour === 15 && minute === 15)) {
+              core.info("Not 15:15 Tuesday in Europe/Stockholm; skipping run.");
+              return;
+            }
+
+            function getIsoWeekInfo(date) {
+              const utcDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+              const dayNum = utcDate.getUTCDay() || 7;
+              utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNum);
+              const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+              const weekNo = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+              return {
+                year: utcDate.getUTCFullYear(),
+                week: weekNo
+              };
+            }
+
+            const now = new Date();
+            const { year, week } = getIsoWeekInfo(now);
+            const weekPadded = String(week).padStart(2, "0");
+            const weekLabel = `weekly-${year}-W${weekPadded}`;
+            const baseLabel = "weekly-improvement";
+
+            const title = `Weekly Improvement ${year}-W${weekPadded}`;
+
+            const themes = [
+              {
+                name: "Visual polish",
+                summary: "Make the app look better with focused UI polish.",
+                suggestions: [
+                  "Improve spacing, typography, and hierarchy in menu or HUD screens.",
+                  "Refine colors/contrast for readability on Android and Windows.",
+                  "Polish animations or transitions that improve perceived quality."
+                ]
+              },
+              {
+                name: "Game flow",
+                summary: "Improve match flow, control responsiveness, or gameplay pacing.",
+                suggestions: [
+                  "Tune transitions between possession changes and restart scenarios.",
+                  "Improve input responsiveness for joysticks and action buttons.",
+                  "Refine AI or movement pacing so the game feels smoother and fairer."
+                ]
+              },
+              {
+                name: "Bug fixing",
+                summary: "Fix one high-value bug that impacts stability or player experience.",
+                suggestions: [
+                  "Reproduce and fix a gameplay bug with clear before/after behavior.",
+                  "Fix a UI bug that causes layout issues across screen sizes.",
+                  "Fix a platform-specific bug affecting Android or Windows build/runtime."
+                ]
+              }
+            ];
+
+            // Rotate theme by week number for predictable variety.
+            const theme = themes[(week - 1) % themes.length];
+
+            // Avoid duplicate issue creation for the same week.
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              labels: weekLabel,
+              per_page: 100
+            });
+
+            if (existing.length > 0) {
+              core.info(`Weekly issue already exists: #${existing[0].number}`);
+              return;
+            }
+
+            async function ensureLabel(name, color, description) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({ owner, repo, name, color, description });
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+            await ensureLabel(baseLabel, "0e8a16", "Auto-created weekly app improvement issues");
+            await ensureLabel("auto-agent-candidate", "1d76db", "Issues created for automated improvement pipeline");
+            await ensureLabel(weekLabel, "5319e7", `Week marker for ${year} W${weekPadded}`);
+
+            const body = [
+              "## Weekly Improvement Goal",
+              `${theme.summary}`,
+              "",
+              `Focus area: ${theme.name}`,
+              "",
+              "### Suggested directions",
+              ...theme.suggestions.map(item => `- ${item}`),
+              "",
+              "### Acceptance criteria",
+              "- One concrete improvement is implemented and verified.",
+              "- Changes keep gameplay authentic to handball rules.",
+              "- Android build still succeeds.",
+              "",
+              "### Notes",
+              "- Keep changes offline-first and privacy-respecting.",
+              "- Prefer small, high-quality improvements over broad changes."
+            ].join("\n");
+
+            const created = await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels: [baseLabel, "auto-agent-candidate", weekLabel]
+            });
+
+            core.info(`Created weekly improvement issue #${created.data.number}`);

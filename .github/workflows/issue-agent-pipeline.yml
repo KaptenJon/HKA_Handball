@@ -1,0 +1,268 @@
+name: Issue Agent Pipeline
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: issue-agent-pipeline-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  plan-issue:
+    name: Plan issue (agent)
+    runs-on: ubuntu-latest
+    outputs:
+      plan_prompt: ${{ steps.plan.outputs.plan_prompt }}
+    steps:
+      - name: Build plan prompt for planner agent
+        id: plan
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const prompt = [
+              "Agent: issue-planner",
+              `Issue #${issue.number}: ${issue.title}`,
+              "",
+              "Issue body:",
+              issue.body || "(no body)",
+              "",
+              "Create an implementation plan using the agent's output format."
+            ].join("\n");
+
+            core.setOutput("plan_prompt", prompt);
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                "Starting automated issue pipeline.",
+                "- Planner agent queued: `issue-planner`"
+              ].join("\n")
+            });
+
+  validate-handball:
+    name: Validate sports logic (agent)
+    runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.validate.outputs.valid }}
+      validation_summary: ${{ steps.validate.outputs.validation_summary }}
+    steps:
+      - name: Validate issue from handball perspective
+        id: validate
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const text = `${issue.title}\n${issue.body || ""}`.toLowerCase();
+
+            // Lightweight heuristic gate; handball agent should provide the final judgment in practice.
+            const handballTerms = [
+              "handball", "goalkeeper", "pivot", "wing", "6m", "9m", "7m",
+              "free throw", "penalty", "passive play", "fast break", "defense", "offense"
+            ];
+
+            const hasSportContext = handballTerms.some(term => text.includes(term));
+            const valid = hasSportContext ? "true" : "false";
+            const summary = hasSportContext
+              ? "VALID: Sports context detected."
+              : "INVALID: No clear handball context detected. Add sport-specific details.";
+
+            core.setOutput("valid", valid);
+            core.setOutput("validation_summary", summary);
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                "Handball knowledge validation complete.",
+                `- Result: ${summary}`
+              ].join("\n")
+            });
+
+  gate:
+    name: Gate after parallel checks
+    runs-on: ubuntu-latest
+    needs: [plan-issue, validate-handball]
+    if: always()
+    outputs:
+      proceed: ${{ steps.gate.outputs.proceed }}
+    steps:
+      - name: Decide whether to proceed
+        id: gate
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const validationJobSucceeded = "${{ needs.validate-handball.result }}" === "success";
+            const valid = validationJobSucceeded && "${{ needs.validate-handball.outputs.valid }}" === "true";
+            const proceed = valid ? "true" : "false";
+            core.setOutput("proceed", proceed);
+
+            const issue = context.payload.issue;
+            const statusBody = valid
+              ? "Parallel checks passed. Proceeding with coding agents."
+              : "Pipeline stopped: sports validation failed. Please refine issue details and reopen.";
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: statusBody
+            });
+
+  implementation-agent:
+    name: Implementation coder (agent)
+    runs-on: ubuntu-latest
+    needs: [gate, plan-issue]
+    if: needs.gate.outputs.proceed == 'true'
+    steps:
+      - name: Trigger implementation coding agent
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const planPrompt = `${{ needs.plan-issue.outputs.plan_prompt }}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                "@copilot Please use the `implementation-coder` custom agent.",
+                "Implement the approved plan for this issue and open a pull request.",
+                "",
+                "Planner context:",
+                planPrompt
+              ].join("\n")
+            });
+
+  ui-polish-agent:
+    name: UI polish coder (agent)
+    runs-on: ubuntu-latest
+    needs: [implementation-agent]
+    steps:
+      - name: Request UI polish pass
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue = context.payload.issue;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                "@copilot Please run a second pass with the `ui-polish-coder` custom agent.",
+                "Focus on visual and UX polish after core implementation, and update the same PR."
+              ].join("\n")
+            });
+
+  wait-for-pr:
+    name: Wait for PR from agents
+    runs-on: ubuntu-latest
+    needs: [implementation-agent, ui-polish-agent]
+    outputs:
+      pr_number: ${{ steps.find-pr.outputs.pr_number }}
+    steps:
+      - name: Find PR linked to issue
+        id: find-pr
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Retry to give coding agents time to open a PR.
+            for (let i = 0; i < 20; i++) {
+              core.info(`Checking for linked PR (attempt ${i + 1}/20)`);
+              const { data: timeline } = await github.rest.issues.listEventsForTimeline({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                per_page: 100
+              });
+
+              const linked = timeline.find(event => event.event === "cross-referenced" && event.source?.issue?.pull_request);
+              if (linked) {
+                const prNumber = linked.source.issue.number;
+                core.setOutput("pr_number", String(prNumber));
+                return;
+              }
+
+              if (i < 19) {
+                await new Promise(resolve => setTimeout(resolve, 30000));
+              }
+            }
+
+            core.setFailed("No PR was linked to this issue within the expected time window.");
+
+  review-agent:
+    name: Review agent pass
+    runs-on: ubuntu-latest
+    needs: [wait-for-pr]
+    steps:
+      - name: Trigger review agent
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const prNumber = Number("${{ needs.wait-for-pr.outputs.pr_number }}");
+            if (Number.isNaN(prNumber)) {
+              core.setFailed("PR number was not set by wait-for-pr job.");
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: [
+                "@copilot Please use the `pr-reviewer` custom agent.",
+                "Review this PR for correctness and maintainability, and leave actionable comments."
+              ].join("\n")
+            });
+
+  fix-comments-agent:
+    name: Fix review comments
+    runs-on: ubuntu-latest
+    needs: [review-agent, wait-for-pr]
+    steps:
+      - name: Trigger comment-fixing agent
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const prNumber = Number("${{ needs.wait-for-pr.outputs.pr_number }}");
+            if (Number.isNaN(prNumber)) {
+              core.setFailed("PR number was not set by wait-for-pr job.");
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: [
+                "@copilot Please use the `review-comment-fixer` custom agent.",
+                "Resolve open review comments and update this PR until merge-ready."
+              ].join("\n")
+            });
+
+  auto-merge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    needs: [fix-comments-agent, wait-for-pr]
+    steps:
+      - name: Enable PR auto-merge
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ needs.wait-for-pr.outputs.pr_number }}
+          merge-method: squash
