@@ -8,6 +8,7 @@ on:
 permissions:
   issues: write
   contents: read
+  actions: write
 
 concurrency:
   group: weekly-improvement-issue-${{ github.ref }}
