@@ -3,6 +3,12 @@ name: Issue Agent Pipeline
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to process"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -25,7 +31,18 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const issue = context.payload.issue;
+            const issueNumber = Number("${{ github.event.issue.number || github.event.inputs.issue_number }}");
+            if (Number.isNaN(issueNumber)) {
+              core.setFailed("Issue number is missing for this run.");
+              return;
+            }
+
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+
             const prompt = [
               "Agent: issue-planner",
               `Issue #${issue.number}: ${issue.title}`,
@@ -60,7 +77,18 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const issue = context.payload.issue;
+            const issueNumber = Number("${{ github.event.issue.number || github.event.inputs.issue_number }}");
+            if (Number.isNaN(issueNumber)) {
+              core.setFailed("Issue number is missing for this run.");
+              return;
+            }
+
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+
             const text = `${issue.title}\n${issue.body || ""}`.toLowerCase();
 
             // Lightweight heuristic gate; handball agent should provide the final judgment in practice.
@@ -101,12 +129,17 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
+            const issueNumber = Number("${{ github.event.issue.number || github.event.inputs.issue_number }}");
+            if (Number.isNaN(issueNumber)) {
+              core.setFailed("Issue number is missing for this run.");
+              return;
+            }
+
             const validationJobSucceeded = "${{ needs.validate-handball.result }}" === "success";
             const valid = validationJobSucceeded && "${{ needs.validate-handball.outputs.valid }}" === "true";
             const proceed = valid ? "true" : "false";
             core.setOutput("proceed", proceed);
 
-            const issue = context.payload.issue;
             const statusBody = valid
               ? "Parallel checks passed. Proceeding with coding agents."
               : "Pipeline stopped: sports validation failed. Please refine issue details and reopen.";
@@ -114,7 +147,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
+              issue_number: issueNumber,
               body: statusBody
             });
 
@@ -128,13 +161,18 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const issue = context.payload.issue;
+            const issueNumber = Number("${{ github.event.issue.number || github.event.inputs.issue_number }}");
+            if (Number.isNaN(issueNumber)) {
+              core.setFailed("Issue number is missing for this run.");
+              return;
+            }
+
             const planPrompt = `${{ needs.plan-issue.outputs.plan_prompt }}`;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
+              issue_number: issueNumber,
               body: [
                 "@copilot Please use the `implementation-coder` custom agent.",
                 "Implement the approved plan for this issue and open a pull request.",
@@ -153,12 +191,16 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const issue = context.payload.issue;
+            const issueNumber = Number("${{ github.event.issue.number || github.event.inputs.issue_number }}");
+            if (Number.isNaN(issueNumber)) {
+              core.setFailed("Issue number is missing for this run.");
+              return;
+            }
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
+              issue_number: issueNumber,
               body: [
                 "@copilot Please run a second pass with the `ui-polish-coder` custom agent.",
                 "Focus on visual and UX polish after core implementation, and update the same PR."
@@ -177,7 +219,12 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const issueNumber = context.payload.issue.number;
+            const issueNumber = Number("${{ github.event.issue.number || github.event.inputs.issue_number }}");
+            if (Number.isNaN(issueNumber)) {
+              core.setFailed("Issue number is missing for this run.");
+              return;
+            }
+
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 

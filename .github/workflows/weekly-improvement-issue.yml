@@ -136,3 +136,15 @@ jobs:
             });
 
             core.info(`Created weekly improvement issue #${created.data.number}`);
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner,
+              repo,
+              workflow_id: "issue-agent-pipeline.yml",
+              ref: "${{ github.ref_name }}",
+              inputs: {
+                issue_number: String(created.data.number)
+              }
+            });
+
+            core.info(`Dispatched issue-agent-pipeline.yml for issue #${created.data.number}`);
