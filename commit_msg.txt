@@ -1,0 +1,4 @@
+Fix issue agent pipeline step failures
+
+1. The `review-agent` and `fix-comments-agent` steps were posting `@copilot` comments instead of using the new `POST /agents/repos/{owner}/{repo}/tasks` API. They have been updated to use the API directly with a fallback to comments, just like the `implementation-agent` step.
+2. The `auto-merge` step failed because the repository does not have the "Allow auto-merge" setting enabled in its settings. To work around this, the step has been changed to actively poll the PR state and merge it using the REST API when it becomes mergeable, instead of relying on the `peter-evans/enable-pull-request-automerge` action.
