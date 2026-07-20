@@ -175,7 +175,8 @@ jobs:
               issue_number: issueNumber,
               body: [
                 "@copilot Please use the `implementation-coder` custom agent.",
-                "Implement the approved plan for this issue and open a pull request.",
+                `Implement the approved plan for issue #${issueNumber} and open a pull request.`,
+                `In the PR description, include 'Fixes #${issueNumber}' so the PR is linked automatically.`,
                 "",
                 "Planner context:",
                 planPrompt
@@ -228,9 +229,10 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // Retry to give coding agents time to open a PR.
-            for (let i = 0; i < 20; i++) {
-              core.info(`Checking for linked PR (attempt ${i + 1}/20)`);
+            // Retry to give coding agents enough time to open and link a PR.
+            const maxAttempts = 80;
+            for (let i = 0; i < maxAttempts; i++) {
+              core.info(`Checking for linked PR (attempt ${i + 1}/${maxAttempts})`);
               const { data: timeline } = await github.rest.issues.listEventsForTimeline({
                 owner,
                 repo,
@@ -245,7 +247,7 @@ jobs:
                 return;
               }
 
-              if (i < 19) {
+              if (i < maxAttempts - 1) {
                 await new Promise(resolve => setTimeout(resolve, 30000));
               }
             }
