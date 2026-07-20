@@ -156,8 +156,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [gate, plan-issue]
     if: needs.gate.outputs.proceed == 'true'
+    outputs:
+      task_id: ${{ steps.trigger-agent.outputs.task_id }}
     steps:
-      - name: Trigger implementation coding agent
+      - name: Trigger implementation coding agent via API
+        id: trigger-agent
         uses: actions/github-script@v9
         with:
           script: |
@@ -166,52 +169,96 @@ jobs:
               core.setFailed("Issue number is missing for this run.");
               return;
             }
+
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
 
             const planPrompt = `${{ needs.plan-issue.outputs.plan_prompt }}`;
 
+            // Post a comment to notify that agent is being triggered
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
-              body: [
-                "@copilot Please use the `implementation-coder` custom agent.",
-                `Implement the approved plan for issue #${issueNumber} and open a pull request.`,
-                `In the PR description, include 'Fixes #${issueNumber}' so the PR is linked automatically.`,
-                "",
-                "Planner context:",
-                planPrompt
-              ].join("\n")
+              body: "🤖 Triggering implementation-coder agent via API..."
             });
 
-  ui-polish-agent:
-    name: UI polish coder (agent)
-    runs-on: ubuntu-latest
-    needs: [implementation-agent]
-    steps:
-      - name: Request UI polish pass
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const issueNumber = Number("${{ github.event.issue.number || github.event.inputs.issue_number }}");
-            if (Number.isNaN(issueNumber)) {
-              core.setFailed("Issue number is missing for this run.");
-              return;
+            // Call the Copilot Agent Tasks API to trigger the agent
+            const prompt = [
+              "You are the implementation-coder custom agent.",
+              `Your task: Implement the approved plan for issue #${issueNumber} and create a pull request.`,
+              `Important: In the PR description, include 'Fixes #${issueNumber}' so the PR is linked automatically.`,
+              "",
+              "Issue details:",
+              `Title: ${issue.title}`,
+              `Body: ${issue.body || "(no body)"}`,
+              "",
+              "Planner context:",
+              planPrompt,
+              "",
+              "Instructions:",
+              "1. Read the issue carefully and understand the requirements",
+              "2. Implement the necessary code changes",
+              "3. Test that the Android build still succeeds",
+              "4. Create a pull request with 'Fixes #" + issueNumber + "' in the description",
+              "5. Ensure gameplay remains authentic to handball rules",
+              "6. Keep the app offline-first and privacy-respecting"
+            ].join("\n");
+
+            try {
+              const response = await github.request('POST /agents/repos/{owner}/{repo}/tasks', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                prompt: prompt,
+                base_ref: context.ref || 'master',
+                create_pull_request: true,
+                headers: {
+                  'X-GitHub-Api-Version': '2026-03-10'
+                }
+              });
+              
+              core.info(`Agent task created: ${response.data.id}`);
+              core.setOutput("task_id", response.data.id);
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `✅ Implementation agent task started (Task ID: ${response.data.id})`
+              });
+            } catch (error) {
+              core.error(`Failed to trigger agent: ${error.message}`);
+              
+              // Fallback to posting a comment for manual intervention
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: [
+                  "⚠️ Failed to automatically trigger the agent via API.",
+                  "",
+                  "@copilot Please use the `implementation-coder` custom agent.",
+                  `Implement the approved plan for issue #${issueNumber} and open a pull request.`,
+                  `In the PR description, include 'Fixes #${issueNumber}' so the PR is linked automatically.`,
+                  "",
+                  "Planner context:",
+                  planPrompt
+                ].join("\n")
+              });
+              
+              throw error;
             }
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              body: [
-                "@copilot Please run a second pass with the `ui-polish-coder` custom agent.",
-                "Focus on visual and UX polish after core implementation, and update the same PR."
-              ].join("\n")
-            });
+  # UI polish is now handled within the main implementation task
+  # to ensure a single comprehensive PR is created
 
   wait-for-pr:
     name: Wait for PR from agents
     runs-on: ubuntu-latest
-    needs: [implementation-agent, ui-polish-agent]
+    needs: [implementation-agent]
     outputs:
       pr_number: ${{ steps.find-pr.outputs.pr_number }}
     steps:
