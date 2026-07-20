@@ -316,15 +316,30 @@ jobs:
               return;
             }
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: [
-                "@copilot Please use the `pr-reviewer` custom agent.",
-                "Review this PR for correctness and maintainability, and leave actionable comments."
-              ].join("\n")
-            });
+            try {
+              await github.request('POST /agents/repos/{owner}/{repo}/tasks', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                prompt: "You are the pr-reviewer custom agent. Review this PR for correctness and maintainability, and leave actionable comments.",
+                pull_request_number: prNumber,
+                headers: {
+                  'X-GitHub-Api-Version': '2026-03-10'
+                }
+              });
+              core.info("Triggered review agent via API");
+            } catch (error) {
+              core.error("Failed to trigger review agent: " + error.message);
+              // Fallback
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: [
+                  "@copilot Please use the `pr-reviewer` custom agent.",
+                  "Review this PR for correctness and maintainability, and leave actionable comments."
+                ].join("\n")
+              });
+            }
 
   fix-comments-agent:
     name: Fix review comments
@@ -341,24 +356,70 @@ jobs:
               return;
             }
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: [
-                "@copilot Please use the `review-comment-fixer` custom agent.",
-                "Resolve open review comments and update this PR until merge-ready."
-              ].join("\n")
-            });
+            try {
+              await github.request('POST /agents/repos/{owner}/{repo}/tasks', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                prompt: "You are the review-comment-fixer custom agent. Resolve open review comments and update this PR until merge-ready.",
+                pull_request_number: prNumber,
+                headers: {
+                  'X-GitHub-Api-Version': '2026-03-10'
+                }
+              });
+              core.info("Triggered comment-fixing agent via API");
+            } catch (error) {
+              core.error("Failed to trigger comment-fixing agent: " + error.message);
+              // Fallback
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: [
+                  "@copilot Please use the `review-comment-fixer` custom agent.",
+                  "Resolve open review comments and update this PR until merge-ready."
+                ].join("\n")
+              });
+            }
 
   auto-merge:
-    name: Enable auto-merge
+    name: Merge PR
     runs-on: ubuntu-latest
     needs: [fix-comments-agent, wait-for-pr]
     steps:
-      - name: Enable PR auto-merge
-        uses: peter-evans/enable-pull-request-automerge@v3
+      - name: Wait for PR to be mergeable and merge
+        uses: actions/github-script@v9
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ needs.wait-for-pr.outputs.pr_number }}
-          merge-method: squash
+          script: |
+            const prNumber = Number("${{ needs.wait-for-pr.outputs.pr_number }}");
+            if (Number.isNaN(prNumber)) {
+              core.setFailed("PR number was not set by wait-for-pr job.");
+              return;
+            }
+            
+            // Wait a bit to let agents do their work
+            const maxAttempts = 60; // 30 minutes
+            for (let i = 0; i < maxAttempts; i++) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              
+              // Only merge if not dirty/blocked and wait for agents to finish
+              if (pr.mergeable && pr.mergeable_state !== 'dirty' && pr.mergeable_state !== 'blocked') {
+                try {
+                  await github.rest.pulls.merge({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber,
+                    merge_method: 'squash'
+                  });
+                  core.info(`Merged PR #${prNumber}`);
+                  return;
+                } catch (e) {
+                  core.info(`Merge failed (might need more time): ${e.message}`);
+                }
+              }
+              await new Promise(r => setTimeout(r, 30000));
+            }
+            core.setFailed("PR did not become mergeable in time");
