@@ -14,9 +14,9 @@
             </GraphicsView.GestureRecognizers>
         </GraphicsView>
 
-        <!-- Status bar top center -->
+        <!-- Status bar top center, below the scoreboard -->
         <Label x:Name="StatusLabel" TextColor="#CCFFFFFF" FontSize="11" FontAttributes="Italic"
-               HorizontalOptions="Center" VerticalOptions="Start" Margin="0,4,0,0" />
+               HorizontalOptions="Center" VerticalOptions="Start" Margin="0,54,0,0" />
 
         <!-- PLAYER 1 LEFT THUMB: Joystick -->
         <controls:JoystickView x:Name="Joystick" WidthRequest="140" HeightRequest="140"
@@ -31,11 +31,11 @@
             <Button x:Name="PassUpButton" Text="⬆ Pass" FontSize="15"
                     BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
-                    Clicked="OnPassUp" />
+                    Pressed="OnPassUp" />
             <Button x:Name="PassDownButton" Grid.Row="1" Text="⬇ Pass" FontSize="15"
                     BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
-                    Clicked="OnPassDown" />
+                    Pressed="OnPassDown" />
             <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="2"
                     HeightRequest="65" WidthRequest="100" />
 
@@ -43,7 +43,7 @@
             <Button x:Name="SwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
                     BackgroundColor="#FF8F00" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
-                    Clicked="OnSwitchDefender" />
+                    Pressed="OnSwitchDefender" />
         </Grid>
 
         <!-- PLAYER 2 RIGHT THUMB: Joystick (two-player mode only) -->
@@ -61,11 +61,11 @@
             <Button x:Name="AwayPassUpButton" Text="⬆ Pass" FontSize="15"
                     BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
-                    Clicked="OnAwayPassUp" />
+                    Pressed="OnAwayPassUp" />
             <Button x:Name="AwayPassDownButton" Grid.Row="1" Text="⬇ Pass" FontSize="15"
                     BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
-                    Clicked="OnAwayPassDown" />
+                    Pressed="OnAwayPassDown" />
             <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="2"
                     HeightRequest="65" WidthRequest="100" />
 
@@ -73,7 +73,7 @@
             <Button x:Name="AwaySwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
                     BackgroundColor="#E65100" TextColor="White" CornerRadius="12"
                     HeightRequest="52" MinimumWidthRequest="90"
-                    Clicked="OnAwaySwitchDefender" />
+                    Pressed="OnAwaySwitchDefender" />
         </Grid>
     </Grid>
 </ContentPage>

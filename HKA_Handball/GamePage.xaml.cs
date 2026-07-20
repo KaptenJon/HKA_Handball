@@ -833,7 +833,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         var owner = AwayPlayers[BallOwnerAwayIndex];
         (int idx, Actor actor)? best = null; double bestMetric = double.MaxValue;
         for (int i = 0; i < AwayPlayers.Length; i++)
@@ -862,7 +862,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         StartAwayShoot(AwayPlayers[BallOwnerAwayIndex].Position);
     }
 
@@ -875,7 +875,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         StartAwayShootAt(AwayPlayers[BallOwnerAwayIndex].Position, normalizedAimX);
     }
 
@@ -910,7 +910,7 @@ public class GameState
     public void QueuePassVertical(int dirY)
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         var owner = HomePlayers[BallOwnerPlayerIndex];
         (int idx, Actor actor)? best = null; double bestMetric = double.MaxValue;
         // Allow passing to any teammate including goalkeeper (index 0)
@@ -944,7 +944,7 @@ public class GameState
     public void QueueShoot()
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
         _advanceBoost = false;
@@ -971,7 +971,7 @@ public class GameState
     public void QueueShootAt(double normalizedAimX)
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
         _advanceBoost = false;
@@ -1272,7 +1272,11 @@ public class GameState
             bool hasManualInput = Math.Abs(ActiveMoveInput.X) > 5 || Math.Abs(ActiveMoveInput.Y) > 5
                                   || _advanceBoost || Math.Abs(_attackDiagonalBoostY) > 0.1;
 
-            if (hasManualInput)
+            if (_freeThrowCooldownTicks > 0)
+            {
+                // Ball carrier must stay still during free throw whistle pause
+            }
+            else if (hasManualInput)
             {
                 // Direct joystick / button control
                 double forwardExtra = _advanceBoost ? 220 : 0;
@@ -1670,7 +1674,11 @@ public class GameState
                 {
                     // Player 2 direct control of away ball carrier
                     bool hasManualInput2 = Math.Abs(AwayActiveMoveInput.X) > 5 || Math.Abs(AwayActiveMoveInput.Y) > 5 || _awayAdvanceBoost2;
-                    if (hasManualInput2)
+                    if (_freeThrowCooldownTicks > 0)
+                    {
+                        // Away carrier stays still during free throw pause
+                    }
+                    else if (hasManualInput2)
                     {
                         double forwardExtra = _awayAdvanceBoost2 ? -220 : 0; // negative = attacking left
                         var nextPos = new Point(
@@ -1742,7 +1750,7 @@ public class GameState
                         Lerp(a.Position.Y, arcPos.Y, 0.04));
 
                     // Pass or breakthrough decision (only when near arc) — difficulty adjusted
-                    if (!_awayPassActive && _awayPassCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
+                    if (!_awayPassActive && _awayPassCooldownTicks == 0 && _freeThrowCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
                     {
                         if (TryStartAwayDirectShot(i, a.Position, arcPos.X))
                         {
@@ -2228,6 +2236,7 @@ public class GameState
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
         _awayFreeThrowAttackTicks = 0;
+        _freeThrowCooldownTicks = FreeThrowCooldownDuration; // Restart transition pacing
         // Fast break for away team on turnover
         _awayFastBreakTicks = FastBreakDurationTicks;
         _homeFastBreakTicks = 0;
@@ -2255,6 +2264,7 @@ public class GameState
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
         _awayFreeThrowAttackTicks = 0;
+        _freeThrowCooldownTicks = FreeThrowCooldownDuration; // Restart transition pacing
         // Fast break for home team on turnover
         _homeFastBreakTicks = FastBreakDurationTicks;
         _awayFastBreakTicks = 0;
