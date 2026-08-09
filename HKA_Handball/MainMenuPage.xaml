@@ -1,118 +1,212 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="HKA_Handball.MainMenuPage"
-             BackgroundColor="#2C1B0E"
+             BackgroundColor="#24160C"
              NavigationPage.HasNavigationBar="False">
 
-    <Grid RowDefinitions="*,Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="0,10,0,0">
 
-        <!-- Top area: Title and animated graphics -->
-        <Grid Grid.Row="0" VerticalOptions="Center" HorizontalOptions="Center"
-              RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+        <!-- Title area -->
+        <Grid Grid.Row="0"
+              VerticalOptions="Center"
+              HorizontalOptions="Center"
+              RowDefinitions="Auto,Auto,Auto"
+              RowSpacing="6"
+              Margin="0,0,0,10">
 
-            <!-- Animated ball icon -->
             <Border x:Name="BallFrame"
                     Grid.Row="0"
                     BackgroundColor="#FF8C00"
                     StrokeShape="RoundRectangle 30"
                     Stroke="Transparent"
-                    WidthRequest="60" HeightRequest="60"
-                    HorizontalOptions="Center" Padding="0">
+                    WidthRequest="60"
+                    HeightRequest="60"
+                    HorizontalOptions="Center"
+                    Padding="0">
                 <Border.Shadow>
-                    <Shadow Brush="Black" Offset="2,2" Radius="6" Opacity="0.4" />
+                    <Shadow Brush="#90000000" Offset="2,2" Radius="8" Opacity="0.45" />
                 </Border.Shadow>
-                <Label Text="🤾" FontSize="28" HorizontalOptions="Center" VerticalOptions="Center" />
+                <Label Text="🤾"
+                       FontSize="28"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center" />
             </Border>
 
-            <!-- Game title -->
             <Label Grid.Row="1"
                    Text="HKA HANDBALL"
-                   FontSize="36" FontAttributes="Bold"
+                   FontSize="34"
+                   FontAttributes="Bold"
                    TextColor="White"
                    HorizontalOptions="Center"
                    CharacterSpacing="4" />
 
-            <!-- Subtitle -->
             <Label Grid.Row="2"
                    Text="Handboll på riktigt"
-                   FontSize="14" FontAttributes="Italic"
-                   TextColor="#99FFFFFF"
+                   FontSize="13"
+                   FontAttributes="Italic"
+                   TextColor="#A0FFFFFF"
                    HorizontalOptions="Center" />
         </Grid>
 
         <!-- Center area: Menu buttons and settings -->
-        <VerticalStackLayout Grid.Row="1" Spacing="14" Padding="40,0"
-                              HorizontalOptions="Center" VerticalOptions="Center">
+        <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Never">
+            <VerticalStackLayout Padding="16,0,16,16"
+                                 HorizontalOptions="Fill"
+                                 VerticalOptions="Center"
+                                 Spacing="0">
+                <Border BackgroundColor="#17000000"
+                        Stroke="#33FFFFFF"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 28"
+                        Padding="20"
+                        HorizontalOptions="Fill"
+                        MaximumWidthRequest="420">
+                    <Border.Shadow>
+                        <Shadow Brush="#A0000000" Offset="0,8" Radius="18" Opacity="0.35" />
+                    </Border.Shadow>
 
-            <!-- Difficulty selector -->
-            <Label Text="Svårighetsgrad" FontSize="12" TextColor="#AAFFFFFF"
-                   HorizontalOptions="Center" Margin="0,0,0,2" />
-            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8" HorizontalOptions="Center"
-                  MinimumWidthRequest="280">
-                <Button x:Name="EasyButton" Text="Lätt"
-                        FontSize="14" FontAttributes="Bold"
-                        BackgroundColor="#2E7D32" TextColor="White"
-                        CornerRadius="12" HeightRequest="40"
-                        Clicked="OnSelectEasy" />
-                <Button x:Name="MediumButton" Grid.Column="1" Text="Normal"
-                        FontSize="14" FontAttributes="Bold"
-                        BackgroundColor="#003DA5" TextColor="White"
-                        CornerRadius="12" HeightRequest="40"
-                        Clicked="OnSelectMedium" />
-                <Button x:Name="HardButton" Grid.Column="2" Text="Svår"
-                        FontSize="14" FontAttributes="Bold"
-                        BackgroundColor="#37474F" TextColor="White"
-                        CornerRadius="12" HeightRequest="40"
-                        Clicked="OnSelectHard" />
-            </Grid>
+                    <VerticalStackLayout Spacing="18">
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="Svårighetsgrad"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="White" />
+                            <Label Text="Välj tempo och motstånd innan matchen startar."
+                                   FontSize="12"
+                                   TextColor="#A8FFFFFF" />
+                        </VerticalStackLayout>
 
-            <!-- Team color selectors -->
-            <Label Text="Lagfärger" FontSize="12" TextColor="#AAFFFFFF"
-                   HorizontalOptions="Center" Margin="0,6,0,2" />
-            <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="8"
-                  HorizontalOptions="Center" MinimumWidthRequest="280">
-                <Label Text="Hem:" FontSize="12" TextColor="#CCFFFFFF"
-                       VerticalOptions="Center" />
-                <HorizontalStackLayout x:Name="HomeColorStack" Grid.Column="1"
-                                       Spacing="6" VerticalOptions="Center" />
-                <Label Grid.Column="2" Text="Borta:" FontSize="12" TextColor="#CCFFFFFF"
-                       VerticalOptions="Center" />
-                <HorizontalStackLayout x:Name="AwayColorStack" Grid.Column="3"
-                                       Spacing="6" VerticalOptions="Center" />
-            </Grid>
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                            <Button x:Name="EasyButton"
+                                    Text="Lätt"
+                                    FontSize="14"
+                                    FontAttributes="Bold"
+                                    BackgroundColor="#2E7D32"
+                                    TextColor="White"
+                                    CornerRadius="14"
+                                    HeightRequest="44"
+                                    BorderColor="#AAFFFFFF"
+                                    BorderWidth="2"
+                                    Clicked="OnSelectEasy" />
+                            <Button x:Name="MediumButton"
+                                    Grid.Column="1"
+                                    Text="Normal"
+                                    FontSize="14"
+                                    FontAttributes="Bold"
+                                    BackgroundColor="#003DA5"
+                                    TextColor="White"
+                                    CornerRadius="14"
+                                    HeightRequest="44"
+                                    BorderColor="#AAFFFFFF"
+                                    BorderWidth="2"
+                                    Clicked="OnSelectMedium" />
+                            <Button x:Name="HardButton"
+                                    Grid.Column="2"
+                                    Text="Svår"
+                                    FontSize="14"
+                                    FontAttributes="Bold"
+                                    BackgroundColor="#37474F"
+                                    TextColor="White"
+                                    CornerRadius="14"
+                                    HeightRequest="44"
+                                    BorderColor="#AAFFFFFF"
+                                    BorderWidth="2"
+                                    Clicked="OnSelectHard" />
+                        </Grid>
 
-            <!-- Play buttons -->
-            <Button x:Name="SinglePlayerButton"
-                    Text="🏠 1 Spelare"
-                    FontSize="20" FontAttributes="Bold"
-                    BackgroundColor="#003DA5" TextColor="White"
-                    CornerRadius="16" HeightRequest="60"
-                    MinimumWidthRequest="280"
-                    Clicked="OnSinglePlayer" />
+                        <VerticalStackLayout Spacing="4" Margin="0,2,0,0">
+                            <Label Text="Lagfärger"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="White" />
+                            <Label Text="Home och away använder separata färger för tydlighet."
+                                   FontSize="12"
+                                   TextColor="#A8FFFFFF" />
+                        </VerticalStackLayout>
 
-            <Button x:Name="TwoPlayerButton"
-                    Text="👥  2 Spelare (Lokal)"
-                    FontSize="20" FontAttributes="Bold"
-                    BackgroundColor="#1B5E20" TextColor="White"
-                    CornerRadius="16" HeightRequest="60"
-                    MinimumWidthRequest="280"
-                    Clicked="OnTwoPlayerLocal" />
+                        <Grid ColumnDefinitions="*,*"
+                              ColumnSpacing="16">
+                            <VerticalStackLayout Spacing="8">
+                                <Label Text="Hem"
+                                       FontSize="12"
+                                       FontAttributes="Bold"
+                                       TextColor="#E8FFFFFF" />
+                                <HorizontalStackLayout x:Name="HomeColorStack"
+                                                       Spacing="6"
+                                                       HorizontalOptions="Center" />
+                            </VerticalStackLayout>
 
-            <!-- Sound toggle -->
-            <Grid ColumnDefinitions="*,Auto" HeightRequest="40" Padding="20,0">
-                <Label Text="Ljud" FontSize="14" TextColor="#AAFFFFFF"
-                       VerticalOptions="Center" />
-                <Switch x:Name="SoundSwitch" Grid.Column="1"
-                        IsToggled="True"
-                        OnColor="#003DA5"
-                        Toggled="OnSoundToggled" />
-            </Grid>
-        </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Column="1"
+                                                 Spacing="8">
+                                <Label Text="Borta"
+                                       FontSize="12"
+                                       FontAttributes="Bold"
+                                       TextColor="#E8FFFFFF" />
+                                <HorizontalStackLayout x:Name="AwayColorStack"
+                                                       Spacing="6"
+                                                       HorizontalOptions="Center" />
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <VerticalStackLayout Spacing="10">
+                            <Button x:Name="SinglePlayerButton"
+                                    Text="🏠  1 spelare"
+                                    FontSize="19"
+                                    FontAttributes="Bold"
+                                    BackgroundColor="#003DA5"
+                                    TextColor="White"
+                                    CornerRadius="18"
+                                    HeightRequest="58"
+                                    HorizontalOptions="Fill"
+                                    Clicked="OnSinglePlayer" />
+
+                            <Button x:Name="TwoPlayerButton"
+                                    Text="👥  2 spelare (lokal)"
+                                    FontSize="19"
+                                    FontAttributes="Bold"
+                                    BackgroundColor="#1B5E20"
+                                    TextColor="White"
+                                    CornerRadius="18"
+                                    HeightRequest="58"
+                                    HorizontalOptions="Fill"
+                                    Clicked="OnTwoPlayerLocal" />
+                        </VerticalStackLayout>
+
+                        <Border BackgroundColor="#12000000"
+                                Stroke="#25FFFFFF"
+                                StrokeThickness="1"
+                                StrokeShape="RoundRectangle 18"
+                                Padding="14,12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="Ljud"
+                                           FontSize="14"
+                                           FontAttributes="Bold"
+                                           TextColor="White" />
+                                    <Label Text="Aktivera klick och matchljud."
+                                           FontSize="11"
+                                           TextColor="#A8FFFFFF" />
+                                </VerticalStackLayout>
+                                <Switch x:Name="SoundSwitch"
+                                        Grid.Column="1"
+                                        IsToggled="True"
+                                        OnColor="#003DA5"
+                                        VerticalOptions="Center"
+                                        Toggled="OnSoundToggled" />
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </ScrollView>
 
         <!-- Bottom: Version / credits -->
-        <Label x:Name="VersionLabel" Grid.Row="2"
-               FontSize="10" TextColor="#55FFFFFF"
-               HorizontalOptions="Center" VerticalOptions="End"
+        <Label x:Name="VersionLabel"
+               Grid.Row="2"
+               FontSize="10"
+               TextColor="#55FFFFFF"
+               HorizontalOptions="Center"
+               VerticalOptions="End"
                Margin="0,0,0,12" />
     </Grid>
 </ContentPage>
