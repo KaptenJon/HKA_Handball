@@ -396,7 +396,7 @@ public class GameState
     const double AwayPassSecondClosestChance = 0.95; // cumulative (25% for second closest)
 
     // Match clock constants (game-time seconds per half)
-    public const double HalfDurationSeconds = 300; // 5 min per half (scaled from 30 real min)
+    public const double HalfDurationSeconds = 30 * 60; // 30 game-minutes per half
     const double GameTimeMultiplier = 6.0; // 1 real second = 6 game seconds (so 5 min = 30 game-min)
     const int HalfTimeDisplayTicks = 180; // ~3 seconds display at 60fps
     const int FullTimeDisplayTicks = 300; // ~5 seconds display
@@ -3372,9 +3372,9 @@ public class GameState
     /// </summary>
     public string GetMatchClockDisplay()
     {
-        double displayMinutes = (CurrentHalf - 1) * 30 + MatchClockSeconds * GameTimeMultiplier / 60.0;
-        int mins = (int)displayMinutes;
-        int secs = (int)((displayMinutes - mins) * 60);
+        int totalSeconds = (int)((CurrentHalf - 1) * HalfDurationSeconds + MatchClockSeconds);
+        int mins = totalSeconds / 60;
+        int secs = totalSeconds % 60;
         return $"{mins:D2}:{secs:D2}";
     }
 
