@@ -1161,9 +1161,15 @@ public class GameState
                 _possessionTimer = 0;
                 PassivePlayWarningActive = false;
                 if (isHomePassivePossession)
+                {
                     GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Passivt spel: motståndarboll");
+                    ApplyRestartPause();
+                }
                 else
+                {
                     GiveBallToPlayer(GetNearestHomeIndex(BallPos), "Passivt spel: hemmaboll");
+                    ApplyRestartPause();
+                }
                 GameEvent?.Invoke(GameEventType.Whistle);
                 return;
             }
@@ -1301,6 +1307,7 @@ public class GameState
             if (IsInsideRightGoalArea(owner.Position))
             {
                 GiveBallToOpponent(GetNearestAwayIndex(owner.Position), "Målgård: motståndarboll");
+                ApplyRestartPause();
                 return;
             }
 
@@ -1702,6 +1709,7 @@ public class GameState
                     if (IsInsideLeftGoalArea(a.Position))
                     {
                         GiveBallToPlayer(GetNearestHomeIndex(a.Position), "Målgård: motståndarboll");
+                        ApplyRestartPause();
                         ClampActor(a);
                         return;
                     }
@@ -1914,6 +1922,7 @@ public class GameState
                 else
                 {
                     GiveBallToPlayer(GetNearestHomeIndex(BallPos), "Skott utanför");
+                    ApplyRestartPause();
                 }
             }
             return;
@@ -1970,6 +1979,7 @@ public class GameState
                 else
                 {
                     GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Skott utanför");
+                    ApplyRestartPause();
                 }
             }
             return;
@@ -2236,7 +2246,6 @@ public class GameState
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
         _awayFreeThrowAttackTicks = 0;
-        _freeThrowCooldownTicks = FreeThrowCooldownDuration; // Restart transition pacing
         // Fast break for away team on turnover
         _awayFastBreakTicks = FastBreakDurationTicks;
         _homeFastBreakTicks = 0;
@@ -2264,7 +2273,6 @@ public class GameState
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
         _awayFreeThrowAttackTicks = 0;
-        _freeThrowCooldownTicks = FreeThrowCooldownDuration; // Restart transition pacing
         // Fast break for home team on turnover
         _homeFastBreakTicks = FastBreakDurationTicks;
         _awayFastBreakTicks = 0;
@@ -2287,6 +2295,8 @@ public class GameState
         if (bestIdx > 0)
             ControlledDefenderIndex = bestIdx;
     }
+
+    void ApplyRestartPause() => _freeThrowCooldownTicks = FreeThrowCooldownDuration;
 
     void StartAwayPass(int ownerIndex)
     {
@@ -3124,6 +3134,7 @@ public class GameState
                 else
                 {
                     GiveBallToOpponent(GetNearestAwayIndex(BallPos), "Straff missat");
+                    ApplyRestartPause();
                 }
             }
             else
@@ -3150,6 +3161,7 @@ public class GameState
                 else
                 {
                     GiveBallToPlayer(GetNearestHomeIndex(BallPos), "Straff missat");
+                    ApplyRestartPause();
                 }
             }
         }
