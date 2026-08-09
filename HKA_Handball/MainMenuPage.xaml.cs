@@ -101,21 +101,22 @@ public partial class MainMenuPage : ContentPage
 
     void UpdateDifficultyButtons()
     {
-        const string selectedEasy = "#2E7D32";
-        const string selectedMedium = "#003DA5";
-        const string selectedHard = "#B71C1C";
-        const string unselected = "#37474F";
-        const float selectedScale = 1.0f;
-        const float unselectedScale = 0.92f;
+        UpdateDifficultyButton(EasyButton, _selectedDifficulty == Difficulty.Easy, "#2E7D32");
+        UpdateDifficultyButton(MediumButton, _selectedDifficulty == Difficulty.Medium, "#003DA5");
+        UpdateDifficultyButton(HardButton, _selectedDifficulty == Difficulty.Hard, "#B71C1C");
+    }
 
-        EasyButton.BackgroundColor = _selectedDifficulty == Difficulty.Easy ? Color.FromArgb(selectedEasy) : Color.FromArgb(unselected);
-        EasyButton.Scale = _selectedDifficulty == Difficulty.Easy ? selectedScale : unselectedScale;
+    static void UpdateDifficultyButton(Button button, bool selected, string selectedBackground)
+    {
+        const string unselectedBackground = "#253038";
+        const string selectedBorder = "#EFFFFFFF";
+        const string unselectedBorder = "#75FFFFFF";
 
-        MediumButton.BackgroundColor = _selectedDifficulty == Difficulty.Medium ? Color.FromArgb(selectedMedium) : Color.FromArgb(unselected);
-        MediumButton.Scale = _selectedDifficulty == Difficulty.Medium ? selectedScale : unselectedScale;
-
-        HardButton.BackgroundColor = _selectedDifficulty == Difficulty.Hard ? Color.FromArgb(selectedHard) : Color.FromArgb(unselected);
-        HardButton.Scale = _selectedDifficulty == Difficulty.Hard ? selectedScale : unselectedScale;
+        button.BackgroundColor = Color.FromArgb(selected ? selectedBackground : unselectedBackground);
+        button.BorderColor = Color.FromArgb(selected ? selectedBorder : unselectedBorder);
+        button.BorderWidth = selected ? 3 : 1;
+        button.Opacity = selected ? 1.0 : 0.78;
+        button.Scale = selected ? 1.0 : 0.96;
     }
 
     async void OnSinglePlayer(object? sender, EventArgs e)
@@ -153,12 +154,12 @@ public partial class MainMenuPage : ContentPage
     {
         var swatch = new Border
         {
-            WidthRequest = 28,
-            HeightRequest = 28,
+            WidthRequest = 30,
+            HeightRequest = 30,
             BackgroundColor = Color.FromArgb(ColorPresets[index].Primary),
-            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 6 },
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 8 },
             Stroke = Colors.Transparent,
-            StrokeThickness = 2,
+            StrokeThickness = 1.5f,
         };
         var tap = new TapGestureRecognizer();
         int capturedIndex = index;
@@ -182,7 +183,10 @@ public partial class MainMenuPage : ContentPage
         {
             if (HomeColorStack.Children[i] is Border b)
             {
-                b.Stroke = i == _selectedHomeColorIndex ? Colors.White : Colors.Transparent;
+                var selected = i == _selectedHomeColorIndex;
+                b.Stroke = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
+                b.StrokeThickness = selected ? 2.5f : 1.0f;
+                b.Scale = selected ? 1.08 : 1.0;
                 // Dim already-picked color by blending with dark background instead of Opacity
                 // (Opacity changes trigger layout recalculation causing swatches to jump)
                 var baseColor = Color.FromArgb(ColorPresets[i].Primary);
@@ -195,7 +199,10 @@ public partial class MainMenuPage : ContentPage
         {
             if (AwayColorStack.Children[i] is Border b)
             {
-                b.Stroke = i == _selectedAwayColorIndex ? Colors.White : Colors.Transparent;
+                var selected = i == _selectedAwayColorIndex;
+                b.Stroke = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
+                b.StrokeThickness = selected ? 2.5f : 1.0f;
+                b.Scale = selected ? 1.08 : 1.0;
                 var baseColor = Color.FromArgb(ColorPresets[i].Primary);
                 b.BackgroundColor = i == _selectedHomeColorIndex
                     ? baseColor.WithAlpha(0.3f)
