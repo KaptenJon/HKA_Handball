@@ -483,6 +483,14 @@ public class GameState
     const double OnTargetCloseRangePenalty = 0.10;
     const double OnTargetPositionBonus = 0.20;
 
+    // Shot accuracy — probability a shot misses the goal frame entirely
+    const double ShotMissChance = 0.15;        // 15% miss rate for uncontrolled (button-press) shots
+    const double AimedShotMissChance = 0.05;   // 5% miss rate for player-aimed shots (human error)
+    const double AIMissEasyBonus = 0.10;       // extra miss chance added for AI on Easy difficulty
+    const double PenaltyMissChance = 0.08;     // 8% miss rate for penalty shots
+    const double ShotMissRangeMin = 90;        // minimum Y offset (pixels) beyond goal mouth for a miss
+    const double ShotMissRangeMax = 150;       // maximum Y offset for a miss
+
     // ── Difficulty multipliers (set in constructor) ──
     readonly double _diffInterceptMult;        // multiplier on AI intercept chances
     readonly double _diffBreakthroughMult;     // multiplier on AI breakthrough chance
@@ -956,8 +964,19 @@ public class GameState
         _retreatingFormerOwner = true;
         _advanceBoost = false;
         _shootStart = BallPos;
-        // Wider shot spread: use ±75px (was ±60) to cover more of the 160px goal
-        var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 150;
+        // Shot accuracy: ShotMissChance probability of missing the frame entirely
+        double shootOffsetY;
+        if (Random.Shared.NextDouble() < ShotMissChance)
+        {
+            // Miss: place endpoint outside the goal mouth (±[90,150]px from centre)
+            double missRange = ShotMissRangeMin + Random.Shared.NextDouble() * (ShotMissRangeMax - ShotMissRangeMin);
+            shootOffsetY = (Random.Shared.NextDouble() < 0.5 ? -1 : 1) * missRange;
+        }
+        else
+        {
+            // On target: aim within goal mouth (±75px from centre ≤ GoalMouthHalf)
+            shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 150;
+        }
         _shootEnd = new Point(ViewSize.Width - 14, ViewSize.Height / 2 + shootOffsetY);
         _shootTime = 0f;
         _shootActive = true;
@@ -983,9 +1002,14 @@ public class GameState
         _retreatingFormerOwner = true;
         _advanceBoost = false;
         _shootStart = BallPos;
-        // Map normalized aim to actual goal Y position
+        // Map normalized aim to actual goal Y position, with small miss jitter
         double centerY = ViewSize.Height / 2;
         double aimY = centerY - GoalMouthHalf + normalizedAimX * (GoalMouthHalf * 2);
+        if (Random.Shared.NextDouble() < AimedShotMissChance)
+        {
+            double missRange = ShotMissRangeMin + Random.Shared.NextDouble() * (ShotMissRangeMax - ShotMissRangeMin);
+            aimY = centerY + (Random.Shared.NextDouble() < 0.5 ? -1 : 1) * missRange;
+        }
         _shootEnd = new Point(ViewSize.Width - 14, aimY);
         _shootTime = 0f;
         _shootActive = true;
@@ -1889,7 +1913,9 @@ public class GameState
                 _awayShootActive = false;
                 bool onTarget = _leftGoal.Contains(BallPos);
 
-                // GK save check FIRST — difficulty adjusted
+                // GK save check — only applicable when the shot is on target
+                if (onTarget)
+                {
                 var homeKeeper = HomePlayers[0];
                 double awayShotDist = Distance(_awayShootStart, _awayShootEnd);
                 double gkDist = DistanceToSegment(homeKeeper.Position, _awayShootStart, _awayShootEnd);
@@ -1909,6 +1935,7 @@ public class GameState
                         _homeKeeperHoldTicks = HomeGoalkeeperOutletHoldTicks; // hold briefly before fast-break throw
                         return;
                     }
+                }
                 }
 
                 var interceptor = TryGetInterception(HomePlayers, 1, _awayShootStart, _awayShootEnd, ShotInterceptChance);
@@ -1946,7 +1973,9 @@ public class GameState
                 _shootActive = false;
                 bool onTarget = _rightGoal.Contains(BallPos);
 
-                // Away GK save check — difficulty adjusted
+                // Away GK save check — only applicable when the shot is on target
+                if (onTarget)
+                {
                 var awayKeeper = AwayPlayers[0];
                 double homeShotDist = Distance(_shootStart, _shootEnd);
                 double gkDist = DistanceToSegment(awayKeeper.Position, _shootStart, _shootEnd);
@@ -1966,6 +1995,7 @@ public class GameState
                         _keeperHoldTicks = GoalkeeperOutletHoldTicks;
                         return;
                     }
+                }
                 }
 
                 var interceptor = TryGetInterception(AwayPlayers, 1, _shootStart, _shootEnd, ShotInterceptChance);
@@ -2495,7 +2525,15 @@ public class GameState
         };
 
         double shootOffsetY = targetOffsetSign * 55 * accuracyFactor + aimVariance * (1.0 - accuracyFactor);
-        shootOffsetY = Math.Clamp(shootOffsetY, -75, 75); // keep within goal bounds
+        shootOffsetY = Math.Clamp(shootOffsetY, -75, 75); // on-target range
+
+        // Miss chance: AI can shoot wide/high (more likely on Easy difficulty)
+        double aiMissChance = ShotMissChance + (Difficulty == Difficulty.Easy ? AIMissEasyBonus : 0);
+        if (Random.Shared.NextDouble() < aiMissChance)
+        {
+            double missRange = ShotMissRangeMin + Random.Shared.NextDouble() * (ShotMissRangeMax - ShotMissRangeMin);
+            shootOffsetY = (Random.Shared.NextDouble() < 0.5 ? -1 : 1) * missRange;
+        }
 
         _awayShootEnd = new Point(14, centerY + shootOffsetY);
         _awayPassActive = false;
@@ -2513,9 +2551,14 @@ public class GameState
         _awayShootTime = 0f;
         _awayShootStart = from;
         _awayFreeThrowAttackTicks = 0;
-        // Map normalized aim to actual goal Y position (away attacks left goal)
+        // Map normalized aim to actual goal Y position (away attacks left goal), with small miss jitter
         double centerY = ViewSize.Height / 2;
         double aimY = centerY - GoalMouthHalf + normalizedAimX * (GoalMouthHalf * 2);
+        if (Random.Shared.NextDouble() < AimedShotMissChance)
+        {
+            double missRange = ShotMissRangeMin + Random.Shared.NextDouble() * (ShotMissRangeMax - ShotMissRangeMin);
+            aimY = centerY + (Random.Shared.NextDouble() < 0.5 ? -1 : 1) * missRange;
+        }
         _awayShootEnd = new Point(14, aimY);
         _awayPassActive = false;
         BallOwnerType = BallOwnershipType.Loose;
@@ -2983,7 +3026,12 @@ public class GameState
             // Home shoots at right goal
             penaltyX = ViewSize.Width - GoalCenterInset - GoalAreaRadius - 48;
             goalX = ViewSize.Width - 14;
-            var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 140;
+            double shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 140;
+            if (Random.Shared.NextDouble() < PenaltyMissChance)
+            {
+                double missRange = ShotMissRangeMin + Random.Shared.NextDouble() * (ShotMissRangeMax - ShotMissRangeMin);
+                shootOffsetY = (Random.Shared.NextDouble() < 0.5 ? -1 : 1) * missRange;
+            }
             _penaltyStart = new Point(penaltyX, ViewSize.Height / 2);
             _penaltyEnd = new Point(goalX, ViewSize.Height / 2 + shootOffsetY);
         }
@@ -2992,7 +3040,12 @@ public class GameState
             // Away shoots at left goal
             penaltyX = GoalCenterInset + GoalAreaRadius + 48;
             goalX = 14;
-            var shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 140;
+            double shootOffsetY = (Random.Shared.NextDouble() - 0.5) * 140;
+            if (Random.Shared.NextDouble() < PenaltyMissChance)
+            {
+                double missRange = ShotMissRangeMin + Random.Shared.NextDouble() * (ShotMissRangeMax - ShotMissRangeMin);
+                shootOffsetY = (Random.Shared.NextDouble() < 0.5 ? -1 : 1) * missRange;
+            }
             _penaltyStart = new Point(penaltyX, ViewSize.Height / 2);
             _penaltyEnd = new Point(goalX, ViewSize.Height / 2 + shootOffsetY);
         }
