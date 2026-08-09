@@ -14,6 +14,9 @@ namespace HKA_Handball;
 
 public partial class GamePage : ContentPage
 {
+    const double TwoPlayerClusterInset = 182;
+    const double HudBottomMargin = 12;
+
     readonly GameState _state;
     readonly GameDrawable _drawable;
     readonly IDispatcherTimer _timer;
@@ -64,12 +67,12 @@ public partial class GamePage : ContentPage
             // In two-player mode, each player's controls must be on the same side:
             // Player 1 (home) on the left, Player 2 (away) on the right.
             Player1Buttons.HorizontalOptions = LayoutOptions.Start;
-            Player1Buttons.Margin = new Thickness(164, 0, 0, 12);
+            Player1Buttons.Margin = new Microsoft.Maui.Thickness(TwoPlayerClusterInset, 0, 0, HudBottomMargin);
 
             Player2Buttons.HorizontalOptions = LayoutOptions.End;
-            Player2Buttons.Margin = new Thickness(0, 0, 164, 12);
+            Player2Buttons.Margin = new Microsoft.Maui.Thickness(0, 0, TwoPlayerClusterInset, HudBottomMargin);
 
-            Joystick2.Margin = new Thickness(0, 0, 12, 12);
+            Joystick2Panel.Margin = new Microsoft.Maui.Thickness(0, 0, HudBottomMargin, HudBottomMargin);
         }
 
 #if WINDOWS
@@ -150,17 +153,19 @@ public partial class GamePage : ContentPage
             PassDownButton.IsVisible = false;
             HomeGoalAim.IsVisible = false;
             SwitchDefenderButton.IsVisible = false;
-            Joystick.IsVisible = false;
+            Player1Buttons.IsVisible = false;
+            JoystickPanel.IsVisible = false;
             if (_gameMode == GameMode.TwoPlayerLocal)
             {
                 AwayPassUpButton.IsVisible = false;
                 AwayPassDownButton.IsVisible = false;
                 AwayGoalAim.IsVisible = false;
                 AwaySwitchDefenderButton.IsVisible = false;
-                Joystick2.IsVisible = false;
+                Joystick2Panel.IsVisible = false;
                 Player2Buttons.IsVisible = false;
             }
             StatusLabel.Text = "";
+            StatusBadge.IsVisible = false;
             GameView.Invalidate();
             return;
         }
@@ -195,7 +200,8 @@ public partial class GamePage : ContentPage
         PassDownButton.IsVisible = !defending && controlsActive;
         HomeGoalAim.IsVisible = (!defending || _state.IsShootActive) && controlsActive;
         SwitchDefenderButton.IsVisible = defending && !_state.IsShootActive && controlsActive;
-        Joystick.IsVisible = controlsActive;
+        Player1Buttons.IsVisible = controlsActive;
+        JoystickPanel.IsVisible = controlsActive;
 
         // Update home goal-aim view: show away GK position (home attacks right goal)
         HomeGoalAim.GoalkeeperNormalizedX = _state.GetAwayGkNormalizedX();
@@ -214,7 +220,7 @@ public partial class GamePage : ContentPage
             AwayPassDownButton.IsVisible = awayAttacking && controlsActive;
             AwayGoalAim.IsVisible = (awayAttacking || _state.IsAwayShootActive) && controlsActive;
             AwaySwitchDefenderButton.IsVisible = awayDefending && !_state.IsAwayShootActive && controlsActive;
-            Joystick2.IsVisible = controlsActive;
+            Joystick2Panel.IsVisible = controlsActive;
             Player2Buttons.IsVisible = controlsActive;
 
             // Update away goal-aim view: show home GK position (away attacks left goal)
@@ -228,6 +234,7 @@ public partial class GamePage : ContentPage
         }
 
         StatusLabel.Text = _state.StatusText;
+        StatusBadge.IsVisible = !string.IsNullOrWhiteSpace(_state.StatusText);
         _state.Update(0.016f);
         GameView.Invalidate();
     }
@@ -4108,7 +4115,7 @@ public class GameDrawable : IDrawable
     void DrawScore(ICanvas canvas, RectF dirtyRect)
     {
         // Enhanced score display with team colors, clock, half indicator, and difficulty
-        float pillW = 240, pillH = 46;
+        float pillW = 250, pillH = 50;
         float pillX = dirtyRect.Center.X - pillW / 2;
         float pillY = 3;
 
@@ -4152,17 +4159,26 @@ public class GameDrawable : IDrawable
 
         // Score numbers (larger and bolder)
         canvas.FontColor = AranasWhite;
-        canvas.FontSize = 22;
+        canvas.FontSize = 23;
         canvas.DrawString($"{_state.ScoreHome} - {_state.ScoreAway}",
-            new RectF(pillX, pillY + 3, pillW, 24),
+            new RectF(pillX, pillY + 2, pillW, 25),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+
+        string clockText = $"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}  •  {_state.GetDifficultyLabel()}";
+        float clockChipW = pillW - 78;
+        float clockChipX = pillX + (pillW - clockChipW) / 2;
+        float clockChipY = pillY + 30;
+        canvas.FillColor = Color.FromArgb("#42000000");
+        canvas.FillRoundedRectangle(clockChipX, clockChipY, clockChipW, 15, 8);
+        canvas.StrokeColor = Color.FromArgb("#22FFFFFF");
+        canvas.StrokeSize = 1;
+        canvas.DrawRoundedRectangle(clockChipX, clockChipY, clockChipW, 15, 8);
 
         // Match clock and difficulty below score
         canvas.FontSize = 9;
-        canvas.FontColor = Color.FromArgb("#AAFFFFFF");
-        string clockText = $"{_state.GetMatchClockDisplay()}  {_state.GetHalfDisplay()}  •  {_state.GetDifficultyLabel()}";
+        canvas.FontColor = Color.FromArgb("#E6FFFFFF");
         canvas.DrawString(clockText,
-            new RectF(pillX, pillY + 28, pillW, 14),
+            new RectF(clockChipX, clockChipY - 1, clockChipW, 16),
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
         // Fast break lightning bolt indicator
@@ -4332,21 +4348,21 @@ public class GameDrawable : IDrawable
             canvas.FontSize = 48 * textScale;
             canvas.DrawString("MATCH START!",
                 new RectF(3, dirtyRect.Height * 0.38f + 3, dirtyRect.Width, 60),
-                HorizontalAlignment.Center, VerticalAlignment.Center);
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
             // Glow
             canvas.FontColor = Colors.Orange.WithAlpha(textAlpha * 0.4f);
             canvas.FontSize = 50 * textScale;
             canvas.DrawString("MATCH START!",
                 new RectF(0, dirtyRect.Height * 0.38f, dirtyRect.Width, 60),
-                HorizontalAlignment.Center, VerticalAlignment.Center);
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
             // Main text
             canvas.FontColor = Colors.Gold.WithAlpha(textAlpha);
             canvas.FontSize = 48 * textScale;
             canvas.DrawString("MATCH START!",
                 new RectF(0, dirtyRect.Height * 0.38f, dirtyRect.Width, 60),
-                HorizontalAlignment.Center, VerticalAlignment.Center);
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
         }
     }
 
