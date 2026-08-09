@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "id": "18025072-a9ae-4aa3-8792-1d514faf7592",
+    "class": "DECISION",
+    "loadGuidance": "ALWAYS",
+    "title": "Agent model configuration preference",
+    "path": ".squad\\decisions\\inbox\\squad-agent-model-configuration-preference-18025072.md",
+    "status": "active",
+    "createdAt": "2026-08-09T21:46:24.412Z",
+    "updatedAt": "2026-08-09T21:46:24.412Z"
+  },
+  {
+    "id": "6ea751c8-d0b9-4ab6-a496-e5b041616f2a",
+    "class": "DECISION",
+    "loadGuidance": "ALWAYS",
+    "title": "Prioritize shot outcome model",
+    "path": ".squad\\decisions\\inbox\\squad-prioritize-shot-outcome-model-6ea751c8.md",
+    "status": "active",
+    "createdAt": "2026-08-09T21:47:17.681Z",
+    "updatedAt": "2026-08-09T21:47:17.681Z"
+  }
+]
