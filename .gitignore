@@ -376,3 +376,5 @@ FodyWeavers.xsd
 .squad/.cache/
 # Squad: SubSquad activation file (local to this machine)
 .squad-workstream
+# Squad: local config (machine-specific, never commit)
+.squad/config.json
