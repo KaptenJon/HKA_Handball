@@ -2,7 +2,7 @@
 
 > handball
 
-> Visningsnamnen nedan är svenska `name-roll`-namn. Interna ID:n, agentmappar och issue-etiketter ligger kvar som `lisa`, `oskar`, `maja`, `kalle`, `emil`, `anna`, `sara` och `johan` för stabilitet.
+> Visningsnamnen nedan är svenska `name-roll`-namn. Interna ID:n, agentmappar och issue-etiketter ligger kvar som `lisa`, `oskar`, `maja`, `kalle`, `emil`, `anna`, `sara`, `johan` och `axel` för stabilitet.
 
 ## Koordinator
 
@@ -27,6 +27,7 @@
 | anna-doklotsen | Dokumentation / tech writer (`anna`) | .squad/agents/anna/charter.md | Active |
 | sara-sifferstyrman | Data / analys (`sara`) | .squad/agents/sara/charter.md | Active |
 | johan-säkerhetsvakten | Säkerhet / security (`johan`) | .squad/agents/johan/charter.md | Active |
+| axel-arkitektankaret | Arkitektur / lösningsarkitekt (`axel`) | .squad/agents/axel/charter.md | Active |
 
 ## Built-ins
 
@@ -40,7 +41,7 @@
 
 ## Kodprincip
 
-De enda primära kodspåren är **lisa-lösningslotsen**, **oskar-bakändebossen** och **maja-gränssnittsglansen**. Stödteamet driver kvalitet, drift, dokumentation, analys och säkerhet — men huvudrouting för implementation går alltid via någon av de tre kodspecialisterna ovan.
+De enda primära kodspåren är **lisa-lösningslotsen**, **oskar-bakändebossen** och **maja-gränssnittsglansen**. **axel-arkitektankaret** förstärker med systemdesign, refaktorritningar och arkitekturgranskning — men huvudrouting för implementation går alltid via någon av de tre kodspecialisterna ovan.
 
 ## Coding Agent
 
