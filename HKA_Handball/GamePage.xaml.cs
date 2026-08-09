@@ -425,7 +425,7 @@ public class GameState
 
     // Away AI attack constants
     const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
-    const int ThrowOffCarrierIndex = 1; // field player index used for throw-off ball carrier
+    const int ThrowOffCarrierIndex = 1; // preferred field player index used for throw-off ball carrier
     const double GoalResetLineupOffsetX = 72;
     const double RollingPlayRunLeadX = 34;
     const double DefenderMarkingGapX = 34;
@@ -2088,16 +2088,17 @@ public class GameState
         double throwOffCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
         if (homeScored)
         {
+            int awayThrowOffCarrierIndex = GetThrowOffCarrierIndex(AwayPlayers);
             BallOwnerType = BallOwnershipType.Opponent;
-            BallOwnerAwayIndex = ThrowOffCarrierIndex;
+            BallOwnerAwayIndex = awayThrowOffCarrierIndex;
             BallOwnerPlayerIndex = -1;
             _awayBuildupPasses = 0;
             _awayBreakthrough = false;
             _awayPassCooldownTicks = 50;
-            PositionForThrowOff(AwayPlayers[ThrowOffCarrierIndex], throwOffCenterX, throwOffCenterY);
+            PositionForThrowOff(AwayPlayers[awayThrowOffCarrierIndex], throwOffCenterX, throwOffCenterY);
             for (int i = 1; i < AwayPlayers.Length; i++)
             {
-                if (i == ThrowOffCarrierIndex) continue;
+                if (i == awayThrowOffCarrierIndex) continue;
                 double staggerX = ViewSize.Width > 0 ? ViewSize.Width * 0.6 + i * 15 : 500;
                 AwayPlayers[i].BaseX = Math.Min(staggerX, AwayPlayers[i].BaseX);
             }
@@ -2105,13 +2106,14 @@ public class GameState
         }
         else
         {
+            int homeThrowOffCarrierIndex = GetThrowOffCarrierIndex(HomePlayers);
             BallOwnerType = BallOwnershipType.Player;
-            BallOwnerPlayerIndex = ThrowOffCarrierIndex;
+            BallOwnerPlayerIndex = homeThrowOffCarrierIndex;
             BallOwnerAwayIndex = -1;
-            PositionForThrowOff(HomePlayers[ThrowOffCarrierIndex], throwOffCenterX, throwOffCenterY);
+            PositionForThrowOff(HomePlayers[homeThrowOffCarrierIndex], throwOffCenterX, throwOffCenterY);
             for (int i = 1; i < HomePlayers.Length; i++)
             {
-                if (i == ThrowOffCarrierIndex) continue;
+                if (i == homeThrowOffCarrierIndex) continue;
                 double staggerX = ViewSize.Width > 0 ? ViewSize.Width * 0.4 - i * 15 : 200;
                 HomePlayers[i].BaseX = Math.Max(staggerX, HomePlayers[i].BaseX);
             }
@@ -2847,6 +2849,14 @@ public class GameState
         return -1;
     }
 
+    static int GetThrowOffCarrierIndex(Actor[] team)
+    {
+        int carrierIndex = GetActiveFieldIndex(team, ThrowOffCarrierIndex, -1);
+        return carrierIndex >= 0
+            ? carrierIndex
+            : Math.Clamp(ThrowOffCarrierIndex, 0, team.Length - 1);
+    }
+
     void PrepareGoalResetTargets(bool homeThrowOff, double centerX, double centerY)
     {
         for (int i = 0; i < HomePlayers.Length; i++)
@@ -2859,17 +2869,11 @@ public class GameState
                 : new Point(centerX + GoalResetLineupOffsetX, AwayPlayers[i].BaseY);
         }
 
-        if (homeThrowOff && IsEligibleThrowOffCarrier(HomePlayers))
-            _goalResetHomeTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
-        else if (!homeThrowOff && IsEligibleThrowOffCarrier(AwayPlayers))
-            _goalResetAwayTargets[ThrowOffCarrierIndex] = new Point(centerX, centerY);
+        if (homeThrowOff)
+            _goalResetHomeTargets[GetThrowOffCarrierIndex(HomePlayers)] = new Point(centerX, centerY);
+        else
+            _goalResetAwayTargets[GetThrowOffCarrierIndex(AwayPlayers)] = new Point(centerX, centerY);
     }
-
-    static bool IsEligibleThrowOffCarrier(Actor[] team) =>
-        ThrowOffCarrierIndex > 0
-        && ThrowOffCarrierIndex < team.Length
-        && !team[ThrowOffCarrierIndex].IsGoalkeeper
-        && !team[ThrowOffCarrierIndex].IsSuspended;
 
     void StartSecondHalf()
     {
@@ -2887,8 +2891,9 @@ public class GameState
             foreach (var a in team)
                 a.Position = new Point(a.BaseX, a.BaseY);
 
+        int awayThrowOffCarrierIndex = GetThrowOffCarrierIndex(AwayPlayers);
         BallOwnerType = BallOwnershipType.Opponent;
-        BallOwnerAwayIndex = ThrowOffCarrierIndex;
+        BallOwnerAwayIndex = awayThrowOffCarrierIndex;
         BallOwnerPlayerIndex = -1;
         ControlledDefenderIndex = 1;
         ClearAllActiveActions();
@@ -2897,9 +2902,9 @@ public class GameState
         // Throw-off: away team starts at center
         double centerX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
         double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
-        PositionForThrowOff(AwayPlayers[ThrowOffCarrierIndex], centerX, centerY);
-        AwayPlayers[ThrowOffCarrierIndex].Position = new Point(centerX, centerY);
-        BallPos = AwayPlayers[ThrowOffCarrierIndex].Position;
+        PositionForThrowOff(AwayPlayers[awayThrowOffCarrierIndex], centerX, centerY);
+        AwayPlayers[awayThrowOffCarrierIndex].Position = new Point(centerX, centerY);
+        BallPos = AwayPlayers[awayThrowOffCarrierIndex].Position;
         SetStatusOverride("Avkast - Andra halvlek", 90);
     }
 
@@ -2932,8 +2937,9 @@ public class GameState
                 a.SuspensionTicks = 0;
             }
 
+        int homeThrowOffCarrierIndex = GetThrowOffCarrierIndex(HomePlayers);
         BallOwnerType = BallOwnershipType.Player;
-        BallOwnerPlayerIndex = ThrowOffCarrierIndex;
+        BallOwnerPlayerIndex = homeThrowOffCarrierIndex;
         BallOwnerAwayIndex = -1;
         ControlledDefenderIndex = 1;
         ClearAllActiveActions();
@@ -2941,9 +2947,9 @@ public class GameState
         // Center throw-off: home team starts at center
         double centerX = ViewSize.Width > 0 ? ViewSize.Width / 2 : 350;
         double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
-        PositionForThrowOff(HomePlayers[ThrowOffCarrierIndex], centerX, centerY);
-        HomePlayers[ThrowOffCarrierIndex].Position = new Point(centerX, centerY);
-        BallPos = HomePlayers[ThrowOffCarrierIndex].Position;
+        PositionForThrowOff(HomePlayers[homeThrowOffCarrierIndex], centerX, centerY);
+        HomePlayers[homeThrowOffCarrierIndex].Position = new Point(centerX, centerY);
+        BallPos = HomePlayers[homeThrowOffCarrierIndex].Position;
         SetStatusOverride("Avkast - Ny match!", 90);
     }
 
