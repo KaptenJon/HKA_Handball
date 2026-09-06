@@ -1076,6 +1076,7 @@ public class GameState
                     BallOwnerAwayIndex = -1;
                     BallOwnerPlayerIndex = -1;
                     _possessionTimer = 0; // reset passive play on pass attempt
+                    PassesAway++;
                     GameEvent?.Invoke(GameEventType.AwayPass);
                 }
             }
