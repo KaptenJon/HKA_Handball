@@ -16,6 +16,22 @@
                 <Setter Property="TextColor" Value="{StaticResource AranasWhite}" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="Padding" Value="12,8" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+<VisualState Name="Pressed">
+    <VisualState.Setters>
+        <Setter Property="Opacity" Value="0.75" />
+    </VisualState.Setters>
+</VisualState>
+                            </VisualState>
+                            <VisualState Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
             </Style>
         </ResourceDictionary>
     </Application.Resources>

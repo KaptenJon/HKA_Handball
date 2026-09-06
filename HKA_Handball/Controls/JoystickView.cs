@@ -32,6 +32,16 @@ public class JoystickView : ContentView
         Content = _view;
     }
 
+    /// <summary>Returns the joystick to its neutral position after a lifecycle interruption.</summary>
+    public void Reset()
+    {
+        _pressed = false;
+        _knobOffset = Point.Zero;
+        Value = Point.Zero;
+        ValueChanged?.Invoke(this, Value);
+        _view.Invalidate();
+    }
+
     bool _pressed;
     Point _knobOffset = Point.Zero;
 
