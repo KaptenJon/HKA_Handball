@@ -19,7 +19,13 @@
                  so both screens read as one consistent design language. -->
             <Color x:Key="PanelStroke">#33FFFFFF</Color>
 
-            <Style TargetType="Button">
+            <!-- Keyed so it can be referenced explicitly via BasedOn below - .NET MAUI's
+                 XamlC does not support resolving implicit (keyless) styles through
+                 {StaticResource {x:Type ...}} the way WPF does (XC0009). The implicit
+                 style right after this one is BasedOn this keyed style, so every Button
+                 still gets these defaults automatically without an explicit Style
+                 reference. -->
+            <Style x:Key="BaseButtonStyle" TargetType="Button">
                 <Setter Property="BackgroundColor" Value="{StaticResource AranasBlue}" />
                 <Setter Property="TextColor" Value="{StaticResource AranasWhite}" />
                 <Setter Property="CornerRadius" Value="8" />
@@ -47,12 +53,16 @@
                 </Setter>
             </Style>
 
+            <!-- Implicit (keyless) style applied automatically to every Button; kept in
+                 sync with BaseButtonStyle above via BasedOn. -->
+            <Style TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}" />
+
             <!-- Tactile press/hover/focus feedback for the primary call-to-action and
                  in-game action buttons. Intentionally not applied to buttons whose
                  Scale/Opacity/BorderColor are already driven per-tap from code-behind
                  (e.g. the difficulty and color-swatch selectors), to avoid the two
                  sources of truth fighting over the same properties. -->
-            <Style x:Key="PressableButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Style x:Key="PressableButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
                 <Setter Property="VisualStateManager.VisualStateGroups">
                     <VisualStateGroupList>
                         <VisualStateGroup x:Name="CommonStates">
