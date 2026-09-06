@@ -69,7 +69,11 @@
                         BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
                         Pressed="OnPassDown" />
-                <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="2"
+                <Button x:Name="DribbleButton" Grid.Row="2" Text="↕ Studsa" FontSize="15"
+                        BackgroundColor="#1565C0" TextColor="White" CornerRadius="12"
+                        HeightRequest="52" MinimumWidthRequest="90"
+                        Pressed="OnDribble" />
+                <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="2" Grid.Column="1"
                         HeightRequest="65" WidthRequest="100" />
 
                 <!-- Defense controls (visible when defending) -->
@@ -118,7 +122,11 @@
                         BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
                         Pressed="OnAwayPassDown" />
-                <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="2"
+                <Button x:Name="AwayDribbleButton" Grid.Row="2" Text="↕ Studsa" FontSize="15"
+                        BackgroundColor="#C62828" TextColor="White" CornerRadius="12"
+                        HeightRequest="52" MinimumWidthRequest="90"
+                        Pressed="OnAwayDribble" />
+                <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="2" Grid.Column="1"
                         HeightRequest="65" WidthRequest="100" />
 
                 <!-- Away defense controls -->
