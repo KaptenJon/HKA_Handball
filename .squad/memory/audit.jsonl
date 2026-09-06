@@ -1,2 +1,6 @@
 {"timestamp":"2026-08-09T21:46:24.418Z","action":"write","id":"18025072-a9ae-4aa3-8792-1d514faf7592","class":"DECISION","title":"Agent model configuration preference","path":".squad\\decisions\\inbox\\squad-agent-model-configuration-preference-18025072.md","reason":"Content is allowed for governed local memory","actor":"Squad","provider":"local"}
 {"timestamp":"2026-08-09T21:47:17.686Z","action":"write","id":"6ea751c8-d0b9-4ab6-a496-e5b041616f2a","class":"DECISION","title":"Prioritize shot outcome model","path":".squad\\decisions\\inbox\\squad-prioritize-shot-outcome-model-6ea751c8.md","reason":"Content is allowed for governed local memory","actor":"Squad","provider":"local"}
+{"timestamp":"2026-09-06T06:37:54.047Z","action":"search","reason":"Search returned 0 result(s)"}
+{"timestamp":"2026-09-06T06:38:38.940Z","action":"classify","class":"LOCAL","title":"Classified governed memory","reason":"Content is allowed for governed local memory"}
+{"timestamp":"2026-09-06T06:38:39.914Z","action":"search","reason":"Search returned 0 result(s)"}
+{"timestamp":"2026-09-06T06:38:39.915Z","action":"search","reason":"Search returned 0 result(s)"}

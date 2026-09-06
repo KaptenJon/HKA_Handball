@@ -1,3 +1,52 @@
 {
-  "agents": {}
+  "agents": {
+    "glenn": {
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "persistent_name": "Glenn",
+      "universe": "Göteborgsk handboll",
+      "status": "active"
+    },
+    "håkan": {
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "persistent_name": "Håkan",
+      "universe": "Göteborgsk handboll",
+      "status": "active"
+    },
+    "lise": {
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "persistent_name": "Lise",
+      "universe": "Göteborgsk handboll",
+      "status": "active"
+    },
+    "feskarn": {
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "persistent_name": "Feskarn",
+      "universe": "Göteborgsk handboll",
+      "status": "active"
+    },
+    "scribe": {
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "persistent_name": "Scribe",
+      "universe": "Göteborgsk handboll",
+      "status": "active"
+    },
+    "ralph": {
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "persistent_name": "Ralph",
+      "universe": "Göteborgsk handboll",
+      "status": "active"
+    },
+    "rai": {
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "persistent_name": "Rai",
+      "universe": "Göteborgsk handboll",
+      "status": "active"
+    },
+    "fact checker": {
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "persistent_name": "Fact Checker",
+      "universe": "Göteborgsk handboll",
+      "status": "active"
+    }
+  }
 }

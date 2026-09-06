@@ -1,16 +1,11 @@
-# Project Context
-
-- **Project:** handball
-- **Created:** 2026-08-09
+# Rai — History
 
 ## Core Context
 
-Agent Rai initialized and ready for work.
-
-## Recent Updates
-
-📌 Team initialized on 2026-08-09
+- **Project:** Ett offlinebaserat handbollsspel i .NET MAUI för Android och Windows.
+- **Role:** RAI Reviewer
+- **Joined:** 2026-09-06T06:25:50.332Z
 
 ## Learnings
 
-Initial setup complete.
+<!-- Append learnings below -->

@@ -1,16 +1,11 @@
-# Project Context
-
-- **Project:** handball
-- **Created:** 2026-08-09
+# Scribe — History
 
 ## Core Context
 
-Agent Scribe initialized and ready for work.
-
-## Recent Updates
-
-📌 Team initialized on 2026-08-09
+- **Project:** Ett offlinebaserat handbollsspel i .NET MAUI för Android och Windows.
+- **Role:** Session Logger
+- **Joined:** 2026-09-06T06:25:50.316Z
 
 ## Learnings
 
-Initial setup complete.
+<!-- Append learnings below -->
