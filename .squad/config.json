@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "defaultModel": "gpt-5.6-luna",
+  "agentModelOverrides": {
+    "oskar": "gpt-5.6-sol",
+    "maja": "claude-sonnet-5"
+  }
+}

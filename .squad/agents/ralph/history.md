@@ -1,16 +1,11 @@
-# Project Context
-
-- **Project:** handball
-- **Created:** 2026-08-09
+# Ralph — History
 
 ## Core Context
 
-Agent Ralph initialized and ready for work.
-
-## Recent Updates
-
-📌 Team initialized on 2026-08-09
+- **Project:** Ett offlinebaserat handbollsspel i .NET MAUI för Android och Windows.
+- **Role:** Work Monitor
+- **Joined:** 2026-09-06T06:25:50.325Z
 
 ## Learnings
 
-Initial setup complete.
+<!-- Append learnings below -->
