@@ -43,6 +43,7 @@ public partial class GamePage : ContentPage
         GameView.Drawable = _drawable;
 
         _state.GameEvent += OnGameEvent;
+        _state.InputResetRequested += ResetInputState;
 
         SizeChanged += (_, __) => _state.OnViewSizeChanged(new Size(Width, Height));
 
@@ -100,6 +101,7 @@ public partial class GamePage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        ResetInputState();
         if (!_timer.IsRunning)
             _timer.Start();
 
@@ -114,6 +116,7 @@ public partial class GamePage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        ResetInputState();
         _timer.Stop();
 
         if (Window is not null)
@@ -128,12 +131,23 @@ public partial class GamePage : ContentPage
             _winKeyTarget.KeyUp -= OnWinKeyUp;
             _winKeyTarget = null;
         }
+#endif
+    }
+
+    void ResetInputState()
+    {
+        _state.ResetInputState();
+        Joystick.Reset();
+        Joystick2.Reset();
+#if WINDOWS
         _keysDown.Clear();
+        _advanceHeld = false;
 #endif
     }
 
     void OnWindowStopped(object? sender, EventArgs e)
     {
+        ResetInputState();
         // Auto-pause when the app goes to background (minimized)
         if (!_state.IsMatchOver && !_state.IsHalfTime)
             _state.IsPaused = true;
@@ -141,6 +155,7 @@ public partial class GamePage : ContentPage
 
     void OnWindowResumed(object? sender, EventArgs e)
     {
+        ResetInputState();
         // Don't auto-resume — let the user tap to resume
     }
 
@@ -262,12 +277,14 @@ public partial class GamePage : ContentPage
             // Resume from pause on tap
             if (_state.IsPaused)
             {
+                ResetInputState();
                 _state.IsPaused = false;
                 return;
             }
             // If match is over, restart on tap
             if (_state.IsMatchOver)
             {
+                ResetInputState();
                 _state.RestartMatch();
                 return;
             }
@@ -329,7 +346,12 @@ public partial class GamePage : ContentPage
         if (_keysDown.Contains(VirtualKey.F)) { _keysDown.Remove(VirtualKey.F); _state.QueueShoot(); }
         if (_keysDown.Contains(VirtualKey.R)) { _keysDown.Remove(VirtualKey.R); _state.SwitchControlledDefender(); }
         if (_keysDown.Contains(VirtualKey.H)) { _keysDown.Remove(VirtualKey.H); _state.ShowKeyboardHelp = !_state.ShowKeyboardHelp; }
-        if (_keysDown.Contains(VirtualKey.Escape)) { _keysDown.Remove(VirtualKey.Escape); _state.IsPaused = !_state.IsPaused; }
+        if (_keysDown.Contains(VirtualKey.Escape))
+        {
+            _keysDown.Remove(VirtualKey.Escape);
+            _state.IsPaused = !_state.IsPaused;
+            ResetInputState();
+        }
     }
 #endif
 
@@ -571,6 +593,7 @@ public class GameState
 
     /// <summary>Raised when a notable game event occurs (goal, shot, pass, etc.).</summary>
     public event Action<GameEventType>? GameEvent;
+    public event Action? InputResetRequested;
 
     // Ownership
     public int BallOwnerPlayerIndex { get; private set; } = 1;
@@ -583,6 +606,19 @@ public class GameState
     // Input
     public Point ActiveMoveInput { get; set; }
     public Point? TargetPoint { get; set; } // tap target (optional future use)
+
+    public void ResetInputState()
+    {
+        ActiveMoveInput = Point.Zero;
+        AwayActiveMoveInput = Point.Zero;
+        TargetPoint = null;
+        _advanceBoost = false;
+        _awayAdvanceBoost2 = false;
+        _defenderAdvanceBoost = false;
+        _attackDiagonalBoostY = 0;
+        _defenderSideBoostY = 0;
+        _defenderDiagBoostY = 0;
+    }
 
     // Pass state
     bool _passActive;
@@ -2670,12 +2706,8 @@ public class GameState
     void ApplyRestartPause()
     {
         _freeThrowCooldownTicks = FreeThrowCooldownDuration;
-        _advanceBoost = false;
-        _awayAdvanceBoost2 = false;
-        _defenderAdvanceBoost = false;
-        _attackDiagonalBoostY = 0;
-        _defenderSideBoostY = 0;
-        _defenderDiagBoostY = 0;
+        ResetInputState();
+        InputResetRequested?.Invoke();
     }
 
     void StartAwayPass(int ownerIndex)
@@ -3201,6 +3233,7 @@ public class GameState
 
     void ClearAllActiveActions()
     {
+        ResetInputState();
         _passActive = false;
         _shootActive = false;
         _awayShootActive = false;
@@ -3210,11 +3243,6 @@ public class GameState
         _awayBreakthrough = false;
         _retreatingFormerOwner = false;
         _formerOwnerIndex = -1;
-        _defenderSideBoostY = 0;
-        _defenderDiagBoostY = 0;
-        _attackDiagonalBoostY = 0;
-        _advanceBoost = false;
-        _defenderAdvanceBoost = false;
         _penaltyActive = false;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
@@ -3225,6 +3253,7 @@ public class GameState
         _freeThrowCooldownTicks = 0;
         _awayFreeThrowAttackTicks = 0;
         ResetBallHandlingState();
+        InputResetRequested?.Invoke();
     }
 
     /// <summary>Sets a player's base position to center court for a throw-off.</summary>
