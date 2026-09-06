@@ -380,8 +380,11 @@ public partial class GamePage : ContentPage
             case GameEventType.HalfTime:
             case GameEventType.FullTime:
             case GameEventType.PenaltyAwarded:
-            case GameEventType.Suspension:
                 _soundManager.PlayWhistle();
+                break;
+            case GameEventType.Suspension:
+                if (!_state.IsPenaltyActive)
+                    _soundManager.PlayWhistle();
                 break;
         }
     }
@@ -713,6 +716,9 @@ public class GameState
     int _freeThrowCooldownTicks;
     const int FreeThrowCooldownDuration = 75; // ~1.25 seconds at 60fps
     int _awayFreeThrowAttackTicks;
+    bool _freeThrowSpacingActive;
+    Point _freeThrowRestartPosition;
+    bool _freeThrowRestartForHome;
 
     // Ball-handling legality for the current carrier.
     int _carrierStepCount;
@@ -1247,7 +1253,12 @@ public class GameState
             $"{violation} - frikast {(restartForHome ? "Hemma" : "Borta")}");
     }
 
-    void StartFreeThrowRestart(bool homeRestart, Point foulPosition, string status)
+    void StartFreeThrowRestart(
+        bool homeRestart,
+        Point foulPosition,
+        string status,
+        bool emitWhistle = true,
+        int statusTicks = BallHandlingViolationStatusTicks)
     {
         ClearAllActiveActions();
 
@@ -1281,9 +1292,12 @@ public class GameState
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
         ResetBallHandlingState();
-        ApplyRestartPause();
-        SetStatusOverride(status, BallHandlingViolationStatusTicks);
-        GameEvent?.Invoke(GameEventType.Whistle);
+        _freeThrowRestartPosition = restartPosition;
+        _freeThrowRestartForHome = homeRestart;
+        ApplyRestartPause(enforceFreeThrowSpacing: true);
+        SetStatusOverride(status, statusTicks);
+        if (emitWhistle)
+            GameEvent?.Invoke(GameEventType.Whistle);
     }
 
     Point GetFreeThrowRestartPosition(Point foulPosition, bool homeRestart)
@@ -2044,7 +2058,14 @@ public class GameState
                         return;
                     }
                 }
-                else if (_awayBreakthrough)
+
+                if (_dribbleActive && _dribbleOwnerType == BallOwnershipType.Opponent && _dribbleOwnerIndex == i)
+                {
+                    ClampActor(a);
+                    continue;
+                }
+
+                if (_awayBreakthrough)
                 {
                     // Breaking through: charge toward goal area with varied angles
                     double attackStopX = GoalCenterInset + GoalAreaRadius + 30;
@@ -2156,7 +2177,13 @@ public class GameState
         if (_tackleCooldownTicks > 0) _tackleCooldownTicks--;
 
         // Free throw cooldown tick
-        if (_freeThrowCooldownTicks > 0) _freeThrowCooldownTicks--;
+        if (_freeThrowCooldownTicks > 0)
+        {
+            EnforceFreeThrowSpacing();
+            _freeThrowCooldownTicks--;
+            if (_freeThrowCooldownTicks == 0)
+                _freeThrowSpacingActive = false;
+        }
 
         // Defensive tackle: home defenders can stop the away ball carrier
         if (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 1 && _tackleCooldownTicks == 0 && _freeThrowCooldownTicks == 0)
@@ -2182,13 +2209,13 @@ public class GameState
             if (dribbleCarrier is null || dribbleCarrier.IsSuspended)
             {
                 ResetBallHandlingState();
+                BallHeight = 0;
                 return;
             }
 
             _dribbleTime += dt;
             double phase = Math.Clamp(_dribbleTime / DribbleDurationSeconds, 0, 1);
-            double bounce = Math.Sin(phase * Math.PI) * DribbleBounceHeight;
-            BallPos = new Point(dribbleCarrier.Position.X, dribbleCarrier.Position.Y + bounce);
+            BallPos = dribbleCarrier.Position;
             if (phase >= 1)
             {
                 _dribbleActive = false;
@@ -2197,6 +2224,7 @@ public class GameState
                 _carrierStepDistance = 0;
                 _carrierHoldSeconds = 0;
                 BallPos = dribbleCarrier.Position;
+                BallHeight = 0;
             }
             return;
         }
@@ -2703,9 +2731,10 @@ public class GameState
             ControlledDefenderIndex = bestIdx;
     }
 
-    void ApplyRestartPause()
+    void ApplyRestartPause(bool enforceFreeThrowSpacing = false)
     {
         _freeThrowCooldownTicks = FreeThrowCooldownDuration;
+        _freeThrowSpacingActive = enforceFreeThrowSpacing;
         ResetInputState();
         InputResetRequested?.Invoke();
     }
@@ -3041,13 +3070,18 @@ public class GameState
 
                 if (nearGoalArea && Random.Shared.NextDouble() < PenaltyAwardChance)
                 {
+                    bool suspended = false;
                     if (Random.Shared.NextDouble() < SuspensionChance)
                     {
                         defender.SuspensionTicks = SuspensionDurationTicks;
+                        suspended = true;
+                    }
+                    StartPenalty(isHome: true);
+                    if (suspended)
+                    {
                         SetStatusOverride("7-meterstraff + 2 min utvisning!", 120);
                         GameEvent?.Invoke(GameEventType.Suspension);
                     }
-                    StartPenalty(isHome: true);
                     return true;
                 }
 
@@ -3058,31 +3092,23 @@ public class GameState
                 if (Random.Shared.NextDouble() < SuspensionChance)
                 {
                     defender.SuspensionTicks = SuspensionDurationTicks;
-                    // Free throw at foul position, but no closer than the 9m line
-                    var freeThrowLineX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
-                    var freeThrowX = Math.Min(owner.Position.X, freeThrowLineX);
-                    owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
-                    BallPos = owner.Position;
-                    PushDefendersBackFromFreeThrow(owner.Position, AwayPlayers);
-                    _awayFreeThrowAttackTicks = 0;
-                    ResetBallHandlingState();
-                    SetStatusOverride("2 min utvisning + frikast!", 120);
+                    StartFreeThrowRestart(
+                        true,
+                        owner.Position,
+                        "2 min utvisning + frikast!",
+                        emitWhistle: false,
+                        statusTicks: 120);
                     GameEvent?.Invoke(GameEventType.Suspension);
                     return true;
                 }
 
                 if (Random.Shared.NextDouble() < FrontalFoulFreeThrowChance)
                 {
-                    // Free throw at foul position, but no closer than the 9m line
-                    var freeThrowLineX = Math.Max(40, ViewSize.Width - GoalCenterInset - FreeThrowRadius - 8);
-                    var freeThrowX = Math.Min(owner.Position.X, freeThrowLineX);
-                    owner.Position = new Point(freeThrowX, Math.Clamp(owner.Position.Y, 70, ViewSize.Height - 70));
-                    BallPos = owner.Position;
-                    PushDefendersBackFromFreeThrow(owner.Position, AwayPlayers);
-                    _awayFreeThrowAttackTicks = 0;
-                    ResetBallHandlingState();
-                    SetStatusOverride("Frikast - snabbt uppspel!", 90);
-                    GameEvent?.Invoke(GameEventType.Whistle);
+                    StartFreeThrowRestart(
+                        true,
+                        owner.Position,
+                        "Frikast - snabbt uppspel!",
+                        statusTicks: 90);
                 }
                 else
                 {
@@ -3118,13 +3144,20 @@ public class GameState
 
             if (nearGoalArea && Random.Shared.NextDouble() < PenaltyAwardChance)
             {
+                bool suspended = false;
                 if (Random.Shared.NextDouble() < SuspensionChance)
                 {
                     HomePlayers[i].SuspensionTicks = SuspensionDurationTicks;
+                    if (i == ControlledDefenderIndex)
+                        AutoSwitchDefender(carrier.Position);
+                    suspended = true;
+                }
+                StartPenalty(isHome: false);
+                if (suspended)
+                {
                     SetStatusOverride("7m + 2 min utvisning!", 120);
                     GameEvent?.Invoke(GameEventType.Suspension);
                 }
-                StartPenalty(isHome: false);
                 return true;
             }
 
@@ -3140,27 +3173,22 @@ public class GameState
             }
             else if (roll < stealChance + TackleFoulChance)
             {
-                _freeThrowCooldownTicks = FreeThrowCooldownDuration;
+                bool suspended = false;
                 if (Random.Shared.NextDouble() < SuspensionChance)
                 {
                     HomePlayers[i].SuspensionTicks = SuspensionDurationTicks;
-                    SetStatusOverride("2 min utvisning + frikast!", 120);
+                    if (i == ControlledDefenderIndex)
+                        AutoSwitchDefender(carrier.Position);
+                    suspended = true;
+                }
+                StartFreeThrowRestart(
+                    false,
+                    carrier.Position,
+                    suspended ? "2 min utvisning + frikast!" : "Frikast - snabbt uppspel!",
+                    emitWhistle: !suspended,
+                    statusTicks: suspended ? 120 : 90);
+                if (suspended)
                     GameEvent?.Invoke(GameEventType.Suspension);
-                }
-                else
-                {
-                    SetStatusOverride("Frikast - snabbt uppspel!", 90);
-                    GameEvent?.Invoke(GameEventType.Whistle);
-                }
-                var freeThrowX = GoalCenterInset + FreeThrowRadius + 8;
-                carrier.Position = new Point(Math.Max(freeThrowX, carrier.Position.X),
-                    Math.Clamp(carrier.Position.Y, 70, ViewSize.Height - 70));
-                BallPos = carrier.Position;
-                PushDefendersBackFromFreeThrow(carrier.Position, HomePlayers);
-                _awayPassCooldownTicks = AwayFreeThrowPassCooldownTicks;
-                _awayBreakthrough = false;
-                _awayFreeThrowAttackTicks = FreeThrowQuickAttackTicks;
-                ResetBallHandlingState();
                 return true;
             }
             else
@@ -3231,6 +3259,16 @@ public class GameState
         }
     }
 
+    void EnforceFreeThrowSpacing()
+    {
+        if (!_freeThrowSpacingActive || _freeThrowCooldownTicks <= 0)
+            return;
+
+        PushDefendersBackFromFreeThrow(
+            _freeThrowRestartPosition,
+            _freeThrowRestartForHome ? AwayPlayers : HomePlayers);
+    }
+
     void ClearAllActiveActions()
     {
         ResetInputState();
@@ -3251,6 +3289,7 @@ public class GameState
         _homeKeeperHoldTicks = 0;
         _tackleCooldownTicks = 0;
         _freeThrowCooldownTicks = 0;
+        _freeThrowSpacingActive = false;
         _awayFreeThrowAttackTicks = 0;
         ResetBallHandlingState();
         InputResetRequested?.Invoke();
@@ -3419,6 +3458,7 @@ public class GameState
 
     void StartPenalty(bool isHome)
     {
+        int preferredShooterIndex = isHome ? BallOwnerPlayerIndex : BallOwnerAwayIndex;
         ClearAllActiveActions();
         _penaltyActive = true;
         _penaltyIsHome = isHome;
@@ -3461,13 +3501,12 @@ public class GameState
         if (isHome) ShotsHome++; else ShotsAway++;
         SetStatusOverride(_penaltyIsHome ? "7-meterstraff! Hemma skjuter" : "7-meterstraff! Borta skjuter", 90);
         GameEvent?.Invoke(GameEventType.PenaltyAwarded);
-        GameEvent?.Invoke(GameEventType.Whistle);
 
         // IHF rules: position all players correctly during a penalty.
         // - Shooter at 7m spot
         // - Defending GK on goal line
         // - All other players outside the free-throw (9m) line
-        PositionPlayersForPenalty(isHome, penaltyX);
+        PositionPlayersForPenalty(isHome, penaltyX, preferredShooterIndex);
     }
 
     /// <summary>
@@ -3475,7 +3514,7 @@ public class GameState
     /// shooter at the spot, defending GK on the goal line, everyone else
     /// behind the free-throw arc.
     /// </summary>
-    void PositionPlayersForPenalty(bool isHome, double penaltyX)
+    void PositionPlayersForPenalty(bool isHome, double penaltyX, int preferredShooterIndex)
     {
         double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
         double topY = 60;
@@ -3484,8 +3523,7 @@ public class GameState
         if (isHome)
         {
             // Home shoots at right goal
-            // Place shooter (pick nearest home field player, fallback to 1)
-            int shooterIdx = 1;
+            int shooterIdx = GetActiveFieldIndex(HomePlayers, preferredShooterIndex, -1);
             HomePlayers[shooterIdx].Position = new Point(penaltyX, centerY);
 
             // Defending GK (away) on goal line
@@ -3521,8 +3559,7 @@ public class GameState
         else
         {
             // Away shoots at left goal
-            // Place shooter (pick nearest away field player, fallback to 1)
-            int shooterIdx = 1;
+            int shooterIdx = GetActiveFieldIndex(AwayPlayers, preferredShooterIndex, -1);
             AwayPlayers[shooterIdx].Position = new Point(penaltyX, centerY);
 
             // Defending GK (home) on goal line
@@ -3649,6 +3686,11 @@ public class GameState
         {
             var t = Math.Clamp(_awayShootTime / 0.55f, 0f, 1f);
             BallHeight = Math.Sin(t * Math.PI) * 0.7;
+        }
+        else if (_dribbleActive)
+        {
+            var t = Math.Clamp(_dribbleTime / DribbleDurationSeconds, 0, 1);
+            BallHeight = Math.Sin(t * Math.PI) * (DribbleBounceHeight / 20.0);
         }
         else if (_passActive || _awayPassActive)
         {
