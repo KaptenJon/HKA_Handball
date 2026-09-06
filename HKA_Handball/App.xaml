@@ -19,7 +19,7 @@
                  so both screens read as one consistent design language. -->
             <Color x:Key="PanelStroke">#33FFFFFF</Color>
 
-            <Style TargetType="Button">
+            <Style x:Key="BaseButtonStyle" TargetType="Button">
                 <Setter Property="BackgroundColor" Value="{StaticResource AranasBlue}" />
                 <Setter Property="TextColor" Value="{StaticResource AranasWhite}" />
                 <Setter Property="CornerRadius" Value="8" />
@@ -47,12 +47,16 @@
                 </Setter>
             </Style>
 
+            <!-- Keyless implicit style so existing buttons (which don't reference
+                 BaseButtonStyle explicitly) keep the same default appearance. -->
+            <Style TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}" />
+
             <!-- Tactile press/hover/focus feedback for the primary call-to-action and
                  in-game action buttons. Intentionally not applied to buttons whose
                  Scale/Opacity/BorderColor are already driven per-tap from code-behind
                  (e.g. the difficulty and color-swatch selectors), to avoid the two
                  sources of truth fighting over the same properties. -->
-            <Style x:Key="PressableButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Style x:Key="PressableButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
                 <Setter Property="VisualStateManager.VisualStateGroups">
                     <VisualStateGroupList>
                         <VisualStateGroup x:Name="CommonStates">
