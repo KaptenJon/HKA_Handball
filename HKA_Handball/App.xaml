@@ -11,6 +11,14 @@
             <Color x:Key="AranasWhite">#FFFFFF</Color>
             <Color x:Key="FieldGreen">#1B5E20</Color>
 
+            <!-- Shared accent used for focus rings and warning/celebration highlights,
+                 matching the gold accent already used on the in-game overlays. -->
+            <Color x:Key="FocusGold">#FFD54F</Color>
+
+            <!-- Glass-panel treatment shared by menu cards and in-game HUD panels
+                 so both screens read as one consistent design language. -->
+            <Color x:Key="PanelStroke">#33FFFFFF</Color>
+
             <Style TargetType="Button">
                 <Setter Property="BackgroundColor" Value="{StaticResource AranasBlue}" />
                 <Setter Property="TextColor" Value="{StaticResource AranasWhite}" />
@@ -18,15 +26,63 @@
                 <Setter Property="Padding" Value="12,8" />
                 <Setter Property="VisualStateManager.VisualStateGroups">
                     <VisualStateGroupList>
-<VisualState Name="Pressed">
-    <VisualState.Setters>
-        <Setter Property="Opacity" Value="0.75" />
-    </VisualState.Setters>
-</VisualState>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal">
+                                <VisualState.Setters>
+                                    <Setter Property="Opacity" Value="1.0" />
+                                </VisualState.Setters>
                             </VisualState>
-                            <VisualState Name="Disabled">
+                            <VisualState x:Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Property="Opacity" Value="0.75" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Disabled">
                                 <VisualState.Setters>
                                     <Setter Property="Opacity" Value="0.5" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Tactile press/hover/focus feedback for the primary call-to-action and
+                 in-game action buttons. Intentionally not applied to buttons whose
+                 Scale/Opacity/BorderColor are already driven per-tap from code-behind
+                 (e.g. the difficulty and color-swatch selectors), to avoid the two
+                 sources of truth fighting over the same properties. -->
+            <Style x:Key="PressableButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal">
+                                <VisualState.Setters>
+                                    <Setter Property="Scale" Value="1.0" />
+                                    <Setter Property="Opacity" Value="1.0" />
+                                    <Setter Property="BorderWidth" Value="0" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="Scale" Value="1.03" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Property="Scale" Value="0.94" />
+                                    <Setter Property="Opacity" Value="0.85" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Focused">
+                                <VisualState.Setters>
+                                    <Setter Property="BorderColor" Value="{StaticResource FocusGold}" />
+                                    <Setter Property="BorderWidth" Value="2" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Property="Opacity" Value="0.4" />
                                 </VisualState.Setters>
                             </VisualState>
                         </VisualStateGroup>

@@ -265,6 +265,8 @@ public partial class GamePage : ContentPage
 
         _state.Update(0.016f);
         StatusLabel.Text = _state.StatusText;
+        // Highlight warnings (passive-play etc.) in amber so they read as an alert, not just info.
+        StatusLabel.TextColor = _state.StatusText.StartsWith('⚠') ? Colors.Orange : Color.FromArgb("#F4F4F4");
         StatusBadge.IsVisible = !string.IsNullOrWhiteSpace(_state.StatusText);
         GameView.Invalidate();
     }
@@ -4659,6 +4661,10 @@ public class GameDrawable : IDrawable
         float pillW = 250, pillH = 50;
         float pillX = dirtyRect.Center.X - pillW / 2;
         float pillY = 3;
+
+        // Soft drop shadow so the pill lifts off the busy court background
+        canvas.FillColor = Color.FromArgb("#33000000");
+        canvas.FillRoundedRectangle(pillX, pillY + 3, pillW, pillH, 20);
 
         // Background with gradient-like effect
         canvas.FillColor = ScoreboardBg;

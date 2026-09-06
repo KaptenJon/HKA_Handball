@@ -55,7 +55,7 @@
                                  VerticalOptions="Center"
                                  Spacing="0">
                 <Border BackgroundColor="#17000000"
-                        Stroke="#33FFFFFF"
+                        Stroke="{StaticResource PanelStroke}"
                         StrokeThickness="1"
                         StrokeShape="RoundRectangle 28"
                         Padding="20"
@@ -84,7 +84,7 @@
                                     BackgroundColor="#2E7D32"
                                     TextColor="White"
                                     CornerRadius="14"
-                                    HeightRequest="44"
+                                    HeightRequest="48"
                                     BorderColor="#AAFFFFFF"
                                     BorderWidth="2"
                                     Clicked="OnSelectEasy" />
@@ -93,10 +93,10 @@
                                     Text="Normal"
                                     FontSize="14"
                                     FontAttributes="Bold"
-                                    BackgroundColor="#003DA5"
+                                    BackgroundColor="{StaticResource AranasBlue}"
                                     TextColor="White"
                                     CornerRadius="14"
-                                    HeightRequest="44"
+                                    HeightRequest="48"
                                     BorderColor="#AAFFFFFF"
                                     BorderWidth="2"
                                     Clicked="OnSelectMedium" />
@@ -108,7 +108,7 @@
                                     BackgroundColor="#37474F"
                                     TextColor="White"
                                     CornerRadius="14"
-                                    HeightRequest="44"
+                                    HeightRequest="48"
                                     BorderColor="#AAFFFFFF"
                                     BorderWidth="2"
                                     Clicked="OnSelectHard" />
@@ -153,11 +153,12 @@
                                     Text="🏠  1 spelare"
                                     FontSize="19"
                                     FontAttributes="Bold"
-                                    BackgroundColor="#003DA5"
+                                    BackgroundColor="{StaticResource AranasBlue}"
                                     TextColor="White"
                                     CornerRadius="18"
                                     HeightRequest="58"
                                     HorizontalOptions="Fill"
+                                    Style="{StaticResource PressableButtonStyle}"
                                     Clicked="OnSinglePlayer" />
 
                             <Button x:Name="TwoPlayerButton"
@@ -169,6 +170,7 @@
                                     CornerRadius="18"
                                     HeightRequest="58"
                                     HorizontalOptions="Fill"
+                                    Style="{StaticResource PressableButtonStyle}"
                                     Clicked="OnTwoPlayerLocal" />
                         </VerticalStackLayout>
 
@@ -190,7 +192,7 @@
                                 <Switch x:Name="SoundSwitch"
                                         Grid.Column="1"
                                         IsToggled="True"
-                                        OnColor="#003DA5"
+                                        OnColor="{StaticResource AranasBlue}"
                                         VerticalOptions="Center"
                                         Toggled="OnSoundToggled" />
                             </Grid>

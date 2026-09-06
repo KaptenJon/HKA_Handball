@@ -20,11 +20,14 @@
                 VerticalOptions="Start"
                 Margin="0,72,0,0"
                 Padding="14,7"
-                BackgroundColor="#26110804"
-                Stroke="#30FFFFFF"
+                BackgroundColor="#38110804"
+                Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 18"
                 InputTransparent="True">
+            <Border.Shadow>
+                <Shadow Brush="#80000000" Offset="0,3" Radius="8" Opacity="0.35" />
+            </Border.Shadow>
             <Label x:Name="StatusLabel"
                    TextColor="#F4F4F4"
                    FontSize="12"
@@ -40,9 +43,12 @@
                 Margin="12,0,0,12"
                 Padding="8"
                 BackgroundColor="#1A0E0A06"
-                Stroke="#26FFFFFF"
+                Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 26">
+            <Border.Shadow>
+                <Shadow Brush="#80000000" Offset="0,4" Radius="10" Opacity="0.35" />
+            </Border.Shadow>
             <controls:JoystickView x:Name="Joystick" WidthRequest="140" HeightRequest="140" />
         </Border>
 
@@ -53,9 +59,12 @@
                 Margin="0,0,12,12"
                 Padding="10"
                 BackgroundColor="#1A0E0A06"
-                Stroke="#26FFFFFF"
+                Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 26">
+            <Border.Shadow>
+                <Shadow Brush="#80000000" Offset="0,4" Radius="10" Opacity="0.35" />
+            </Border.Shadow>
             <Grid x:Name="Player1ButtonsGrid"
                   RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,Auto"
                   RowSpacing="6" ColumnSpacing="6">
@@ -64,14 +73,17 @@
                 <Button x:Name="PassUpButton" Text="⬆ Pass" FontSize="15"
                         BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
+                        Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnPassUp" />
                 <Button x:Name="PassDownButton" Grid.Row="1" Text="⬇ Pass" FontSize="15"
                         BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
+                        Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnPassDown" />
                 <Button x:Name="DribbleButton" Grid.Row="2" Text="↕ Studsa" FontSize="15"
                         BackgroundColor="#1565C0" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
+                        Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnDribble" />
                 <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="2" Grid.Column="1"
                         HeightRequest="65" WidthRequest="100" />
@@ -80,6 +92,7 @@
                 <Button x:Name="SwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
                         BackgroundColor="#FF8F00" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
+                        Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnSwitchDefender" />
             </Grid>
         </Border>
@@ -91,10 +104,13 @@
                 Margin="0,0,182,12"
                 Padding="8"
                 BackgroundColor="#1A0E0A06"
-                Stroke="#26FFFFFF"
+                Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 26"
                 IsVisible="False">
+            <Border.Shadow>
+                <Shadow Brush="#80000000" Offset="0,4" Radius="10" Opacity="0.35" />
+            </Border.Shadow>
             <controls:JoystickView x:Name="Joystick2" WidthRequest="140" HeightRequest="140" />
         </Border>
 
@@ -105,10 +121,13 @@
                 Margin="182,0,0,12"
                 Padding="10"
                 BackgroundColor="#1A0E0A06"
-                Stroke="#26FFFFFF"
+                Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 26"
                 IsVisible="False">
+            <Border.Shadow>
+                <Shadow Brush="#80000000" Offset="0,4" Radius="10" Opacity="0.35" />
+            </Border.Shadow>
             <Grid x:Name="Player2ButtonsGrid"
                   RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,Auto"
                   RowSpacing="6" ColumnSpacing="6">
@@ -117,14 +136,17 @@
                 <Button x:Name="AwayPassUpButton" Text="⬆ Pass" FontSize="15"
                         BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
+                        Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnAwayPassUp" />
                 <Button x:Name="AwayPassDownButton" Grid.Row="1" Text="⬇ Pass" FontSize="15"
                         BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
+                        Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnAwayPassDown" />
                 <Button x:Name="AwayDribbleButton" Grid.Row="2" Text="↕ Studsa" FontSize="15"
                         BackgroundColor="#C62828" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
+                        Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnAwayDribble" />
                 <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="2" Grid.Column="1"
                         HeightRequest="65" WidthRequest="100" />
@@ -133,6 +155,7 @@
                 <Button x:Name="AwaySwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
                         BackgroundColor="#E65100" TextColor="White" CornerRadius="12"
                         HeightRequest="52" MinimumWidthRequest="90"
+                        Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnAwaySwitchDefender" />
             </Grid>
         </Border>
