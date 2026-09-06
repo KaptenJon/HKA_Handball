@@ -1545,6 +1545,8 @@ public class GameState
 
     void UpdatePlayers(double dt)
     {
+        EnsureControlledDefenderIndices();
+
         if (_resettingAfterGoal)
         {
             _resetCountdown--;
@@ -2494,7 +2496,7 @@ public class GameState
         double awayFieldBase = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset - GoalAreaRadius - 30 : 700;
         SetTeamBasePositions(HomePlayers, homeFieldBase, true);
         SetTeamBasePositions(AwayPlayers, awayFieldBase, false);
-        ControlledDefenderIndex = 1;
+        EnsureControlledDefenderIndices();
         ClearAllActiveActions();
         _viewInitialized = true;
         _resettingAfterGoal = true;
@@ -2729,6 +2731,12 @@ public class GameState
         }
         if (bestIdx > 0)
             ControlledDefenderIndex = bestIdx;
+    }
+
+    void EnsureControlledDefenderIndices()
+    {
+        ControlledDefenderIndex = GetActiveFieldIndex(HomePlayers, ControlledDefenderIndex, -1);
+        ControlledAwayDefenderIndex = GetActiveFieldIndex(AwayPlayers, ControlledAwayDefenderIndex, -1);
     }
 
     void ApplyRestartPause(bool enforceFreeThrowSpacing = false)
@@ -3074,6 +3082,7 @@ public class GameState
                     if (Random.Shared.NextDouble() < SuspensionChance)
                     {
                         defender.SuspensionTicks = SuspensionDurationTicks;
+                        EnsureControlledDefenderIndices();
                         suspended = true;
                     }
                     StartPenalty(isHome: true);
@@ -3092,6 +3101,7 @@ public class GameState
                 if (Random.Shared.NextDouble() < SuspensionChance)
                 {
                     defender.SuspensionTicks = SuspensionDurationTicks;
+                    EnsureControlledDefenderIndices();
                     StartFreeThrowRestart(
                         true,
                         owner.Position,
@@ -3398,7 +3408,7 @@ public class GameState
         BallOwnerType = BallOwnershipType.Opponent;
         BallOwnerAwayIndex = awayThrowOffCarrierIndex;
         BallOwnerPlayerIndex = -1;
-        ControlledDefenderIndex = 1;
+        EnsureControlledDefenderIndices();
         ClearAllActiveActions();
         _awayPassCooldownTicks = _diffPassCooldownBase + 10;
         _viewInitialized = true;
@@ -3524,6 +3534,8 @@ public class GameState
         {
             // Home shoots at right goal
             int shooterIdx = GetActiveFieldIndex(HomePlayers, preferredShooterIndex, -1);
+            if (shooterIdx < 1)
+                return;
             HomePlayers[shooterIdx].Position = new Point(penaltyX, centerY);
 
             // Defending GK (away) on goal line
@@ -3535,9 +3547,18 @@ public class GameState
             double rightFreeThrowEdge = ViewSize.Width - GoalCenterInset - FreeThrowRadius - 12;
             double lineX = Math.Min(rightFreeThrowEdge, penaltyX - 40);
             int slot = 0;
-            int totalOthers = (HomePlayers.Length - 2) + (AwayPlayers.Length - 1); // exclude home GK, shooter, away GK
+            int totalOthers = 0;
+            for (int i = 1; i < HomePlayers.Length; i++)
+                if (i != shooterIdx && !HomePlayers[i].IsSuspended) totalOthers++;
+            for (int i = 1; i < AwayPlayers.Length; i++)
+                if (!AwayPlayers[i].IsSuspended) totalOthers++;
             for (int i = 0; i < HomePlayers.Length; i++)
             {
+                if (i > 0 && HomePlayers[i].IsSuspended)
+                {
+                    HomePlayers[i].Position = new Point(20, 30);
+                    continue;
+                }
                 if (i == 0) // Home GK goes back to own goal
                 {
                     HomePlayers[0].Position = new Point(GoalCenterInset + 20, centerY);
@@ -3551,6 +3572,11 @@ public class GameState
             for (int i = 0; i < AwayPlayers.Length; i++)
             {
                 if (i == 0) continue; // GK already positioned
+                if (AwayPlayers[i].IsSuspended)
+                {
+                    AwayPlayers[i].Position = new Point(ViewSize.Width > 0 ? ViewSize.Width - 20 : 700, 30);
+                    continue;
+                }
                 double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
                 AwayPlayers[i].Position = new Point(lineX, slotY);
                 slot++;
@@ -3560,6 +3586,8 @@ public class GameState
         {
             // Away shoots at left goal
             int shooterIdx = GetActiveFieldIndex(AwayPlayers, preferredShooterIndex, -1);
+            if (shooterIdx < 1)
+                return;
             AwayPlayers[shooterIdx].Position = new Point(penaltyX, centerY);
 
             // Defending GK (home) on goal line
@@ -3569,9 +3597,18 @@ public class GameState
             double leftFreeThrowEdge = GoalCenterInset + FreeThrowRadius + 12;
             double lineX = Math.Max(leftFreeThrowEdge, penaltyX + 40);
             int slot = 0;
-            int totalOthers = (AwayPlayers.Length - 2) + (HomePlayers.Length - 1); // exclude away GK, shooter, home GK
+            int totalOthers = 0;
+            for (int i = 1; i < AwayPlayers.Length; i++)
+                if (i != shooterIdx && !AwayPlayers[i].IsSuspended) totalOthers++;
+            for (int i = 1; i < HomePlayers.Length; i++)
+                if (!HomePlayers[i].IsSuspended) totalOthers++;
             for (int i = 0; i < AwayPlayers.Length; i++)
             {
+                if (i > 0 && AwayPlayers[i].IsSuspended)
+                {
+                    AwayPlayers[i].Position = new Point(ViewSize.Width > 0 ? ViewSize.Width - 20 : 700, 30);
+                    continue;
+                }
                 if (i == 0) // Away GK goes back to own goal
                 {
                     AwayPlayers[0].Position = new Point(
@@ -3587,6 +3624,11 @@ public class GameState
             for (int i = 0; i < HomePlayers.Length; i++)
             {
                 if (i == 0) continue; // GK already positioned
+                if (HomePlayers[i].IsSuspended)
+                {
+                    HomePlayers[i].Position = new Point(20, 30);
+                    continue;
+                }
                 double slotY = topY + slot * ((bottomY - topY) / Math.Max(totalOthers - 1, 1));
                 HomePlayers[i].Position = new Point(lineX, slotY);
                 slot++;
