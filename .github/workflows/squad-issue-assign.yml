@@ -117,11 +117,22 @@ jobs:
         with:
           script: |
             const issue = context.payload.issue;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              per_page: 100
+            });
+            if (comments.some(comment => comment.body?.includes('<!-- squad-copilot-requested -->'))) {
+              core.info(`A shared Copilot request already exists for #${issue.number}`);
+              return;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issue.number,
               body: [
+                "<!-- squad-copilot-requested -->",
                 "@copilot Please work on this issue using the appropriate custom agent.",
                 "Create a pull request with `Fixes #" + issue.number + "` in the description."
               ].join("\n")
