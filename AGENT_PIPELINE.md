@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository uses GitHub Actions to automatically process issues and create pull requests using GitHub Copilot agents.
+This repository uses GitHub Actions to process issues and coordinate comment-based requests to GitHub Copilot agents.
 
 ## How It Works
 
@@ -11,13 +11,22 @@ This repository uses GitHub Actions to automatically process issues and create p
 The issue pipeline is triggered in two ways:
 
 1. **Automatically** when a new issue is opened (via `on: issues: types: [opened]`)
-2. **Manually** via workflow dispatch (for testing or reprocessing existing issues)
+2. **Manually** via workflow dispatch with a required positive `issue_number` input (for testing or reprocessing existing issues)
+
+Manual dispatch example:
+
+```bash
+gh workflow run issue-agent-pipeline.yml -f issue_number=123
+```
+
+The workflow resolves and validates the issue number before any agent request. It does not accept pull request numbers.
 
 ### Pipeline Stages
 
-#### 1. Plan Issue
-- Extracts issue details (title, body, number)
-- Prepares context for downstream agents
+#### 1. Resolve and prepare issue context
+- Resolves the issue from the opened-issue event or the manual `issue_number` input.
+- Validates that the value is a positive integer and refers to an issue, not a pull request.
+- Prepares planning context for the downstream implementation request. A planner output is not presumed to exist.
 
 #### 2. Validate Handball Context
 - Checks if the issue contains handball-related terminology
@@ -29,16 +38,13 @@ The issue pipeline is triggered in two ways:
 - Posts status comment to the issue
 
 #### 4. Implementation Agent ⭐
-- **NEW**: Uses the GitHub Copilot Agent Tasks API to programmatically trigger a coding agent
-- API endpoint: `POST /agents/repos/{owner}/{repo}/tasks`
-- Passes comprehensive instructions including:
-  - Issue details
-  - Planner context
-  - Requirements (handball rules, offline-first, Android build, etc.)
-- Agent creates a branch, implements changes, and opens a PR with `Fixes #<issue_number>`
+- Posts a comment-based request to the issue mentioning `@copilot` and the `implementation-coder` custom agent.
+- Passes issue details and clearly labels the planning text as unapproved context that the implementation agent must verify.
+- The agent creates a branch, implements changes, and opens a PR with `Fixes #<issue_number>`.
+- Every request and completion/failure marker includes the current workflow run identifier.
 
 #### 5. Wait for PR
-- Polls the issue timeline for up to 40 minutes (80 attempts × 30 seconds)
+- Polls the issue timeline for a bounded period and accepts only an open PR with an expected issue-closing reference.
 - Looks for a cross-referenced PR linked to the issue
 - Fails if no PR is created within the time window
 
@@ -56,34 +62,17 @@ The issue pipeline is triggered in two ways:
 
 ## Key Changes (2026-07-20)
 
-### Problem
-The original workflow posted `@copilot` comments to trigger agents, but this approach didn't actually invoke the agents. Comments alone don't start Copilot agent sessions - they're just notifications that require manual user interaction.
+### Comment-based operation
 
-### Solution
-Updated the `implementation-agent` job to use the **GitHub Copilot Agent Tasks REST API**:
+The pipeline intentionally uses issue and pull-request comments to request each custom agent. It does not use Copilot assignment/task APIs or a special user-to-server token. Agent requests require the normal repository permissions and the expected Copilot integration to be available.
 
-```javascript
-const response = await github.request('POST /agents/repos/{owner}/{repo}/tasks', {
-  owner: context.repo.owner,
-  repo: context.repo.repo,
-  prompt: prompt,  // Comprehensive task instructions
-  base_ref: context.ref || 'master',
-  create_pull_request: true,
-  headers: {
-    'X-GitHub-Api-Version': '2026-03-10'
-  }
-});
+Completion is observable through run-scoped comments such as:
+
+```text
+<!-- hka-agent-complete: implementation run:123456789-1 -->
 ```
 
-### Benefits
-- ✅ Agents are **actually executed** programmatically
-- ✅ PRs are **automatically created** with proper issue linkage
-- ✅ No manual intervention required
-- ✅ Fallback to comment-based approach if API fails
-- ✅ Full error handling and status reporting
-
-### Removed
-- Removed `ui-polish-agent` step - the main implementation agent now handles the complete task in one pass to ensure a single, cohesive PR
+Polling is bounded and fails explicitly when an agent reports a run-scoped failure marker or does not produce the expected marker in time.
 
 ## Custom Agents
 
@@ -114,24 +103,20 @@ To test the pipeline:
   - `pull-requests: write` - For creating and updating PRs
   - `issues: write` - For posting comments
 
-- **API Access**: The Copilot Agent Tasks API requires:
-  - Personal access token, OAuth token, or GitHub App user-to-server token
-  - Installation tokens are NOT supported
+- **Copilot access**: Agent requests are comment-based. No Copilot assignment/task API or special user-to-server token is required by this workflow.
 
 ## Troubleshooting
 
 ### Agent Not Triggering
-- Check workflow run logs for API errors
-- Verify token permissions
-- Look for fallback comment in the issue (indicates API failure)
+- Check workflow run logs and the issue/PR comments for the run identifier.
+- Verify token permissions and that the repository's Copilot integration can act on `@copilot` comments.
 
 ### No PR Created
-- Check the agent task was created successfully (look for Task ID in comments)
-- Verify the agent completed its work (may take 5-30 minutes)
+- Verify the agent completed its work (may take several minutes)
 - Check that the PR includes `Fixes #<issue_number>` for auto-linking
 
 ### Pipeline Timing Out
-- The wait-for-pr step allows 40 minutes for agent completion
+- The wait-for-pr and completion-marker steps use bounded polling windows
 - If consistently timing out, the agent may be failing silently
 - Check Copilot agent logs for errors
 

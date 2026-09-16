@@ -3,6 +3,12 @@ name: Issue Agent Pipeline
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Positive issue number to process"
+        required: true
+        type: string
 
 permissions:
   contents: none
@@ -10,30 +16,76 @@ permissions:
   issues: write
 
 concurrency:
-  group: issue-agent-pipeline-${{ github.event.issue.number }}
+  group: issue-agent-pipeline-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: false
 
 jobs:
+  resolve-issue:
+    name: Resolve triggering issue
+    runs-on: ubuntu-latest
+    outputs:
+      issue_number: ${{ steps.resolve.outputs.issue_number }}
+      issue_title: ${{ steps.resolve.outputs.issue_title }}
+      issue_body: ${{ steps.resolve.outputs.issue_body }}
+      run_id: ${{ steps.resolve.outputs.run_id }}
+    steps:
+      - name: Resolve and validate issue
+        id: resolve
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
+        with:
+          script: |
+            const rawIssueNumber = context.eventName === "workflow_dispatch"
+              ? context.payload.inputs?.issue_number
+              : context.payload.issue?.number;
+            if (!/^[1-9]\d*$/.test(String(rawIssueNumber || ""))) {
+              core.setFailed("issue_number must be a positive integer.");
+              return;
+            }
+
+            const issueNumber = Number(rawIssueNumber);
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+            if (issue.pull_request) {
+              core.setFailed(`Issue number ${issueNumber} refers to a pull request, not an issue.`);
+              return;
+            }
+
+            core.setOutput("issue_number", String(issue.number));
+            core.setOutput("issue_title", issue.title);
+            core.setOutput("issue_body", issue.body || "");
+            core.setOutput("run_id", `${context.runId}-${context.runAttempt}`);
+
   plan-issue:
     name: Plan issue (agent)
     runs-on: ubuntu-latest
+    needs: [resolve-issue]
     outputs:
       plan_prompt: ${{ steps.plan.outputs.plan_prompt }}
     steps:
       - name: Build plan prompt for planner agent
         id: plan
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
+        env:
+          ISSUE_TITLE: ${{ needs.resolve-issue.outputs.issue_title }}
+          ISSUE_BODY: ${{ needs.resolve-issue.outputs.issue_body }}
         with:
           script: |
-            const issue = context.payload.issue;
+            const issueNumber = "${{ needs.resolve-issue.outputs.issue_number }}";
+            const issueTitle = process.env.ISSUE_TITLE || "";
+            const issueBody = process.env.ISSUE_BODY || "";
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
             const prompt = [
               "Agent: issue-planner",
-              `Issue #${issue.number}: ${issue.title}`,
+              `Issue #${issueNumber}: ${issueTitle}`,
               "",
               "Issue body:",
-              issue.body || "(no body)",
+              issueBody || "(no body)",
               "",
-              "Create an implementation plan using the agent's output format."
+              "Create an implementation plan using the agent's output format. This prompt is prepared for a later comment-based request; no planner output has been produced or approved yet.",
+              `Pipeline run identifier: ${runId}`
             ].join("\n");
 
             core.setOutput("plan_prompt", prompt);
@@ -41,16 +93,19 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
+              issue_number: Number(issueNumber),
               body: [
                 "Starting automated issue pipeline.",
-                "- Planner agent queued: `issue-planner`"
+                "- Planner instructions prepared for the implementation request.",
+                "- No planner completion or approved plan is assumed; the implementation agent must assess the issue itself.",
+                `- Pipeline run: \`${runId}\``
               ].join("\n")
             });
 
   validate-handball:
     name: Validate sports logic (agent)
     runs-on: ubuntu-latest
+    needs: [resolve-issue]
     outputs:
       valid: ${{ steps.validate.outputs.valid }}
       validation_summary: ${{ steps.validate.outputs.validation_summary }}
@@ -58,10 +113,13 @@ jobs:
       - name: Validate issue from handball perspective
         id: validate
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
+        env:
+          ISSUE_TITLE: ${{ needs.resolve-issue.outputs.issue_title }}
+          ISSUE_BODY: ${{ needs.resolve-issue.outputs.issue_body }}
         with:
           script: |
-            const issue = context.payload.issue;
-            const text = `${issue.title}\n${issue.body || ""}`.toLowerCase();
+            const issueNumber = "${{ needs.resolve-issue.outputs.issue_number }}";
+            const text = `${process.env.ISSUE_TITLE || ""}\n${process.env.ISSUE_BODY || ""}`.toLowerCase();
 
             // Lightweight heuristic gate; handball agent should provide the final judgment in practice.
             const handballTerms = [
@@ -81,17 +139,18 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
+              issue_number: Number(issueNumber),
               body: [
                 "Handball knowledge validation complete.",
-                `- Result: ${summary}`
+                `- Result: ${summary}`,
+                `- Pipeline run: ${{ needs.resolve-issue.outputs.run_id }}`
               ].join("\n")
             });
 
   gate:
     name: Gate after parallel checks
     runs-on: ubuntu-latest
-    needs: [plan-issue, validate-handball]
+    needs: [resolve-issue, plan-issue, validate-handball]
     if: always()
     outputs:
       proceed: ${{ steps.gate.outputs.proceed }}
@@ -106,7 +165,7 @@ jobs:
             const proceed = valid ? "true" : "false";
             core.setOutput("proceed", proceed);
 
-            const issue = context.payload.issue;
+            const issueNumber = "${{ needs.resolve-issue.outputs.issue_number }}";
             const statusBody = valid
               ? "Parallel checks passed. Proceeding with coding agents."
               : "Pipeline stopped: sports validation failed. Please refine issue details and reopen.";
@@ -114,36 +173,38 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
+              issue_number: Number(issueNumber),
               body: statusBody
             });
 
   implementation-agent:
     name: Implementation coder (agent)
     runs-on: ubuntu-latest
-    needs: [gate, plan-issue]
+    needs: [gate, plan-issue, resolve-issue]
     if: needs.gate.outputs.proceed == 'true'
     steps:
       - name: Trigger implementation coding agent
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         env:
           PLAN_PROMPT: ${{ needs['plan-issue'].outputs.plan_prompt }}
+          RUN_ID: ${{ needs.resolve-issue.outputs.run_id }}
         with:
           script: |
-            const issue = context.payload.issue;
-            const planPrompt = process.env.PLAN_PROMPT || "(planner output unavailable)";
+            const issueNumber = Number("${{ needs.resolve-issue.outputs.issue_number }}");
+            const planPrompt = process.env.PLAN_PROMPT || "(planning context unavailable; assess the issue directly)";
+            const runId = process.env.RUN_ID;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
+              issue_number: issueNumber,
               body: [
                 "@copilot Please use the `implementation-coder` custom agent.",
-                `Implement the approved plan for issue #${issue.number} and open a pull request.`,
-                `Include "Fixes #${issue.number}" in the PR description so the pipeline can find it.`,
-                "When implementation is complete, add the exact comment marker `<!-- hka-agent-complete: implementation -->` to the PR. If blocked, add `<!-- hka-agent-failed: implementation -->` instead.",
+                `Assess and implement issue #${issueNumber}, then open a pull request.`,
+                `Include "Fixes #${issueNumber}" in the PR description so the pipeline can find it.`,
+                `When implementation is complete, add the exact comment marker \`<!-- hka-agent-complete: implementation run:${runId} -->\` to the PR. If blocked, add \`<!-- hka-agent-failed: implementation run:${runId} -->\` instead.`,
                 "",
-                "Planner context:",
+                "Planning context (not an approved planner output; verify it before coding):",
                 planPrompt
               ].join("\n")
             });
@@ -151,7 +212,7 @@ jobs:
   wait-for-pr:
     name: Wait for PR from agents
     runs-on: ubuntu-latest
-    needs: [implementation-agent]
+    needs: [implementation-agent, resolve-issue]
     outputs:
       pr_number: ${{ steps.find-pr.outputs.pr_number }}
     steps:
@@ -160,7 +221,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
-            const issueNumber = context.payload.issue.number;
+            const issueNumber = Number("${{ needs.resolve-issue.outputs.issue_number }}");
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
@@ -201,17 +262,22 @@ jobs:
   wait-for-implementation:
     name: Wait for implementation completion
     runs-on: ubuntu-latest
-    needs: [wait-for-pr]
+    needs: [wait-for-pr, resolve-issue]
     steps:
       - name: Wait for implementation completion marker
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed("wait-for-pr did not produce a positive PR number.");
+              return;
+            }
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const successMarker = "<!-- hka-agent-complete: implementation -->";
-            const failureMarker = "<!-- hka-agent-failed: implementation -->";
+            const successMarker = `<!-- hka-agent-complete: implementation run:${runId} -->`;
+            const failureMarker = `<!-- hka-agent-failed: implementation run:${runId} -->`;
 
             for (let attempt = 1; attempt <= 20; attempt++) {
               const comments = await github.paginate(github.rest.issues.listComments, {
@@ -234,15 +300,16 @@ jobs:
   ui-polish-agent:
     name: UI polish coder (agent)
     runs-on: ubuntu-latest
-    needs: [wait-for-implementation]
+    needs: [wait-for-implementation, wait-for-pr, resolve-issue]
     steps:
       - name: Request UI polish pass
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
-            if (Number.isNaN(prNumber)) {
-              core.setFailed("PR number was not set by wait-for-pr job.");
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
 
@@ -252,22 +319,24 @@ jobs:
               issue_number: prNumber,
               body: [
                 "@copilot Please run a second pass with the `ui-polish-coder` custom agent.",
-                "Focus on visual and UX polish after core implementation, update this PR, then add the exact comment marker `<!-- hka-agent-complete: ui-polish -->`. If blocked, add `<!-- hka-agent-failed: ui-polish -->`."
+                `Focus on visual and UX polish after core implementation, update this PR, then add the exact comment marker \`<!-- hka-agent-complete: ui-polish run:${runId} -->\`. If blocked, add \`<!-- hka-agent-failed: ui-polish run:${runId} -->\`.`,
+                `Pipeline run: ${runId}`
               ].join("\n")
             });
 
   review-agent:
     name: Review agent pass
     runs-on: ubuntu-latest
-    needs: [wait-for-ui-polish]
+    needs: [wait-for-ui-polish, wait-for-pr, resolve-issue]
     steps:
       - name: Trigger review agent
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
-            if (Number.isNaN(prNumber)) {
-              core.setFailed("PR number was not set by wait-for-pr job.");
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
 
@@ -277,24 +346,30 @@ jobs:
               issue_number: prNumber,
               body: [
                 "@copilot Please use the `pr-reviewer` custom agent.",
-                "Review this PR for correctness and maintainability, leave actionable comments, then add the exact comment marker `<!-- hka-agent-complete: review -->`. If blocked, add `<!-- hka-agent-failed: review -->`."
+                `Review this PR for correctness and maintainability, leave actionable comments, then add the exact comment marker \`<!-- hka-agent-complete: review run:${runId} -->\`. If blocked, add \`<!-- hka-agent-failed: review run:${runId} -->\`.`,
+                `Pipeline run: ${runId}`
               ].join("\n")
             });
 
   wait-for-ui-polish:
     name: Wait for UI polish completion
     runs-on: ubuntu-latest
-    needs: [ui-polish-agent, wait-for-pr]
+    needs: [ui-polish-agent, wait-for-pr, resolve-issue]
     steps:
       - name: Wait for UI polish completion marker
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const successMarker = "<!-- hka-agent-complete: ui-polish -->";
-            const failureMarker = "<!-- hka-agent-failed: ui-polish -->";
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed("wait-for-pr did not produce a positive PR number.");
+              return;
+            }
+            const successMarker = `<!-- hka-agent-complete: ui-polish run:${runId} -->`;
+            const failureMarker = `<!-- hka-agent-failed: ui-polish run:${runId} -->`;
 
             for (let attempt = 1; attempt <= 20; attempt++) {
               const comments = await github.paginate(github.rest.issues.listComments, {
@@ -314,15 +389,16 @@ jobs:
   fix-comments-agent:
     name: Fix review comments
     runs-on: ubuntu-latest
-    needs: [wait-for-review, wait-for-pr]
+    needs: [wait-for-review, wait-for-pr, resolve-issue]
     steps:
       - name: Trigger comment-fixing agent
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
-            if (Number.isNaN(prNumber)) {
-              core.setFailed("PR number was not set by wait-for-pr job.");
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
 
@@ -332,24 +408,30 @@ jobs:
               issue_number: prNumber,
               body: [
                 "@copilot Please use the `review-comment-fixer` custom agent.",
-                "Resolve open review comments and update this PR until merge-ready, then add the exact comment marker `<!-- hka-agent-complete: fix-comments -->`. If blocked, add `<!-- hka-agent-failed: fix-comments -->`."
+                `Resolve open review comments and update this PR until merge-ready, then add the exact comment marker \`<!-- hka-agent-complete: fix-comments run:${runId} -->\`. If blocked, add \`<!-- hka-agent-failed: fix-comments run:${runId} -->\`.`,
+                `Pipeline run: ${runId}`
               ].join("\n")
             });
 
   wait-for-review:
     name: Wait for review completion
     runs-on: ubuntu-latest
-    needs: [review-agent, wait-for-pr]
+    needs: [review-agent, wait-for-pr, resolve-issue]
     steps:
       - name: Wait for review completion marker
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const successMarker = "<!-- hka-agent-complete: review -->";
-            const failureMarker = "<!-- hka-agent-failed: review -->";
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed("wait-for-pr did not produce a positive PR number.");
+              return;
+            }
+            const successMarker = `<!-- hka-agent-complete: review run:${runId} -->`;
+            const failureMarker = `<!-- hka-agent-failed: review run:${runId} -->`;
             for (let attempt = 1; attempt <= 20; attempt++) {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: prNumber, per_page: 100
@@ -368,15 +450,16 @@ jobs:
   pipeline-complete:
     name: Complete agent pipeline
     runs-on: ubuntu-latest
-    needs: [wait-for-fix-comments, wait-for-pr]
+    needs: [wait-for-fix-comments, wait-for-pr, resolve-issue]
     steps:
       - name: Report completion
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
-            if (Number.isNaN(prNumber)) {
-              core.setFailed("PR number was not set by wait-for-pr job.");
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
 
@@ -384,23 +467,28 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
-              body: "✅ Issue agent pipeline completed. The PR is ready for maintainer review; automatic merging is intentionally not enabled."
+              body: `✅ Issue agent pipeline completed for run \`${runId}\`. The PR is ready for maintainer review; automatic merging is intentionally not enabled.\n<!-- hka-agent-complete: pipeline run:${runId} -->`
             });
 
   wait-for-fix-comments:
     name: Wait for comment-fixing completion
     runs-on: ubuntu-latest
-    needs: [fix-comments-agent, wait-for-pr]
+    needs: [fix-comments-agent, wait-for-pr, resolve-issue]
     steps:
       - name: Wait for comment-fixing completion marker
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
+            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const successMarker = "<!-- hka-agent-complete: fix-comments -->";
-            const failureMarker = "<!-- hka-agent-failed: fix-comments -->";
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed("wait-for-pr did not produce a positive PR number.");
+              return;
+            }
+            const successMarker = `<!-- hka-agent-complete: fix-comments run:${runId} -->`;
+            const failureMarker = `<!-- hka-agent-failed: fix-comments run:${runId} -->`;
             for (let attempt = 1; attempt <= 20; attempt++) {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: prNumber, per_page: 100
