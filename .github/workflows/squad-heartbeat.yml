@@ -97,12 +97,11 @@ jobs:
             
             core.info(`🔄 Ralph triaged ${results.length} issue(s)`);
 
-      # Copilot auto-assign step (uses PAT if available)
+      # Copilot is triggered by an issue comment; no Copilot API token is needed.
       - name: Ralph — Assign @copilot issues
         if: success()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
-          github-token: ${{ secrets.COPILOT_ASSIGN_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
 
@@ -135,28 +134,31 @@ jobs:
                 return;
               }
 
-              // Get repo default branch
-              const { data: repoData } = await github.rest.repos.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo
-              });
-
               for (const issue of unassigned) {
                 try {
-                  await github.request('POST /repos/{owner}/{repo}/issues/{issue_number}/assignees', {
+                  const { data: comments } = await github.rest.issues.listComments({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     issue_number: issue.number,
-                    assignees: ['copilot-swe-agent[bot]'],
-                    agent_assignment: {
-                      target_repo: `${context.repo.owner}/${context.repo.repo}`,
-                      base_branch: repoData.default_branch,
-                      custom_instructions: `Read .squad/team.md for team context and .squad/routing.md for routing rules.`
-                    }
+                    per_page: 100
                   });
-                  core.info(`Assigned copilot-swe-agent[bot] to #${issue.number}`);
+                  if (comments.some(comment => comment.body?.includes('<!-- copilot-requested -->'))) {
+                    continue;
+                  }
+
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    body: [
+                      "<!-- copilot-requested -->",
+                      "@copilot Please work on this issue using the repository's coding-agent workflow.",
+                      "Read `.squad/team.md` and `.squad/routing.md` for context, then open a PR."
+                    ].join("\n")
+                  });
+                  core.info(`Requested @copilot work on #${issue.number}`);
                 } catch (e) {
-                  core.warning(`Failed to assign @copilot to #${issue.number}: ${e.message}`);
+                  core.warning(`Failed to request @copilot for #${issue.number}: ${e.message}`);
                 }
               }
             } catch (e) {
