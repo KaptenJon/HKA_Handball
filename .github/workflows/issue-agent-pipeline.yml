@@ -181,9 +181,13 @@ jobs:
     name: Implementation coder (agent)
     runs-on: ubuntu-latest
     needs: [gate, plan-issue, resolve-issue]
+    outputs:
+      request_token: ${{ steps.request.outputs.request_token }}
+      request_timestamp: ${{ steps.request.outputs.request_timestamp }}
     if: needs.gate.outputs.proceed == 'true'
     steps:
       - name: Trigger implementation coding agent
+        id: request
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         env:
           PLAN_PROMPT: ${{ needs['plan-issue'].outputs.plan_prompt }}
@@ -193,8 +197,9 @@ jobs:
             const issueNumber = Number("${{ needs.resolve-issue.outputs.issue_number }}");
             const planPrompt = process.env.PLAN_PROMPT || "(planning context unavailable; assess the issue directly)";
             const runId = process.env.RUN_ID;
+            const requestToken = `hka-${runId}-implementation`;
 
-            await github.rest.issues.createComment({
+            const { data: request } = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
@@ -202,12 +207,14 @@ jobs:
                 "@copilot Please use the `implementation-coder` custom agent.",
                 `Assess and implement issue #${issueNumber}, then open a pull request.`,
                 `Include "Fixes #${issueNumber}" in the PR description so the pipeline can find it.`,
-                `When implementation is complete, add the exact comment marker \`<!-- hka-agent-complete: implementation run:${runId} -->\` to the PR. If blocked, add \`<!-- hka-agent-failed: implementation run:${runId} -->\` instead.`,
+                `When implementation is complete, leave a completion or failure comment on the PR containing request token \`${requestToken}\`.`,
                 "",
                 "Planning context (not an approved planner output; verify it before coding):",
                 planPrompt
               ].join("\n")
             });
+            core.setOutput("request_token", requestToken);
+            core.setOutput("request_timestamp", request.created_at);
 
   wait-for-pr:
     name: Wait for PR from agents
@@ -236,7 +243,11 @@ jobs:
               });
 
               const references = timeline
-                .filter(event => event.event === "cross-referenced" && event.source?.issue?.pull_request)
+                .filter(event =>
+                  event.event === "cross-referenced" &&
+                  event.source?.issue?.pull_request &&
+                  event.source?.issue?.repository?.full_name === `${owner}/${repo}`
+                )
                 .map(event => event.source.issue.number);
 
               for (const prNumber of [...new Set(references)]) {
@@ -269,26 +280,30 @@ jobs:
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
-            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            const requestToken = "${{ needs['implementation-agent'].outputs.request_token }}";
+            const requestTimestamp = "${{ needs['implementation-agent'].outputs.request_timestamp }}";
             if (!Number.isInteger(prNumber) || prNumber <= 0) {
               core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const successMarker = `<!-- hka-agent-complete: implementation run:${runId} -->`;
-            const failureMarker = `<!-- hka-agent-failed: implementation run:${runId} -->`;
+            const successMarker = `<!-- hka-agent-complete: implementation token:${requestToken} -->`;
+            const failureMarker = `<!-- hka-agent-failed: implementation token:${requestToken} -->`;
+            const isExpectedComment = comment =>
+              comment.created_at > requestTimestamp &&
+              (comment.user?.login === "copilot-swe-agent[bot]" || comment.user?.login === "copilot[bot]") &&
+              (comment.body || "").includes(requestToken);
 
             for (let attempt = 1; attempt <= 20; attempt++) {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: prNumber, per_page: 100
               });
-              const bodies = comments.map(comment => comment.body || "");
-              if (bodies.some(body => body.includes(failureMarker))) {
+              if (comments.some(comment => isExpectedComment(comment) && comment.body.includes(failureMarker))) {
                 core.setFailed("Implementation agent reported failure.");
                 return;
               }
-              if (bodies.some(body => body.includes(successMarker))) {
+              if (comments.some(comment => isExpectedComment(comment) && comment.body.includes(successMarker))) {
                 core.info("Implementation agent completion is observable.");
                 return;
               }
@@ -301,55 +316,69 @@ jobs:
     name: UI polish coder (agent)
     runs-on: ubuntu-latest
     needs: [wait-for-implementation, wait-for-pr, resolve-issue]
+    outputs:
+      request_token: ${{ steps.request.outputs.request_token }}
+      request_timestamp: ${{ steps.request.outputs.request_timestamp }}
     steps:
       - name: Request UI polish pass
+        id: request
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
             const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            const requestToken = `hka-${runId}-ui-polish`;
             if (!Number.isInteger(prNumber) || prNumber <= 0) {
               core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
 
-            await github.rest.issues.createComment({
+            const { data: request } = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
               body: [
                 "@copilot Please run a second pass with the `ui-polish-coder` custom agent.",
-                `Focus on visual and UX polish after core implementation, update this PR, then add the exact comment marker \`<!-- hka-agent-complete: ui-polish run:${runId} -->\`. If blocked, add \`<!-- hka-agent-failed: ui-polish run:${runId} -->\`.`,
+                `Focus on visual and UX polish after core implementation, update this PR, then leave a completion or failure comment containing request token \`${requestToken}\`.`,
                 `Pipeline run: ${runId}`
               ].join("\n")
             });
+            core.setOutput("request_token", requestToken);
+            core.setOutput("request_timestamp", request.created_at);
 
   review-agent:
     name: Review agent pass
     runs-on: ubuntu-latest
     needs: [wait-for-ui-polish, wait-for-pr, resolve-issue]
+    outputs:
+      request_token: ${{ steps.request.outputs.request_token }}
+      request_timestamp: ${{ steps.request.outputs.request_timestamp }}
     steps:
       - name: Trigger review agent
+        id: request
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
             const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            const requestToken = `hka-${runId}-review`;
             if (!Number.isInteger(prNumber) || prNumber <= 0) {
               core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
 
-            await github.rest.issues.createComment({
+            const { data: request } = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
               body: [
                 "@copilot Please use the `pr-reviewer` custom agent.",
-                `Review this PR for correctness and maintainability, leave actionable comments, then add the exact comment marker \`<!-- hka-agent-complete: review run:${runId} -->\`. If blocked, add \`<!-- hka-agent-failed: review run:${runId} -->\`.`,
+                `Review this PR for correctness and maintainability, leave actionable comments, then leave a completion or failure comment containing request token \`${requestToken}\`.`,
                 `Pipeline run: ${runId}`
               ].join("\n")
             });
+            core.setOutput("request_token", requestToken);
+            core.setOutput("request_timestamp", request.created_at);
 
   wait-for-ui-polish:
     name: Wait for UI polish completion
@@ -361,26 +390,30 @@ jobs:
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
-            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            const requestToken = "${{ needs['ui-polish-agent'].outputs.request_token }}";
+            const requestTimestamp = "${{ needs['ui-polish-agent'].outputs.request_timestamp }}";
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             if (!Number.isInteger(prNumber) || prNumber <= 0) {
               core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
-            const successMarker = `<!-- hka-agent-complete: ui-polish run:${runId} -->`;
-            const failureMarker = `<!-- hka-agent-failed: ui-polish run:${runId} -->`;
+            const successMarker = `<!-- hka-agent-complete: ui-polish token:${requestToken} -->`;
+            const failureMarker = `<!-- hka-agent-failed: ui-polish token:${requestToken} -->`;
+            const isExpectedComment = comment =>
+              comment.created_at > requestTimestamp &&
+              (comment.user?.login === "copilot-swe-agent[bot]" || comment.user?.login === "copilot[bot]") &&
+              (comment.body || "").includes(requestToken);
 
             for (let attempt = 1; attempt <= 20; attempt++) {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: prNumber, per_page: 100
               });
-              const bodies = comments.map(comment => comment.body || "");
-              if (bodies.some(body => body.includes(failureMarker))) {
+              if (comments.some(comment => isExpectedComment(comment) && comment.body.includes(failureMarker))) {
                 core.setFailed("UI polish agent reported failure.");
                 return;
               }
-              if (bodies.some(body => body.includes(successMarker))) return;
+              if (comments.some(comment => isExpectedComment(comment) && comment.body.includes(successMarker))) return;
               core.info(`Waiting for UI polish completion (attempt ${attempt}/20)`);
               if (attempt < 20) await new Promise(resolve => setTimeout(resolve, 30000));
             }
@@ -390,28 +423,35 @@ jobs:
     name: Fix review comments
     runs-on: ubuntu-latest
     needs: [wait-for-review, wait-for-pr, resolve-issue]
+    outputs:
+      request_token: ${{ steps.request.outputs.request_token }}
+      request_timestamp: ${{ steps.request.outputs.request_timestamp }}
     steps:
       - name: Trigger comment-fixing agent
+        id: request
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
             const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            const requestToken = `hka-${runId}-fix-comments`;
             if (!Number.isInteger(prNumber) || prNumber <= 0) {
               core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
 
-            await github.rest.issues.createComment({
+            const { data: request } = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
               body: [
                 "@copilot Please use the `review-comment-fixer` custom agent.",
-                `Resolve open review comments and update this PR until merge-ready, then add the exact comment marker \`<!-- hka-agent-complete: fix-comments run:${runId} -->\`. If blocked, add \`<!-- hka-agent-failed: fix-comments run:${runId} -->\`.`,
+                `Resolve open review comments and update this PR until merge-ready, then leave a completion or failure comment containing request token \`${requestToken}\`.`,
                 `Pipeline run: ${runId}`
               ].join("\n")
             });
+            core.setOutput("request_token", requestToken);
+            core.setOutput("request_timestamp", request.created_at);
 
   wait-for-review:
     name: Wait for review completion
@@ -423,25 +463,29 @@ jobs:
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
-            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            const requestToken = "${{ needs['review-agent'].outputs.request_token }}";
+            const requestTimestamp = "${{ needs['review-agent'].outputs.request_timestamp }}";
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             if (!Number.isInteger(prNumber) || prNumber <= 0) {
               core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
-            const successMarker = `<!-- hka-agent-complete: review run:${runId} -->`;
-            const failureMarker = `<!-- hka-agent-failed: review run:${runId} -->`;
+            const successMarker = `<!-- hka-agent-complete: review token:${requestToken} -->`;
+            const failureMarker = `<!-- hka-agent-failed: review token:${requestToken} -->`;
+            const isExpectedComment = comment =>
+              comment.created_at > requestTimestamp &&
+              (comment.user?.login === "copilot-swe-agent[bot]" || comment.user?.login === "copilot[bot]") &&
+              (comment.body || "").includes(requestToken);
             for (let attempt = 1; attempt <= 20; attempt++) {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: prNumber, per_page: 100
               });
-              const bodies = comments.map(comment => comment.body || "");
-              if (bodies.some(body => body.includes(failureMarker))) {
+              if (comments.some(comment => isExpectedComment(comment) && comment.body.includes(failureMarker))) {
                 core.setFailed("Review agent reported failure.");
                 return;
               }
-              if (bodies.some(body => body.includes(successMarker))) return;
+              if (comments.some(comment => isExpectedComment(comment) && comment.body.includes(successMarker))) return;
               core.info(`Waiting for review completion (attempt ${attempt}/20)`);
               if (attempt < 20) await new Promise(resolve => setTimeout(resolve, 30000));
             }
@@ -480,25 +524,29 @@ jobs:
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
-            const runId = "${{ needs.resolve-issue.outputs.run_id }}";
+            const requestToken = "${{ needs['fix-comments-agent'].outputs.request_token }}";
+            const requestTimestamp = "${{ needs['fix-comments-agent'].outputs.request_timestamp }}";
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             if (!Number.isInteger(prNumber) || prNumber <= 0) {
               core.setFailed("wait-for-pr did not produce a positive PR number.");
               return;
             }
-            const successMarker = `<!-- hka-agent-complete: fix-comments run:${runId} -->`;
-            const failureMarker = `<!-- hka-agent-failed: fix-comments run:${runId} -->`;
+            const successMarker = `<!-- hka-agent-complete: fix-comments token:${requestToken} -->`;
+            const failureMarker = `<!-- hka-agent-failed: fix-comments token:${requestToken} -->`;
+            const isExpectedComment = comment =>
+              comment.created_at > requestTimestamp &&
+              (comment.user?.login === "copilot-swe-agent[bot]" || comment.user?.login === "copilot[bot]") &&
+              (comment.body || "").includes(requestToken);
             for (let attempt = 1; attempt <= 20; attempt++) {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: prNumber, per_page: 100
               });
-              const bodies = comments.map(comment => comment.body || "");
-              if (bodies.some(body => body.includes(failureMarker))) {
+              if (comments.some(comment => isExpectedComment(comment) && comment.body.includes(failureMarker))) {
                 core.setFailed("Comment-fixing agent reported failure.");
                 return;
               }
-              if (bodies.some(body => body.includes(successMarker))) return;
+              if (comments.some(comment => isExpectedComment(comment) && comment.body.includes(successMarker))) return;
               core.info(`Waiting for comment-fixing completion (attempt ${attempt}/20)`);
               if (attempt < 20) await new Promise(resolve => setTimeout(resolve, 30000));
             }
