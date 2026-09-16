@@ -19,7 +19,7 @@
                 HorizontalOptions="Center"
                 VerticalOptions="Start"
                 Margin="0,72,0,0"
-                Padding="14,7"
+                Padding="10,6"
                 BackgroundColor="#38110804"
                 Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
@@ -28,12 +28,20 @@
             <Border.Shadow>
                 <Shadow Brush="#80000000" Offset="0,3" Radius="8" Opacity="0.35" />
             </Border.Shadow>
-            <Label x:Name="StatusLabel"
-                   TextColor="#F4F4F4"
-                   FontSize="12"
-                   FontAttributes="Bold"
-                   HorizontalOptions="Center"
-                   VerticalOptions="Center" />
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                <BoxView x:Name="StatusAccent"
+                         WidthRequest="4"
+                         CornerRadius="2"
+                         Color="#66FFFFFF"
+                         VerticalOptions="Fill" />
+                <Label x:Name="StatusLabel"
+                       Grid.Column="1"
+                       TextColor="#F4F4F4"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center" />
+            </Grid>
         </Border>
 
         <!-- PLAYER 1 LEFT THUMB: Joystick -->

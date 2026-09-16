@@ -210,7 +210,10 @@ public partial class GamePage : ContentPage
 
         var defending = _state.IsHomeDefending;
         bool awayAttacking = _state.BallOwnerType == BallOwnershipType.Opponent;
-        bool controlsActive = !_state.IsMatchOver && !_state.IsHalfTime && !_state.IsGoalCelebration;
+        bool controlsActive = !_state.IsMatchOver
+            && !_state.IsHalfTime
+            && !_state.IsGoalCelebration
+            && !_state.IsRestartingAfterGoal;
         bool restartPaused = _state.IsRestartPaused;
 
         // Player 1 controls — goal aim stays visible during shot to show GK diving
@@ -267,6 +270,13 @@ public partial class GamePage : ContentPage
         StatusLabel.Text = _state.StatusText;
         // Highlight warnings (passive-play etc.) in amber so they read as an alert, not just info.
         StatusLabel.TextColor = _state.StatusText.StartsWith('⚠') ? Colors.Orange : Color.FromArgb("#F4F4F4");
+        StatusAccent.Color = _state.PassivePlayWarningActive
+            ? Colors.Orange
+            : _state.IsGoalCelebration
+                ? Colors.Gold
+                : _state.IsRestartingAfterGoal
+                    ? Colors.CornflowerBlue
+                    : Color.FromArgb("#66FFFFFF");
         StatusBadge.IsVisible = !string.IsNullOrWhiteSpace(_state.StatusText);
         GameView.Invalidate();
     }
@@ -359,6 +369,9 @@ public partial class GamePage : ContentPage
 
     void OnGameEvent(GameEventType eventType)
     {
+        if (eventType is GameEventType.GoalHome or GameEventType.GoalAway)
+            ResetInputState();
+
         if (_soundManager is null) return;
         switch (eventType)
         {
@@ -757,6 +770,7 @@ public class GameState
     public bool BallCarrierHasDribbled => _carrierHasDribbled;
     public bool IsDribbleActive => _dribbleActive;
     public bool IsRestartPaused => _freeThrowCooldownTicks > 0;
+    public bool IsRestartingAfterGoal => _resettingAfterGoal;
 
     public GameState(GameMode mode = GameMode.SinglePlayer, Difficulty difficulty = Difficulty.Medium)
     {
