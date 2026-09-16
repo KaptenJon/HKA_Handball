@@ -21,6 +21,10 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: squad-heartbeat-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
@@ -117,12 +121,12 @@ jobs:
 
             // Find issues labeled squad:copilot with no assignee
             try {
-              const { data: copilotIssues } = await github.rest.issues.listForRepo({
+              const copilotIssues = await github.paginate(github.rest.issues.listForRepo, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 labels: 'squad:copilot',
                 state: 'open',
-                per_page: 5
+                per_page: 100
               });
 
               const unassigned = copilotIssues.filter(i =>
@@ -136,7 +140,7 @@ jobs:
 
               for (const issue of unassigned) {
                 try {
-                  const { data: comments } = await github.rest.issues.listComments({
+                  const comments = await github.paginate(github.rest.issues.listComments, {
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     issue_number: issue.number,
