@@ -56,9 +56,10 @@ The workflow resolves and validates the issue number before any agent request. I
 - Posts a comment requesting fixes for review feedback
 - Uses `@copilot` mention with `review-comment-fixer` custom agent
 
-#### 8. Auto-Merge
-- Enables auto-merge on the PR (squash method)
-- PR will merge automatically once all checks pass
+#### 8. Completion and manual review
+- Waits for the comment-fixing agent to report completion.
+- Posts a run-scoped completion comment on the PR when all pipeline stages finish.
+- Leaves the PR open for maintainer review and manual merge; automatic merging is not enabled.
 
 ## Key Changes (2026-07-20)
 
@@ -72,7 +73,7 @@ Completion is observable through run-scoped comments such as:
 <!-- hka-agent-complete: implementation run:123456789-1 -->
 ```
 
-Polling is bounded and fails explicitly when an agent reports a run-scoped failure marker or does not produce the expected marker in time.
+Polling is bounded and fails explicitly when an agent reports a run-scoped failure marker or does not produce the expected marker in time. A successful pipeline reports completion on the PR, but does not merge it; maintainers must review and merge manually.
 
 ## Custom Agents
 
