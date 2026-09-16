@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Build plan prompt for planner agent
         id: plan
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const issue = context.payload.issue;
@@ -57,7 +57,7 @@ jobs:
     steps:
       - name: Validate issue from handball perspective
         id: validate
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const issue = context.payload.issue;
@@ -98,7 +98,7 @@ jobs:
     steps:
       - name: Decide whether to proceed
         id: gate
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const validationJobSucceeded = "${{ needs['validate-handball'].result }}" === "success";
@@ -125,7 +125,7 @@ jobs:
     if: needs.gate.outputs.proceed == 'true'
     steps:
       - name: Trigger implementation coding agent
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const issue = context.payload.issue;
@@ -150,7 +150,7 @@ jobs:
     needs: [implementation-agent]
     steps:
       - name: Request UI polish pass
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const issue = context.payload.issue;
@@ -174,7 +174,7 @@ jobs:
     steps:
       - name: Find PR linked to issue
         id: find-pr
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const issueNumber = context.payload.issue.number;
@@ -211,7 +211,7 @@ jobs:
     needs: [wait-for-pr]
     steps:
       - name: Trigger review agent
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
@@ -236,7 +236,7 @@ jobs:
     needs: [review-agent, wait-for-pr]
     steps:
       - name: Trigger comment-fixing agent
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const prNumber = Number("${{ needs['wait-for-pr'].outputs.pr_number }}");
