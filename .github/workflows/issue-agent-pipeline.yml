@@ -243,12 +243,17 @@ jobs:
               });
 
               const references = timeline
-                .filter(event =>
-                  event.event === "cross-referenced" &&
-                  event.source?.issue?.pull_request &&
-                  event.source?.issue?.repository?.full_name === `${owner}/${repo}`
-                )
-                .map(event => event.source.issue.number);
+                .filter(event => event.event === "cross-referenced" && event.source?.issue?.pull_request)
+                .flatMap(event => {
+                  const sourceRepository = event.source.issue.repository?.full_name;
+                  if (sourceRepository !== `${owner}/${repo}`) {
+                    core.warning(
+                      `Ignoring cross-repository PR reference from ${sourceRepository || "unknown repository"}`
+                    );
+                    return [];
+                  }
+                  return [event.source.issue.number];
+                });
 
               for (const prNumber of [...new Set(references)]) {
                 const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
