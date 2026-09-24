@@ -4025,6 +4025,8 @@ public class GameDrawable : IDrawable
     static readonly Color ShortsColor = Color.FromArgb("#1A237E");
     static readonly Color ScoreboardBg = Color.FromArgb("#EE1A1208");
     static readonly Color OverlayBg = Color.FromArgb("#CC2C1B0E");
+    const float CameraTiltVerticalScale = 0.92f;
+    const float CameraTiltYOffsetFactor = 0.045f;
 
     // Confetti colors (updated per-game based on team colors)
     readonly Color[] _confettiColors;
@@ -4082,6 +4084,8 @@ public class GameDrawable : IDrawable
         if (_state.ViewSize.Width != dirtyRect.Width || _state.ViewSize.Height != dirtyRect.Height)
             _state.OnViewSizeChanged(new Size(dirtyRect.Width, dirtyRect.Height));
 
+        canvas.SaveState();
+        ApplyCourtCameraTransform(canvas, dirtyRect);
         DrawField(canvas, dirtyRect);
         DrawMotionTrails(canvas);
         DrawPlayers(canvas);
@@ -4090,6 +4094,8 @@ public class GameDrawable : IDrawable
         DrawPassIndicator(canvas);
         DrawPenaltySpotIndicator(canvas, dirtyRect);
         DrawConfetti(canvas);
+        canvas.RestoreState();
+
         DrawIntroEffects(canvas, dirtyRect);
         DrawScore(canvas, dirtyRect);
         DrawSuspensionIndicator(canvas, dirtyRect);
@@ -4098,6 +4104,15 @@ public class GameDrawable : IDrawable
         DrawMatchOverlay(canvas, dirtyRect);
         DrawPauseOverlay(canvas, dirtyRect);
         DrawKeyboardHelp(canvas, dirtyRect);
+    }
+
+    static void ApplyCourtCameraTransform(ICanvas canvas, RectF dirtyRect)
+    {
+        float cameraYOffset = dirtyRect.Height * CameraTiltYOffsetFactor;
+        canvas.Translate(0, cameraYOffset);
+        canvas.Translate(dirtyRect.Center.X, dirtyRect.Center.Y);
+        canvas.Scale(1f, CameraTiltVerticalScale);
+        canvas.Translate(-dirtyRect.Center.X, -dirtyRect.Center.Y);
     }
 
     void DrawField(ICanvas canvas, RectF dirtyRect)
@@ -4445,6 +4460,15 @@ public class GameDrawable : IDrawable
         canvas.FillColor = jerseyColor;
         canvas.FillRoundedRectangle(x - bodyW / 2, y - bodyH / 2 + 2, bodyW, bodyH, 4);
 
+        // Torso shading and highlights for extra depth
+        canvas.FillColor = Colors.White.WithAlpha(isGoalkeeper ? 0.16f : 0.2f);
+        canvas.FillRoundedRectangle(x - bodyW / 2 + 1, y - bodyH / 2 + 3, bodyW - 2, bodyH * 0.42f, 3);
+        canvas.FillColor = Colors.Black.WithAlpha(0.12f);
+        canvas.FillRoundedRectangle(x - bodyW / 2 + 1, y + 1, bodyW - 2, bodyH * 0.36f, 3);
+        canvas.StrokeColor = Colors.Black.WithAlpha(0.25f);
+        canvas.StrokeSize = 0.9f;
+        canvas.DrawRoundedRectangle(x - bodyW / 2, y - bodyH / 2 + 2, bodyW, bodyH, 4);
+
         // Jersey collar (V-neck detail)
         canvas.StrokeColor = Colors.White.WithAlpha(0.5f);
         canvas.StrokeSize = 1;
@@ -4487,6 +4511,9 @@ public class GameDrawable : IDrawable
         // Head
         canvas.FillColor = SkinColor;
         canvas.FillCircle(x, y - bodyH / 2 - headR + 4, headR);
+        canvas.StrokeColor = Colors.Black.WithAlpha(0.15f);
+        canvas.StrokeSize = 0.8f;
+        canvas.DrawCircle(x, y - bodyH / 2 - headR + 4, headR);
 
         // Hair / Goalkeeper cap
         if (isGoalkeeper)
