@@ -4025,8 +4025,14 @@ public class GameDrawable : IDrawable
     static readonly Color ShortsColor = Color.FromArgb("#1A237E");
     static readonly Color ScoreboardBg = Color.FromArgb("#EE1A1208");
     static readonly Color OverlayBg = Color.FromArgb("#CC2C1B0E");
+    static readonly Color TorsoHighlight = Colors.White.WithAlpha(0.2f);
+    static readonly Color GoalkeeperTorsoHighlight = Colors.White.WithAlpha(0.16f);
+    static readonly Color TorsoShade = Colors.Black.WithAlpha(0.12f);
+    static readonly Color TorsoOutline = Colors.Black.WithAlpha(0.25f);
+    static readonly Color HeadOutline = Colors.Black.WithAlpha(0.15f);
     const float CameraTiltVerticalScale = 0.92f;
-    const float CameraTiltYOffsetFactor = 0.045f;
+    // Leave a bottom margin for spectators after the camera tilt
+    const float CameraTiltYOffsetFactor = 0.03f;
 
     // Confetti colors (updated per-game based on team colors)
     readonly Color[] _confettiColors;
@@ -4084,6 +4090,10 @@ public class GameDrawable : IDrawable
         if (_state.ViewSize.Width != dirtyRect.Width || _state.ViewSize.Height != dirtyRect.Height)
             _state.OnViewSizeChanged(new Size(dirtyRect.Width, dirtyRect.Height));
 
+        // Paint the full arena background in screen coordinates before tilting the court
+        canvas.FillColor = ArenaBackground;
+        canvas.FillRectangle(dirtyRect);
+
         canvas.SaveState();
         ApplyCourtCameraTransform(canvas, dirtyRect);
         DrawField(canvas, dirtyRect);
@@ -4117,10 +4127,6 @@ public class GameDrawable : IDrawable
 
     void DrawField(ICanvas canvas, RectF dirtyRect)
     {
-        // Arena background (dark surround like spectator area)
-        canvas.FillColor = ArenaBackground;
-        canvas.FillRectangle(dirtyRect);
-
         var fieldMargin = (float)GameState.FieldMargin;
         var courtLeft = fieldMargin;
         var courtTop = fieldMargin;
@@ -4461,11 +4467,11 @@ public class GameDrawable : IDrawable
         canvas.FillRoundedRectangle(x - bodyW / 2, y - bodyH / 2 + 2, bodyW, bodyH, 4);
 
         // Torso shading and highlights for extra depth
-        canvas.FillColor = Colors.White.WithAlpha(isGoalkeeper ? 0.16f : 0.2f);
+        canvas.FillColor = isGoalkeeper ? GoalkeeperTorsoHighlight : TorsoHighlight;
         canvas.FillRoundedRectangle(x - bodyW / 2 + 1, y - bodyH / 2 + 3, bodyW - 2, bodyH * 0.42f, 3);
-        canvas.FillColor = Colors.Black.WithAlpha(0.12f);
+        canvas.FillColor = TorsoShade;
         canvas.FillRoundedRectangle(x - bodyW / 2 + 1, y + 1, bodyW - 2, bodyH * 0.36f, 3);
-        canvas.StrokeColor = Colors.Black.WithAlpha(0.25f);
+        canvas.StrokeColor = TorsoOutline;
         canvas.StrokeSize = 0.9f;
         canvas.DrawRoundedRectangle(x - bodyW / 2, y - bodyH / 2 + 2, bodyW, bodyH, 4);
 
@@ -4511,7 +4517,7 @@ public class GameDrawable : IDrawable
         // Head
         canvas.FillColor = SkinColor;
         canvas.FillCircle(x, y - bodyH / 2 - headR + 4, headR);
-        canvas.StrokeColor = Colors.Black.WithAlpha(0.15f);
+        canvas.StrokeColor = HeadOutline;
         canvas.StrokeSize = 0.8f;
         canvas.DrawCircle(x, y - bodyH / 2 - headR + 4, headR);
 
