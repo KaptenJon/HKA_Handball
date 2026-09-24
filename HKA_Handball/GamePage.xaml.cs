@@ -1497,8 +1497,8 @@ public class GameState
                 if (a.SuspensionTicks > 0) a.SuspensionTicks--;
 
         // Passive play tracking
-        bool isHomePassivePossession = BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive;
-        bool isAwayPassivePossession = BallOwnerType == BallOwnershipType.Opponent && !_awayShootActive && !_awayPassActive;
+        bool isHomePassivePossession = BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive && !_dribbleActive;
+        bool isAwayPassivePossession = BallOwnerType == BallOwnershipType.Opponent && !_awayShootActive && !_awayPassActive && !_dribbleActive;
         if (isHomePassivePossession || isAwayPassivePossession)
         {
             _possessionTimer += dt * GameTimeMultiplier;
