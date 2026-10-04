@@ -1,31 +1,55 @@
 name: Squad Triage
 
 on:
-  issues:
-    types: [labeled]
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: string
 
 permissions:
   issues: write
   contents: read
 
+concurrency:
+  group: squad-triage-${{ inputs.issue_number }}
+  cancel-in-progress: false
+
 jobs:
   triage:
-    if: github.event.label.name == 'squad'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 #v4
 
       - name: Triage issue via Lead agent
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b #v7
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
         with:
           script: |
             const fs = require('fs');
-            const issue = context.payload.issue;
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+              throw new Error('issue_number must be a positive integer');
+            }
+            const { data: issue } = await github.rest.issues.get({
+              ...context.repo, issue_number: issueNumber
+            });
+            if (issue.pull_request || issue.state !== 'open') return;
+            const labels = issue.labels.map(label => label.name);
+            if (!labels.includes('squad')) {
+              await github.rest.issues.addLabels({
+                ...context.repo, issue_number: issueNumber, labels: ['squad']
+              });
+            }
+            if (labels.some(label => label.startsWith('squad:'))) {
+              core.info('Existing Squad owner retained; execution follows directly.');
+              return;
+            }
 
             const teamFile = '.squad/team.md';
             if (!fs.existsSync(teamFile)) {
-              core.warning('No .squad/team.md found — cannot triage');
-              return;
+              throw new Error('No .squad/team.md found — cannot triage');
             }
 
             const content = fs.readFileSync(teamFile, 'utf8');
@@ -215,8 +239,7 @@ jobs:
 
             const lead = findLead(members);
             if (!lead) {
-              core.warning('No Lead role found in team roster — cannot triage');
-              return;
+              throw new Error('No Lead role found in team roster — cannot triage');
             }
 
             // Build triage context
@@ -232,7 +255,7 @@ jobs:
             let copilotTier = null;
 
             // First, evaluate @copilot fit if enabled
-            if (hasCopilot) {
+            if (hasCopilot && copilotAutoAssign) {
               const isNotSuitable = notSuitableKeywords.some(kw => issueText.includes(kw));
               const isGoodFit = !isNotSuitable && goodFitKeywords.some(kw => issueText.includes(kw));
               const isNeedsReview = !isNotSuitable && !isGoodFit && needsReviewKeywords.some(kw => issueText.includes(kw));
@@ -272,26 +295,16 @@ jobs:
             });
 
             // Apply default triage verdict
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              labels: ['go:needs-research']
-            });
-
-            // Auto-assign @copilot if enabled
-            if (isCopilot && copilotAutoAssign) {
-              try {
-                await github.rest.issues.addAssignees({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issue.number,
-                  assignees: ['copilot']
-                });
-              } catch (err) {
-                core.warning(`Could not auto-assign @copilot: ${err.message}`);
-              }
+            if (!labels.some(label => label.startsWith('go:'))) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['go:needs-research']
+              });
             }
+
+            // The pipeline starts Copilot directly after triage for every owner.
 
             // Build copilot evaluation note
             let copilotNote = '';
@@ -299,7 +312,7 @@ jobs:
               if (copilotTier === 'not-suitable') {
                 copilotNote = `\n\n**@copilot evaluation:** 🔴 Not suitable — issue involves work outside the coding agent's capability profile.`;
               } else {
-                copilotNote = `\n\n**@copilot evaluation:** No strong capability match — routed to squad member.`;
+                copilotNote = `\n\n**Execution:** Copilot will run the Squad cloud coordinator using this member's charter.`;
               }
             }
 

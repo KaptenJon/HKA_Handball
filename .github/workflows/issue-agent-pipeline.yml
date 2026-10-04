@@ -3,179 +3,62 @@ name: Issue Agent Pipeline
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issue number to process or retry
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: string
+    secrets:
+      COPILOT_ASSIGN_TOKEN:
+        required: false
 
 permissions:
-  contents: write
+  contents: read
   issues: write
-  pull-requests: write
-  checks: read
-  statuses: read
-
-concurrency:
-  group: issue-agent-pipeline-${{ github.event.issue.number }}
-  cancel-in-progress: false
 
 jobs:
-  label-and-merge:
+  triage:
+    uses: ./.github/workflows/squad-triage.yml
+    with:
+      issue_number: ${{ inputs.issue_number || format('{0}', github.event.issue.number) }}
+
+  start-work:
+    needs: triage
+    uses: ./.github/workflows/squad-start-work.yml
+    with:
+      issue_number: ${{ inputs.issue_number || format('{0}', github.event.issue.number) }}
+    secrets: inherit
+
+  report-triage-failure:
+    needs: triage
+    if: ${{ always() && needs.triage.result == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Label opened issue as squad
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number || format('{0}', github.event.issue.number) }}
         with:
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const issueNumber = context.payload.issue.number;
-
-            try {
-              await github.rest.issues.getLabel({ owner, repo, name: "squad" });
-            } catch (error) {
-              if (error.status === 404) {
-                await github.rest.issues.createLabel({
-                  owner,
-                  repo,
-                  name: "squad",
-                  color: "9B8FCC",
-                  description: "Squad triage inbox"
-                });
-              } else {
-                throw error;
-              }
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+              throw new Error('Cannot report triage failure: invalid issue_number');
             }
-
-            await github.rest.issues.addLabels({
-              owner,
-              repo,
-              issue_number: issueNumber,
-              labels: ["squad"]
-            });
-
-      - name: Wait 2 hours
-        run: sleep 7200
-
-      - name: Merge linked PR if all checks are green
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const issueNumber = context.payload.issue.number;
-
-            const timeline = await github.paginate(github.rest.issues.listEventsForTimeline, {
-              owner,
-              repo,
-              issue_number: issueNumber,
-              per_page: 100
-            });
-
-            const linkedPrNumbers = [...new Set(
-              timeline
-                .filter(event => event.event === "cross-referenced" && event.source?.issue?.pull_request)
-                .filter(event => event.source?.issue?.repository?.full_name === `${owner}/${repo}`)
-                .map(event => event.source.issue.number)
-            )];
-
-            if (linkedPrNumbers.length === 0) {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: issueNumber,
-                body: "No linked pull request found after 2 hours, so nothing was merged."
+            const params = { ...context.repo, issue_number: issueNumber };
+            const marker = '<!-- squad-execution-status -->';
+            const comments = await github.paginate(github.rest.issues.listComments, params);
+            const previous = comments.find(comment =>
+              comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker));
+            const body = `${marker}\n**Squad triage failed:** inspect the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}), resolve the error and run Issue Agent Pipeline again.`;
+            if (previous) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: previous.id, body
               });
-              return;
-            }
-
-            let candidatePr = null;
-            for (const prNumber of linkedPrNumbers) {
-              const { data: pr } = await github.rest.pulls.get({
-                owner,
-                repo,
-                pull_number: prNumber
-              });
-              if (pr.state === "open") {
-                candidatePr = pr;
-                break;
-              }
-            }
-
-            if (!candidatePr) {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: issueNumber,
-                body: "Linked pull request(s) were found, but none are open to merge."
-              });
-              return;
-            }
-
-            if (candidatePr.draft) {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: issueNumber,
-                body: `PR #${candidatePr.number} is still a draft, so it was not merged.`
-              });
-              return;
-            }
-
-            const { data: combinedStatus } = await github.rest.repos.getCombinedStatusForRef({
-              owner,
-              repo,
-              ref: candidatePr.head.sha
-            });
-
-            const checkRuns = await github.paginate(github.rest.checks.listForRef, {
-              owner,
-              repo,
-              ref: candidatePr.head.sha,
-              per_page: 100
-            });
-
-            const statusGreen = combinedStatus.state === "success";
-            const checksGreen = checkRuns.every(run =>
-              run.status === "completed" &&
-              ["success", "neutral", "skipped"].includes(run.conclusion || "")
-            );
-
-            if (!statusGreen || !checksGreen) {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: issueNumber,
-                body: `PR #${candidatePr.number} is not fully green yet, so it was not merged.`
-              });
-              return;
-            }
-
-            try {
-              const { data: mergeResult } = await github.rest.pulls.merge({
-                owner,
-                repo,
-                pull_number: candidatePr.number,
-                merge_method: "squash"
-              });
-
-              if (mergeResult.merged) {
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: issueNumber,
-                  body: `✅ PR #${candidatePr.number} was automatically merged after 2 hours because all checks were green.`
-                });
-              } else {
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: issueNumber,
-                  body: `PR #${candidatePr.number} was not merged: ${mergeResult.message || "merge rejected"}.`
-                });
-              }
-            } catch (error) {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: issueNumber,
-                body: `PR #${candidatePr.number} could not be merged automatically: ${error.message}`
-              });
-              throw error;
+            } else {
+              await github.rest.issues.createComment({ ...params, body });
             }

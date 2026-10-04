@@ -10,7 +10,13 @@ on:
   # React to completed work or new squad work
   issues:
     types: [closed, labeled]
-  pull_request:
+  # pull_request_target (not pull_request): GITHUB_TOKEN is forced read-only
+  # for `pull_request` events triggered by a fork, so write steps below
+  # (addLabels/createComment) 403 on fork PR closes.
+  # Safe here because the checkout step below has no `ref:` override, so it
+  # always checks out the BASE ref — no fork code or fork-controlled input
+  # is ever read or executed by this job.
+  pull_request_target:
     types: [closed]
 
   # Manual trigger
@@ -20,6 +26,7 @@ permissions:
   issues: write
   contents: read
   pull-requests: read
+  actions: write
 
 concurrency:
   group: squad-heartbeat-${{ github.repository }}
@@ -29,7 +36,7 @@ jobs:
   heartbeat:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 #v4
 
       - name: Check triage script
         id: check-script
@@ -52,7 +59,7 @@ jobs:
 
       - name: Ralph — Apply triage decisions
         if: steps.check-script.outputs.has_script == 'true' && hashFiles('triage-results.json') != ''
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b #v7
         with:
           script: |
             const fs = require('fs');
@@ -100,3 +107,24 @@ jobs:
             }
             
             core.info(`🔄 Ralph triaged ${results.length} issue(s)`);
+
+      - name: Ralph — Resume unassigned Squad issues
+        if: success()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b #v7
+        with:
+          script: |
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              ...context.repo, labels: 'squad', state: 'open', per_page: 100
+            });
+            for (const issue of issues) {
+              if (issue.pull_request ||
+                  issue.assignees?.some(a => ['copilot-swe-agent', 'copilot-swe-agent[bot]'].includes(a.login)) ||
+                  issue.labels.some(l => ['go:no', 'go:blocked', 'go:needs-human'].includes(l.name))) continue;
+              await github.rest.actions.createWorkflowDispatch({
+                ...context.repo,
+                workflow_id: 'issue-agent-pipeline.yml',
+                ref: context.payload.repository.default_branch,
+                inputs: { issue_number: String(issue.number) }
+              });
+              core.info(`Dispatched Squad execution for #${issue.number}`);
+            }
