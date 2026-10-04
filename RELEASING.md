@@ -114,6 +114,8 @@ This triggers `.github/workflows/release.yml`, which:
 3. Packages native debug symbols for Google Play crash analysis.
 4. Uploads the signed `.aab` and `native-debug-symbols.zip` as GitHub Actions artifacts.
 5. Creates a GitHub Release with both files attached.
+6. **Uploads the AAB to Google Play Console** as a draft on the internal testing
+   track (if `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` is configured — see below).
 
 Check the workflow run at **Actions → Release Android AAB** to verify it
 succeeds, then download the AAB from the GitHub Release page.
@@ -160,7 +162,46 @@ The signed AAB will be in
 
 ---
 
-## 7. Upload the AAB
+## 7. Automated Google Play Upload (optional)
+
+The release workflow can automatically upload the AAB to Google Play Console when
+you push a version tag. This removes the need to manually download and upload the
+AAB each time. You still review and roll out the release in Google Play Console.
+
+### Create a Google Play service account
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), open (or create)
+   a project linked to your Google Play developer account.
+2. Go to **IAM & Admin → Service Accounts → Create Service Account**.
+3. Give it a name (e.g., `github-play-deploy`) and click **Done**.
+4. On the service account row, click **⋮ → Manage keys → Add Key → Create new
+   key → JSON**. Download the JSON file.
+5. In [Google Play Console](https://play.google.com/console/) go to
+   **Settings → API access** and link the Cloud project you just used.
+6. Grant the service account **Release manager** (or at minimum **Release to
+   production / Manage releases**) permission for your app.
+
+### Add the secret to GitHub
+
+Add the following **repository secret** (Settings → Secrets and variables →
+Actions → New repository secret):
+
+| Secret name                        | Value                                      |
+| ---------------------------------- | ------------------------------------------ |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Full contents of the downloaded JSON file   |
+
+When this secret is present the release workflow will upload the signed AAB and
+native debug symbols to the **internal testing** track as a **draft**. You can
+then open Google Play Console, add release notes, and promote the release to
+production (or any other track) when ready.
+
+> **Tip:** Start with the internal testing track to verify everything works
+> before promoting to production. You can change the default track and status in
+> `.github/workflows/release.yml` (look for the `track:` and `status:` inputs).
+
+---
+
+## 8. Upload the AAB manually (if not using automated upload)
 
 1. In Google Play Console go to **Release → Production** (or start with
    **Internal testing** / **Closed testing** to test first).
@@ -190,9 +231,11 @@ first submission).
 - [ ] Create the app in Google Play Console
 - [ ] Fill in store listing, content rating, privacy policy, and app content
 - [ ] Prepare store screenshots (phone and/or tablet, landscape)
+- [ ] *(Optional)* Create a Google Play service account and add `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret for automated uploads
 - [ ] Bump `ApplicationVersion` in `.csproj`
 - [ ] Tag and push (`git tag v1.0.0 && git push origin v1.0.0`)
 - [ ] Verify the release workflow succeeds
-- [ ] Upload the AAB to Google Play Console
-- [ ] Upload `native-debug-symbols.zip` under **Debug symbols** in the release
+- [ ] If using automated upload: review the draft release in Google Play Console and promote it
+- [ ] If uploading manually: download AAB from GitHub Release and upload it to Google Play Console
+- [ ] Upload `native-debug-symbols.zip` under **Debug symbols** (automated upload includes this; manual upload requires this step)
 - [ ] Submit for review
