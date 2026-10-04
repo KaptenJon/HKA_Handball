@@ -3630,6 +3630,7 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
         // - Shooter at 7m spot
         // - Defending GK on goal line
         // - All other players outside the free-throw (9m) line
+        ResetAIOutfieldVelocities();
         PositionPlayersForPenalty(isHome, penaltyX, preferredShooterIndex);
     }
 
