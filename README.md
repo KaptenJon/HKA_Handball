@@ -84,6 +84,12 @@ external contributors still need a maintainer-triggered retry if kickoff fails.
 
 Workflow script validation (no .NET test project is needed):
 
+Checkout, GitHub Script, Setup Node and Pages actions in active workflows and
+installed Squad templates are pinned to verified Node 24 releases. This action
+runtime is separate from the Node version selected for project commands. The
+contract checks reject deprecated action pins so the Node 20 warnings cannot be
+reintroduced by a template update.
+
 ```powershell
 node --test .github\scripts\squad-automation.test.cjs
 ```
