@@ -33,8 +33,8 @@
 
 ## Model
 
-- **Preferred:** auto
-- **Rationale:** Coordinator selects the best model based on task type
+- **Preferred:** claude-haiku-4.5
+- **Rationale:** Fast logging, summaries and mechanical team-state updates.
 - **Fallback:** Standard chain
 
 ## Collaboration

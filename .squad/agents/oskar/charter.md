@@ -27,7 +27,8 @@
 
 ## Model
 
-- Föredragen modell: gpt-5.4 (high) — för djup kodförståelse och systemresonemang
+- **Preferred:** gpt-6-sol
+- **Rationale:** Implementation av C#, speltillstånd, AI och domänlogik.
 
 ## Boundaries
 

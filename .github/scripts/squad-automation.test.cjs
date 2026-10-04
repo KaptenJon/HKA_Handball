@@ -7,6 +7,48 @@ const enableAutoMerge = require('./squad-auto-merge.cjs');
 const isCopilotLogin = require('./copilot-identity.cjs');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
+function declaredModel(profile, path) {
+  const metadata = /^---\r?\n([\s\S]*?)\r?\n---/.exec(profile);
+  assert.ok(metadata, `${path} must have YAML frontmatter`);
+  const line = metadata[1].split(/\r?\n/).find(line => line.startsWith('model:'));
+  assert.ok(line, `${path} must declare a model`);
+  const model = line.slice('model:'.length).trim();
+  assert.match(model, /^[a-z0-9][a-z0-9.-]*$/, `${path} must use a model ID`);
+  assert.notEqual(model, 'auto', `${path} must select a role-specific model`);
+  return model;
+}
+
+test('every active CLI member has a matching model override and charter preference', () => {
+  const config = JSON.parse(readFileSync('.squad/config.json', 'utf8'));
+  const team = readFileSync('.squad/team.md', 'utf8');
+  const members = /## Members\r?\n([\s\S]*?)(?=\r?\n## |$)/.exec(team);
+  assert.ok(members, 'The team must declare its member inventory');
+  const rows = members[1].split(/\r?\n/).map(line => line.split('|').map(cell => cell.trim()))
+    .filter(cells => cells[4] === 'Active');
+  assert.ok(rows.length > 0, 'The active member inventory must not be empty');
+  assert.deepEqual(Object.keys(config.agentModelOverrides).sort(), rows.map(cells => cells[1]).sort());
+  assert.match(config.defaultModel, /^[a-z0-9][a-z0-9.-]*$/);
+  assert.notEqual(config.defaultModel, 'auto');
+  for (const cells of rows) {
+    const path = join(...cells[3].split('/'));
+    const charter = readFileSync(path, 'utf8');
+    const preferred = /^- \*\*Preferred:\*\* ([a-z0-9.-]+)\r?$/m.exec(charter);
+    assert.ok(preferred, `${path} must declare a machine-readable model preference`);
+    assert.equal(preferred[1], config.agentModelOverrides[cells[1]], `${path} must match the CLI config`);
+    assert.notEqual(preferred[1], 'auto', `${path} must select a role-specific model`);
+  }
+});
+
+test('every custom-agent profile declares its own role-specific model', () => {
+  const directory = join('.github', 'agents');
+  const profiles = readdirSync(directory).filter(name => name.endsWith('.agent.md'));
+  assert.ok(profiles.length > 0);
+  for (const name of profiles) {
+    const path = join(directory, name);
+    declaredModel(readFileSync(path, 'utf8'), path);
+  }
+});
+
 test('the identity check rejects missing, unrelated and lookalike logins', () => {
   for (const login of [undefined, null, 123, '', 'KaptenJon', 'copilot-helper', 'copilot-swe-agent-human']) {
     assert.equal(isCopilotLogin(login), false);
@@ -54,6 +96,8 @@ test('assigns the specialist-owned issue to the compact Squad cloud agent', asyn
   const request = f.calls.find(([kind]) => kind === 'assign')[1];
   assert.deepEqual(request.assignees, ['copilot-swe-agent[bot]']);
   assert.equal(request.agent_assignment.custom_agent, 'squad-cloud');
+  assert.equal(request.agent_assignment.model,
+    declaredModel(readFileSync('.github/agents/squad-cloud.agent.md', 'utf8'), 'Squad Cloud'));
   assert.equal(request.agent_assignment.base_branch, 'master');
   assert.equal(request.agent_assignment.target_repo, 'KaptenJon/HKA_Handball');
   assert.equal(f.calls[0][2].headers.authorization, 'Bearer test-token');
@@ -552,6 +596,49 @@ function mutant(path, from, to) {
   compiled._compile(source.replace(from, to), path);
   return compiled.exports;
 }
+
+for (const [name, newline] of [['LF', '\n'], ['CRLF', '\r\n']]) {
+  test(`kickoff follows the actual ${name} cloud profile model instead of a hard-coded choice`, async () => {
+    const profile = readFileSync('.github/agents/squad-cloud.agent.md', 'utf8');
+    const currentModel = declaredModel(profile, 'Squad Cloud');
+    const nextModel = currentModel === 'gpt-6-sol' ? 'gpt-6.1-sol' : 'gpt-6-sol';
+    const updated = profile.replace(`model: ${currentModel}`, `model: ${nextModel}`).replace(/\r?\n/g, newline);
+    assert.notEqual(updated, profile);
+    const start = mutant('.github/scripts/squad-start-work.cjs',
+      "const profile = readFileSync('.github/agents/squad-cloud.agent.md', 'utf8');",
+      `const profile = ${JSON.stringify(updated)};`);
+    const f = kickoffFixture();
+    await start(f);
+    assert.equal(f.calls.find(([kind]) => kind === 'assign')[1].agent_assignment.model, nextModel);
+  });
+}
+
+for (const mutation of ['missing', 'body-only', 'invalid']) {
+  test(`kickoff reports a ${mutation} cloud model and does not start a session`, async () => {
+    const profile = readFileSync('.github/agents/squad-cloud.agent.md', 'utf8');
+    const withoutModel = profile.replace(/^model:[^\r\n]*\r?\n/m, '');
+    assert.notEqual(withoutModel, profile);
+    const updated = mutation === 'body-only' ? `${withoutModel}\nmodel: gpt-6-sol\n`
+      : mutation === 'invalid' ? profile.replace(/^model:[^\r\n]*/m, 'model: {}') : withoutModel;
+    const start = mutant('.github/scripts/squad-start-work.cjs',
+      "const profile = readFileSync('.github/agents/squad-cloud.agent.md', 'utf8');",
+      `const profile = ${JSON.stringify(updated)};`);
+    const f = kickoffFixture();
+    await assert.rejects(start(f), /must declare an explicit model in its frontmatter/);
+    assert.equal(f.calls.filter(([kind]) => kind === 'assign').length, 0);
+    assert.match(f.calls.find(([kind]) => kind === 'comment')[1].body, /Squad could not start/);
+  });
+}
+
+test('contract assertions reject a real-source mutation that omits the requested cloud model', async () => {
+  const unsafe = mutant('.github/scripts/squad-start-work.cjs', 'model: model[1],', '');
+  const f = kickoffFixture();
+  await unsafe(f);
+  const model = declaredModel(readFileSync('.github/agents/squad-cloud.agent.md', 'utf8'), 'Squad Cloud');
+  assert.throws(() => assert.equal(
+    f.calls.find(([kind]) => kind === 'assign')[1].agent_assignment.model, model),
+  { code: 'ERR_ASSERTION' });
+});
 
 test('contract assertions reject a real-source mutation that removes the review gate', async () => {
   const unsafe = mutant('.github/scripts/squad-auto-merge.cjs',

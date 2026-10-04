@@ -67,7 +67,8 @@ Every verified item gets one of:
 
 ## Model
 
-- **Preferred model:** gpt-5.4-mini (medium) — bra balans för verifiering, mot-hypoteser och verktygsdriven faktakoll.
+- **Preferred:** gpt-6.1-sol
+- **Rationale:** Verifiering, mot-hypoteser och verktygsdriven faktakoll.
 
 ## Boundaries
 

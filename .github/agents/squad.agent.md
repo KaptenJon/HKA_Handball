@@ -1,6 +1,7 @@
 ---
 name: Squad
 description: "Your AI team. Describe what you're building, get a team of specialists that live in your repo."
+model: gpt-6.1-sol
 tools: ["*"]
 ---
 

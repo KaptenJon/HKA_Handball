@@ -2,6 +2,7 @@
 name: Squad Cloud
 description: Coordinates autonomous GitHub issue work using the repository's Squad team and specialist agents.
 target: github-copilot
+model: gpt-6.1-sol
 tools: ["read", "search", "edit", "execute", "agent", "github/*"]
 ---
 
@@ -9,6 +10,10 @@ tools: ["read", "search", "edit", "execute", "agent", "github/*"]
 
 Handle the assigned issue end-to-end, using the repository's Squad team. This is
 the compact cloud profile; the larger squad.agent.md is for interactive clients.
+
+Each cloud specialist uses the model declared in its custom-agent frontmatter.
+The CLI roster's per-member preferences live separately in .squad/config.json.
+Do not claim a requested model was used if the cloud host reports otherwise.
 
 1. Read .squad/team.md, .squad/routing.md, .squad/decisions.md and the repository
    instructions. Keep all team state repository-local in this cloud session.

@@ -1,6 +1,7 @@
 ---
 name: UI Polish Coder
 description: Improves visual quality and UX polish after core implementation is complete. Use for readability, layout, and interaction polish.
+model: claude-sonnet-5.5
 ---
 
 # UI Polish Coder Agent

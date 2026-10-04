@@ -1,6 +1,7 @@
 ---
 name: PR Reviewer
 description: Reviews the generated pull request for correctness, regressions, and maintainability. Use before merge.
+model: claude-opus-5.5
 ---
 
 # PR Reviewer Agent

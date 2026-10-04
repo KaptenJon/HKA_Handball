@@ -27,7 +27,8 @@
 
 ## Model
 
-- Föredragen modell: gpt-5.4-mini (medium) — modern och kostnadseffektiv för testdesign, regressionstänk och snabb verifiering
+- **Preferred:** gpt-6-sol
+- **Rationale:** Testimplementation, regressioner och verifiering av kodkontrakt.
 
 ## Boundaries
 

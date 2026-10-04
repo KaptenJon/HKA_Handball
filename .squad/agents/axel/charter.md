@@ -27,7 +27,8 @@
 
 ## Model
 
-- Föredragen modell: gpt-5.4 (high) — stark för systemresonemang, trade-offs och tydliga arkitekturförslag på samma toppnivå som teamets ledande specialister
+- **Preferred:** claude-opus-5.5
+- **Rationale:** Systemdesign, arkitekturförslag och djupa trade-off-analyser.
 
 ## Boundaries
 

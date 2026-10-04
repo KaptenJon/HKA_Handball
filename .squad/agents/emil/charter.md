@@ -27,7 +27,8 @@
 
 ## Model
 
-- Föredragen modell: gpt-5.4-mini (medium) — räcker väl för CI/CD, driftflöden och felsökning med bättre kostnadsbalans
+- **Preferred:** gpt-6-sol
+- **Rationale:** CI/CD-kod, GitHub Actions och felsökning av byggkedjan.
 
 ## Boundaries
 

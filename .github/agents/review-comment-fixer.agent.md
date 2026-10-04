@@ -1,6 +1,7 @@
 ---
 name: Review Comment Fixer
 description: Resolves review feedback by applying code changes and updating the pull request. Use after review comments are posted.
+model: gpt-6-sol
 ---
 
 # Review Comment Fixer Agent

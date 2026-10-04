@@ -20,7 +20,7 @@ Visningsnamnen nedan är svenska `name-roll`-namn. Kolumnen `Name` innehåller s
 | axel | Arkitektur / lösningsarkitekt | .squad/agents/axel/charter.md | Active | axel-arkitektankaret |
 | scribe | Session Logger | .squad/agents/scribe/charter.md | Active | Scribe |
 | ralph | Work Monitor | .squad/agents/ralph/charter.md | Active | Ralph |
-| rai | RAI Reviewer | .squad/agents/rai/charter.md | Active | Rai |
+| rai | RAI Reviewer | .squad/agents/Rai/charter.md | Active | Rai |
 | fact-checker | Verifierare | .squad/agents/fact-checker/charter.md | Active | Fact Checker |
 
 ## Kodprincip
@@ -59,6 +59,28 @@ De enda primära kodspåren är **lisa-lagkaptenen**, **oskar-backen** och **maj
 - Security-critical changes (auth, encryption, access control)
 - Performance-critical paths requiring benchmarking
 - Changes requiring cross-team discussion
+
+## Model assignments
+
+The CLI coordinator uses `.squad/config.json` for per-member selection; the
+charters mirror those preferences. GitHub cloud agents use the `model` field in
+their `.github/agents/*.agent.md` frontmatter. Issue kickoff explicitly requests
+the Squad Cloud coordinator's model. Existing sessions are not changed.
+
+| Model | CLI members | Custom-agent profiles |
+|-------|-------------|-----------------------|
+| `gpt-6.1-sol` | lisa, fact-checker | Squad, Squad Cloud, Issue Planner, Handball Knowledge Validator |
+| `gpt-6-sol` | oskar, kalle, emil | Implementation Coder, Review Comment Fixer, Handball Software developer |
+| `claude-sonnet-5.5` | maja | UI Polish Coder |
+| `claude-opus-5.5` | johan, axel | PR Reviewer |
+| `gpt-6-luna` | sara; default for unmapped CLI members | None |
+| `claude-haiku-4.5` | anna, scribe, ralph, rai | None |
+
+The selected IDs were verified against the signed-in Copilot model catalog.
+Cloud choices also match GitHub's supported cloud-agent model list. The mapping
+prioritizes implementation quality and independent review while keeping logging,
+documentation and queue monitoring on a lightweight model. Model availability
+can change; recheck the live catalog before future reassignment.
 
 ## Project Context
 

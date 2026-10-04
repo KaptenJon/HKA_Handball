@@ -56,6 +56,11 @@
 
 **I don't handle:** General code review, testing, architecture, performance. I am an ethics specialist, NOT general QA.
 
+## Model
+
+- **Preferred:** claude-haiku-4.5
+- **Rationale:** Fast, high-signal safety checks within the existing review budget.
+
 ## Collaboration
 
 Before starting work, run `git rev-parse --show-toplevel` to find the repo root, or use the `TEAM ROOT` provided in the spawn prompt. All `.squad/` paths must be resolved relative to this root.
