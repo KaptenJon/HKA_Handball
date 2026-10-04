@@ -1,52 +1,183 @@
 {
+  "schema": "squad-agent-provenance/v1",
+  "schema_version": 1,
+  "revision": 2,
+  "generated_at": "2026-10-04T03:53:30.606Z",
   "agents": {
     "glenn": {
-      "created_at": "2026-09-06T06:25:50.224Z",
+      "display_name": "Glenn",
       "persistent_name": "Glenn",
+      "role": "Spelarkitekt",
       "universe": "Göteborgsk handboll",
-      "status": "active"
-    },
-    "håkan": {
+      "status": "retired",
       "created_at": "2026-09-06T06:25:50.224Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true,
+      "retired_at": "2026-10-04T03:53:30.606Z"
+    },
+    "hakan": {
+      "display_name": "Håkan",
       "persistent_name": "Håkan",
+      "role": "Backendutvecklare",
       "universe": "Göteborgsk handboll",
-      "status": "active"
+      "status": "retired",
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true,
+      "retired_at": "2026-10-04T03:53:30.606Z"
     },
     "lise": {
-      "created_at": "2026-09-06T06:25:50.224Z",
+      "display_name": "Lise",
       "persistent_name": "Lise",
+      "role": "UI-utvecklare",
       "universe": "Göteborgsk handboll",
-      "status": "active"
+      "status": "retired",
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true,
+      "retired_at": "2026-10-04T03:53:30.606Z"
     },
     "feskarn": {
-      "created_at": "2026-09-06T06:25:50.224Z",
+      "display_name": "Feskarn",
       "persistent_name": "Feskarn",
+      "role": "Spelbalansare",
       "universe": "Göteborgsk handboll",
-      "status": "active"
+      "status": "retired",
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true,
+      "retired_at": "2026-10-04T03:53:30.606Z"
     },
     "scribe": {
-      "created_at": "2026-09-06T06:25:50.224Z",
+      "display_name": "Scribe",
       "persistent_name": "Scribe",
+      "role": "Session Logger",
       "universe": "Göteborgsk handboll",
-      "status": "active"
+      "status": "active",
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
     },
     "ralph": {
-      "created_at": "2026-09-06T06:25:50.224Z",
+      "display_name": "Ralph",
       "persistent_name": "Ralph",
+      "role": "Work Monitor",
       "universe": "Göteborgsk handboll",
-      "status": "active"
+      "status": "active",
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
     },
     "rai": {
-      "created_at": "2026-09-06T06:25:50.224Z",
+      "display_name": "Rai",
       "persistent_name": "Rai",
+      "role": "RAI Reviewer",
       "universe": "Göteborgsk handboll",
-      "status": "active"
-    },
-    "fact checker": {
+      "status": "active",
       "created_at": "2026-09-06T06:25:50.224Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "fact-checker": {
+      "display_name": "Fact Checker",
       "persistent_name": "Fact Checker",
+      "role": "Devil's Advocate & Verification Agent",
       "universe": "Göteborgsk handboll",
-      "status": "active"
+      "status": "active",
+      "created_at": "2026-09-06T06:25:50.224Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "lisa": {
+      "display_name": "lisa-lagkaptenen",
+      "persistent_name": "lisa-lagkaptenen",
+      "role": "Kodspecialist / teknisk lead",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "oskar": {
+      "display_name": "oskar-backen",
+      "persistent_name": "oskar-backen",
+      "role": "Kodspecialist / backend",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "maja": {
+      "display_name": "maja-vingen",
+      "persistent_name": "maja-vingen",
+      "role": "Kodspecialist / frontend & UI",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "kalle": {
+      "display_name": "kalle-målvakten",
+      "persistent_name": "kalle-målvakten",
+      "role": "QA-ledning / test",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "emil": {
+      "display_name": "emil-uppställningsledaren",
+      "persistent_name": "emil-uppställningsledaren",
+      "role": "DevOps / drift",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "anna": {
+      "display_name": "anna-matchanalytikern",
+      "persistent_name": "anna-matchanalytikern",
+      "role": "Dokumentation / tech writer",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "sara": {
+      "display_name": "sara-statistiken",
+      "persistent_name": "sara-statistiken",
+      "role": "Data / analys",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "johan": {
+      "display_name": "johan-säkerhetsvakten",
+      "persistent_name": "johan-säkerhetsvakten",
+      "role": "Säkerhet / security",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
+    },
+    "axel": {
+      "display_name": "axel-arkitektankaret",
+      "persistent_name": "axel-arkitektankaret",
+      "role": "Arkitektur / lösningsarkitekt",
+      "universe": "Göteborgsk handboll",
+      "status": "active",
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "updated_at": "2026-10-04T03:53:30.606Z",
+      "legacy_named": true
     }
-  }
+  },
+  "transaction_id": "ed715000-d28b-48c0-b4e1-bd7b4b65019c"
 }

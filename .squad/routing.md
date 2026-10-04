@@ -2,26 +2,34 @@
 
 Så avgör vi vem som tar vad på planen.
 
-> Visningsnamn visas i svenska `name-roll`-format för människor. Routing, agentmappar och issue-etiketter använder fortsatt stabila interna ID:n som `lisa`, `oskar`, `maja`, `kalle`, `emil`, `anna`, `sara`, `johan` och `axel`.
+> Visningsnamn finns i kolumnen `Display Name` i team.md och visas i svenska `name-roll`-format för människor. Kolumnen `Name`, routing, agentmappar och issue-etiketter använder stabila interna ID:n som `lisa`, `oskar`, `maja`, `kalle`, `emil`, `anna`, `sara`, `johan` och `axel`.
 
-## Routningstabell
+## Routing Table
 
-| Arbetsområde | Går till | Exempel |
+| Work Type | Route To | Examples |
 |-----------|----------|----------|
-| Arkitektur, systemdesign och större refaktorplaner | axel-arkitektankaret (`axel`) | MAUI-struktur, modulgränser, GamePage-flöden, trade-offs före stora ändringar |
-| Triage, scope och större kodbeslut | lisa-lagkaptenen (`lisa`) | Issue-triage, prioriteringar, ägarskap och sista ordet när kodspår krockar |
-| Backend, integrationer och spel-/domänlogik | oskar-backen (`oskar`) | API:er, datalager, kärnlogik, buggar i core-flöden |
-| Frontend, UI och tillgänglighet | maja-vingen (`maja`) | Views, layout, inputflöden, UI-polish |
-| Teststrategi och releaseverifiering | kalle-målvakten (`kalle`) | Testplaner, regressioner, flaky tests, verifieringssteg |
-| CI/CD, byggkedja, deploy och drift | emil-uppställningsledaren (`emil`) | Pipelines, releaseflöden, rollback, observability |
-| Dokumentation och release notes | anna-matchanalytikern (`anna`) | README, changelog, onboarding, användarguider |
-| Dataunderlag och analys | sara-statistiken (`sara`) | Metrics, dashboards, datakvalitet, uppföljning |
-| Säkerhetsgranskning och riskbedömning | johan-säkerhetsvakten (`johan`) | Auth, secrets, threat modelling, incidentråd |
-| Kodgranskning | lisa-lagkaptenen (`lisa`) | Review av större diffar, designpåverkan, tvärsnittsrisker |
-| Testning | kalle-målvakten (`kalle`) | Skriva tester, hitta edge cases, verifiera fixes |
-| Scope och prioriteringar | lisa-lagkaptenen (`lisa`) | Vad som byggs härnäst, trade-offs, beslut |
-| Sessionsloggning | Scribe | Automatic — never needs routing |
-| RAI-granskning | Rai | Content safety, bias checks, credential detection, ethical review |
+| Arkitektur, systemdesign och större refaktorplaner | axel | MAUI-struktur, modulgränser, GamePage-flöden, trade-offs före stora ändringar |
+| Triage, scope och större kodbeslut | lisa | Issue-triage, prioriteringar, ägarskap och sista ordet när kodspår krockar |
+| Backend, integrationer och spel-/domänlogik | oskar | API:er, datalager, kärnlogik, buggar i core-flöden |
+| Frontend, UI och tillgänglighet | maja | Views, layout, inputflöden, UI-polish |
+| Teststrategi och releaseverifiering | kalle | Testplaner, regressioner, flaky tests, verifieringssteg |
+| CI/CD, byggkedja, deploy och drift | emil | Pipelines, releaseflöden, rollback, observability |
+| Dokumentation och release notes | anna | README, changelog, onboarding, användarguider |
+| Dataunderlag och analys | sara | Metrics, dashboards, datakvalitet, uppföljning |
+| Säkerhetsgranskning och riskbedömning | johan | Auth, secrets, threat modelling, incidentråd |
+| Kodgranskning | lisa | Review av större diffar, designpåverkan, tvärsnittsrisker |
+| Testning | kalle | Skriva tester, hitta edge cases, verifiera fixes |
+| Scope och prioriteringar | lisa | Vad som byggs härnäst, trade-offs, beslut |
+| RAI-granskning | rai | Content safety, bias checks, credential detection, ethical review |
+| Claim verification, hallucination detection, counter-hypothesis analysis, source validation | fact-checker | Verifiera påståenden och källor |
+| PR triage, technical decisions | lisa | PR-triage och tekniska beslut |
+| Code review, regression risks | kalle | Review och regressionsrisker |
+| Handball mechanics, UX impact | maja | Spelmekanikens UX-effekter |
+| Priorities, validation, next steps | lisa | Prioriteringar och verifiering |
+| Spelmekanik, MAUI, handboll | oskar | Speldomän och MAUI |
+| C#, tillstånd, AI | lisa | Kod och tillstånd |
+| XAML, touch, UX | maja | Gränssnitt och input |
+| Regler, fysik, taktik | axel | Designunderlag för spelregler |
 
 ## Teamform
 
@@ -53,24 +61,3 @@ Så avgör vi vem som tar vad på planen.
 5. **"Team, ..." → fan-out.** Spawn all relevant agents in parallel as `mode: "background"`.
 6. **Anticipate downstream work.** If a feature is being built, spawn the tester to write test cases from requirements simultaneously.
 7. **Issue-labeled work** — `squad` triageras av lisa-lagkaptenen; `squad:{intern-id}` routar till ägaren bakom det stabila interna ID:t.
-
-## Work Type → Agent
-
-| Work Type | Primary | Secondary |
-|-----------|---------|----------|
-| PR triage, technical decisions | lisa-lagkaptenen | — |
-| Code review, regression risks | kalle-målvakten | — |
-| Handball mechanics, UX impact | maja-vingen | — |
-| Priorities, validation, next steps | lisa-lagkaptenen | — |
-| Claim verification, hallucination detection, counter-hypothesis analysis, source validation | Fact Checker | — |
-
-## Work Type → Agent
-
-| Work Type | Primary | Secondary |
-|-----------|---------|----------|
-| Spelmekanik, MAUI, handboll | oskar-backen | — |
-| C#, tillstånd, AI | lisa-lagkaptenen | — |
-| XAML, touch, UX | maja-vingen | — |
-| Regler, fysik, taktik | axel-arkitektankaret | — |
-| Claim verification, hallucination detection, counter-hypothesis analysis, source validation | Fact Checker | — |
-

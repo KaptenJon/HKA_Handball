@@ -4,13 +4,32 @@
       "created_at": "2026-09-06T06:25:50.224Z",
       "agents": [
         "glenn",
-        "håkan",
+        "hakan",
         "lise",
         "feskarn",
         "scribe",
         "ralph",
         "rai",
-        "fact checker"
+        "fact-checker"
+      ],
+      "universe": "Göteborgsk handboll"
+    },
+    "upgrade-revision-2-2026-10-04T03:53:30.606Z": {
+      "created_at": "2026-10-04T03:53:30.606Z",
+      "agents": [
+        "lisa",
+        "oskar",
+        "maja",
+        "kalle",
+        "emil",
+        "anna",
+        "sara",
+        "johan",
+        "axel",
+        "scribe",
+        "ralph",
+        "rai",
+        "fact-checker"
       ],
       "universe": "Göteborgsk handboll"
     }
@@ -19,6 +38,12 @@
     {
       "universe": "Göteborgsk handboll",
       "used_at": "2026-09-06T06:25:50.224Z"
+    },
+    {
+      "universe": "Göteborgsk handboll",
+      "used_at": "2026-10-04T03:53:30.606Z"
     }
-  ]
+  ],
+  "transaction_id": "ed715000-d28b-48c0-b4e1-bd7b4b65019c",
+  "registry_revision": 2
 }
