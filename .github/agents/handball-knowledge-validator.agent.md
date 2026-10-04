@@ -1,6 +1,7 @@
 ---
 name: Handball Knowledge Validator
 description: Validates issue ideas against handball rules and realistic gameplay. Use when checking whether a requested feature is sport-authentic.
+model: gpt-6.1-sol
 ---
 
 # Handball Knowledge Validator Agent

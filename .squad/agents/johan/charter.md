@@ -27,7 +27,8 @@
 
 ## Model
 
-- Föredragen modell: claude-sonnet-4.6 (high) — för säkerhetsanalys och policyresonemang
+- **Preferred:** claude-opus-5.5
+- **Rationale:** Säkerhetsanalys, riskbedömning och oberoende granskningsperspektiv.
 
 ## Boundaries
 

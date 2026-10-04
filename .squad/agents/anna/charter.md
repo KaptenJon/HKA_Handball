@@ -27,7 +27,8 @@
 
 ## Model
 
-- Föredragen modell: gpt-5-mini (low) — kostnadseffektiv textförfattning och formatstöd
+- **Preferred:** claude-haiku-4.5
+- **Rationale:** Snabb dokumentation, release notes och textstruktur.
 
 ## Boundaries
 

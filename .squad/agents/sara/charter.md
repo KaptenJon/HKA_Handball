@@ -27,7 +27,8 @@
 
 ## Model
 
-- Föredragen modell: gpt-5.4-mini (medium) — bra för dataexploration och kodexempelsnippets
+- **Preferred:** gpt-6-luna
+- **Rationale:** Dataexploration, sammanställningar och fokuserad analys.
 
 ## Boundaries
 

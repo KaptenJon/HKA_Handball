@@ -1,6 +1,7 @@
 ---
 name: Issue Planner
 description: Creates an implementation plan from a GitHub issue. Use when an issue needs a concrete, step-by-step execution plan before coding starts.
+model: gpt-6.1-sol
 ---
 
 # Issue Planner Agent

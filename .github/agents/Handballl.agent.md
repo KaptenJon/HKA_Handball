@@ -6,6 +6,7 @@
 
 name: Handball Software developer
 description: Know about handball and software developing
+model: gpt-6-sol
 ---
 
 # My Agent

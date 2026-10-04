@@ -27,7 +27,8 @@
 
 ## Model
 
-- Föredragen modell: gpt-5.4 (high) — en av teamets tre primära kodspecialister och behöver full styrka för UI-kod, integrationer och felsökning
+- **Preferred:** claude-sonnet-5.5
+- **Rationale:** XAML, UI-kod, touchflöden och visuell analys.
 
 ## Boundaries
 

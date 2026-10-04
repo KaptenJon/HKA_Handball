@@ -1,6 +1,7 @@
 ---
 name: Implementation Coder
 description: Implements an approved issue plan in code and prepares a pull request. Use after planning and validation are complete.
+model: gpt-6-sol
 ---
 
 # Implementation Coder Agent

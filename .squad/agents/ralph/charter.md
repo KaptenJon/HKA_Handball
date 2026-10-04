@@ -33,8 +33,8 @@
 
 ## Model
 
-- **Preferred:** auto
-- **Rationale:** Coordinator selects the best model based on task type
+- **Preferred:** claude-haiku-4.5
+- **Rationale:** Fast queue monitoring, routing and backlog summaries.
 - **Fallback:** Standard chain
 
 ## Collaboration

@@ -28,7 +28,8 @@
 
 ## Model
 
-- Föredragen modell: gpt-5.4 (high) — stark nog för arkitektur, kodgranskning och svåra beslut utan att alltid dra maxkostnad
+- **Preferred:** gpt-6.1-sol
+- **Rationale:** Teknisk ledning, svåra kodbeslut och kodgranskning.
 
 ## Boundaries
 

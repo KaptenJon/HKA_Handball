@@ -76,6 +76,11 @@ module.exports = async function startWork({
     if (profile.length > 30000) {
       throw new Error('The Squad cloud profile exceeds GitHub\'s 30,000-character custom-agent limit.');
     }
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(profile);
+    const model = frontmatter && /^model:[ \t]*([a-z0-9][a-z0-9.-]*)[ \t]*\r?$/m.exec(frontmatter[1]);
+    if (!model) {
+      throw new Error('The Squad cloud profile must declare an explicit model in its frontmatter.');
+    }
     const { data: repository } = await github.rest.repos.get(context.repo);
     const response = await fetchImpl(
       `${context.apiUrl || 'https://api.github.com'}/repos/${context.repo.owner}/${context.repo.repo}/issues/${issueNumber}/assignees`, {
@@ -92,6 +97,7 @@ module.exports = async function startWork({
             target_repo: `${context.repo.owner}/${context.repo.repo}`,
             base_branch: repository.default_branch,
             custom_agent: 'squad-cloud',
+            model: model[1],
             custom_instructions: [
               `Handle issue #${issueNumber} through Squad: plan, delegate implementation, review, validate and open a draft PR.`,
               'Read the repository-local team, routing and selected specialist charter.',
