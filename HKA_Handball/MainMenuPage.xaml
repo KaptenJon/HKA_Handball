@@ -130,7 +130,8 @@
                                 <Label Text="Hem"
                                        FontSize="12"
                                        FontAttributes="Bold"
-                                       TextColor="#E8FFFFFF" />
+                                       TextColor="#E8FFFFFF"
+                                       SemanticProperties.HeadingLevel="Level3" />
                                 <HorizontalStackLayout x:Name="HomeColorStack"
                                                        Spacing="6"
                                                        HorizontalOptions="Center" />
@@ -141,7 +142,8 @@
                                 <Label Text="Borta"
                                        FontSize="12"
                                        FontAttributes="Bold"
-                                       TextColor="#E8FFFFFF" />
+                                       TextColor="#E8FFFFFF"
+                                       SemanticProperties.HeadingLevel="Level3" />
                                 <HorizontalStackLayout x:Name="AwayColorStack"
                                                        Spacing="6"
                                                        HorizontalOptions="Center" />

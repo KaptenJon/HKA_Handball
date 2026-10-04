@@ -150,21 +150,23 @@ public partial class MainMenuPage : ContentPage
         UpdateColorSwatches();
     }
 
-    Border CreateSwatch(int index, bool isHome)
+    Button CreateSwatch(int index, bool isHome)
     {
-        var swatch = new Border
+        var swatch = new Button
         {
             WidthRequest = 30,
             HeightRequest = 30,
+            Padding = 0,
             BackgroundColor = Color.FromArgb(ColorPresets[index].Primary),
-            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 8 },
-            Stroke = Colors.Transparent,
-            StrokeThickness = 1.5f,
+            CornerRadius = 8,
+            BorderColor = Colors.Transparent,
+            BorderWidth = 1,
+            Text = string.Empty,
+            IsTabStop = true,
         };
-        var tap = new TapGestureRecognizer();
         int capturedIndex = index;
         bool capturedIsHome = isHome;
-        tap.Tapped += (_, _) =>
+        swatch.Clicked += (_, _) =>
         {
             _soundManager.PlayClick();
             if (capturedIsHome)
@@ -173,7 +175,7 @@ public partial class MainMenuPage : ContentPage
                 _selectedAwayColorIndex = capturedIndex;
             UpdateColorSwatches();
         };
-        swatch.GestureRecognizers.Add(tap);
+        SemanticProperties.SetHint(swatch, isHome ? "Välj hemfärg." : "Välj bortafärg.");
         return swatch;
     }
 
@@ -181,12 +183,13 @@ public partial class MainMenuPage : ContentPage
     {
         for (int i = 0; i < HomeColorStack.Children.Count; i++)
         {
-            if (HomeColorStack.Children[i] is Border b)
+            if (HomeColorStack.Children[i] is Button b)
             {
                 var selected = i == _selectedHomeColorIndex;
-                b.Stroke = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
-                b.StrokeThickness = selected ? 2.5f : 1.0f;
+                b.BorderColor = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
+                b.BorderWidth = selected ? 2.5 : 1.0;
                 b.Scale = selected ? 1.08 : 1.0;
+                SemanticProperties.SetDescription(b, $"Hem, {ColorPresets[i].Name}, {(selected ? "vald" : "inte vald")}.");
                 // Dim already-picked color by blending with dark background instead of Opacity
                 // (Opacity changes trigger layout recalculation causing swatches to jump)
                 var baseColor = Color.FromArgb(ColorPresets[i].Primary);
@@ -197,12 +200,13 @@ public partial class MainMenuPage : ContentPage
         }
         for (int i = 0; i < AwayColorStack.Children.Count; i++)
         {
-            if (AwayColorStack.Children[i] is Border b)
+            if (AwayColorStack.Children[i] is Button b)
             {
                 var selected = i == _selectedAwayColorIndex;
-                b.Stroke = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
-                b.StrokeThickness = selected ? 2.5f : 1.0f;
+                b.BorderColor = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
+                b.BorderWidth = selected ? 2.5 : 1.0;
                 b.Scale = selected ? 1.08 : 1.0;
+                SemanticProperties.SetDescription(b, $"Borta, {ColorPresets[i].Name}, {(selected ? "vald" : "inte vald")}.");
                 var baseColor = Color.FromArgb(ColorPresets[i].Primary);
                 b.BackgroundColor = i == _selectedHomeColorIndex
                     ? baseColor.WithAlpha(0.3f)
