@@ -1,0 +1,37 @@
+name: Squad Start Work
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: string
+    secrets:
+      COPILOT_ASSIGN_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: squad-start-work-${{ inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 #v4
+        with:
+          persist-credentials: false
+
+      - name: Assign issue to the Squad cloud coordinator
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 #v9.0.0
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          COPILOT_ASSIGN_TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN }}
+        with:
+          script: |
+            const startWork = require('./.github/scripts/squad-start-work.cjs');
+            await startWork({ github, context, core });

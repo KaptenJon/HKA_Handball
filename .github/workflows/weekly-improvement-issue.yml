@@ -25,6 +25,16 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
+            async function dispatchIssue(issueNumber) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id: "issue-agent-pipeline.yml",
+                ref: "${{ github.ref_name }}",
+                inputs: { issue_number: String(issueNumber) }
+              });
+              core.info(`Dispatched Issue Agent Pipeline for #${issueNumber}`);
+            }
 
             function getIsoWeekInfo(date) {
               const utcDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -90,6 +100,7 @@ jobs:
 
             if (existing.length > 0) {
               core.info(`Weekly issue already exists: #${existing[0].number}`);
+              await dispatchIssue(existing[0].number);
               return;
             }
 
@@ -138,14 +149,4 @@ jobs:
 
             core.info(`Created weekly improvement issue #${created.data.number}`);
 
-            await github.rest.actions.createWorkflowDispatch({
-              owner,
-              repo,
-              workflow_id: "issue-agent-pipeline.yml",
-              ref: "${{ github.ref_name }}",
-              inputs: {
-                issue_number: String(created.data.number)
-              }
-            });
-
-            core.info(`Dispatched issue-agent-pipeline.yml for issue #${created.data.number}`);
+            await dispatchIssue(created.data.number);
