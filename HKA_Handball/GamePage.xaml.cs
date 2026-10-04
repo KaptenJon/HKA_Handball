@@ -2649,7 +2649,7 @@ public class GameState
         double velocityDeltaY = desiredVelocityY - actor.Velocity.Y;
         double velocityDelta = Math.Sqrt(velocityDeltaX * velocityDeltaX + velocityDeltaY * velocityDeltaY);
         double currentTowardTarget = actor.Velocity.X * desiredVelocityX + actor.Velocity.Y * desiredVelocityY;
-        double maxVelocityChange = (desiredSpeed < currentSpeed || currentTowardTarget <= 0
+        double maxVelocityChange = (desiredSpeed < currentSpeed || (currentSpeed > 0 && currentTowardTarget < 0)
             ? AIOutfieldDeceleration
             : AIOutfieldAcceleration) * dt;
 
@@ -3509,7 +3509,11 @@ public class GameState
         // Place players at their base positions
         foreach (var team in new[] { HomePlayers, AwayPlayers })
             foreach (var a in team)
+            {
                 a.Position = new Point(a.BaseX, a.BaseY);
+                if (!a.IsGoalkeeper)
+                    a.Velocity = Point.Zero;
+            }
 
         int awayThrowOffCarrierIndex = GetThrowOffCarrierIndex(AwayPlayers);
         BallOwnerType = BallOwnershipType.Opponent;
@@ -3554,6 +3558,8 @@ public class GameState
             foreach (var a in team)
             {
                 a.Position = new Point(a.BaseX, a.BaseY);
+                if (!a.IsGoalkeeper)
+                    a.Velocity = Point.Zero;
                 a.SuspensionTicks = 0;
             }
 
