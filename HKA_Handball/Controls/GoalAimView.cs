@@ -82,10 +82,11 @@ public class GoalAimView : ContentView
             float goalLeft = pad;
             float goalTop = pad;
             float goalWidth = w - pad * 2;
-            float goalHeight = h - pad * 2;
+            float goalHeight = h - pad * 2 - 14;
+            if (goalWidth <= 20 || goalHeight <= 12) return;
 
             // Net background
-            canvas.FillColor = Color.FromArgb("#55000000");
+            canvas.FillColor = Color.FromArgb("#243D56");
             canvas.FillRoundedRectangle(goalLeft, goalTop, goalWidth, goalHeight, 3);
 
             // Net mesh pattern
@@ -147,18 +148,19 @@ public class GoalAimView : ContentView
             canvas.DrawLine(gkX + 3, gkBottomY - 1, gkX + 5, gkBottomY + 2);
 
             // Goal frame (posts + crossbar) — draw on top
-            canvas.StrokeColor = _owner.GoalColor;
+            canvas.StrokeColor = Colors.White;
             canvas.StrokeSize = 3;
             canvas.DrawRoundedRectangle(goalLeft, goalTop, goalWidth, goalHeight, 2);
-
-            // Subtle interactive hint — pulsing border glow (only when not shooting)
-            if (!_owner.ShowShotInProgress)
+            canvas.StrokeColor = _owner.GoalColor;
+            canvas.StrokeSize = 3;
+            for (float x = goalLeft + 8; x < goalLeft + goalWidth - 4; x += 16)
             {
-                float pulse = (float)(0.2 + 0.15 * Math.Sin(Environment.TickCount / 300.0));
-                canvas.StrokeColor = Colors.Yellow.WithAlpha(pulse);
-                canvas.StrokeSize = 1.5f;
-                canvas.DrawRoundedRectangle(goalLeft - 1, goalTop - 1, goalWidth + 2, goalHeight + 2, 3);
+                canvas.DrawLine(x, goalTop, Math.Min(x + 8, goalLeft + goalWidth), goalTop);
             }
+            canvas.FontColor = Color.FromArgb("#BBDDFF");
+            canvas.FontSize = 10;
+            canvas.DrawString("SIKTA / SKJUT", 0, h - 14, w, 14,
+                HorizontalAlignment.Center, VerticalAlignment.Center);
         }
     }
 }

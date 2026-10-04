@@ -16,7 +16,7 @@ namespace HKA_Handball
         {
             return new Window(new NavigationPage(new MainMenuPage(_soundManager))
             {
-                BarBackgroundColor = Color.FromArgb("#2C1B0E"),
+                BarBackgroundColor = Color.FromArgb("#0D1928"),
                 BarTextColor = Colors.White
             })
             { Title = "HKA Handball" };

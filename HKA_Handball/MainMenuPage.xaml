@@ -1,214 +1,96 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="HKA_Handball.MainMenuPage"
-             BackgroundColor="#24160C"
+             BackgroundColor="{StaticResource ArenaNavy}"
              NavigationPage.HasNavigationBar="False">
-
-    <Grid RowDefinitions="Auto,*,Auto" Padding="0,10,0,0">
-
-        <!-- Title area -->
-        <Grid Grid.Row="0"
-              VerticalOptions="Center"
-              HorizontalOptions="Center"
-              RowDefinitions="Auto,Auto,Auto"
-              RowSpacing="6"
-              Margin="0,0,0,10">
-
-            <Border x:Name="BallFrame"
-                    Grid.Row="0"
-                    BackgroundColor="#FF8C00"
-                    StrokeShape="RoundRectangle 30"
-                    Stroke="Transparent"
-                    WidthRequest="60"
-                    HeightRequest="60"
-                    HorizontalOptions="Center"
-                    Padding="0">
-                <Border.Shadow>
-                    <Shadow Brush="#90000000" Offset="2,2" Radius="8" Opacity="0.45" />
-                </Border.Shadow>
-                <Label Text="🤾"
-                       FontSize="28"
-                       HorizontalOptions="Center"
-                       VerticalOptions="Center" />
-            </Border>
-
-            <Label Grid.Row="1"
-                   Text="HKA HANDBALL"
-                   FontSize="34"
-                   FontAttributes="Bold"
-                   TextColor="White"
-                   HorizontalOptions="Center"
-                   CharacterSpacing="4" />
-
-            <Label Grid.Row="2"
-                   Text="Handboll på riktigt"
-                   FontSize="13"
-                   FontAttributes="Italic"
-                   TextColor="#A0FFFFFF"
-                   HorizontalOptions="Center" />
-        </Grid>
-
-        <!-- Center area: Menu buttons and settings -->
-        <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Never">
-            <VerticalStackLayout Padding="16,0,16,16"
-                                 HorizontalOptions="Fill"
-                                 VerticalOptions="Center"
-                                 Spacing="0">
-                <Border BackgroundColor="#17000000"
-                        Stroke="{StaticResource PanelStroke}"
-                        StrokeThickness="1"
-                        StrokeShape="RoundRectangle 28"
-                        Padding="20"
-                        HorizontalOptions="Fill"
-                        MaximumWidthRequest="420">
-                    <Border.Shadow>
-                        <Shadow Brush="#A0000000" Offset="0,8" Radius="18" Opacity="0.35" />
-                    </Border.Shadow>
-
-                    <VerticalStackLayout Spacing="18">
-                        <VerticalStackLayout Spacing="4">
-                            <Label Text="Svårighetsgrad"
-                                   FontSize="15"
-                                   FontAttributes="Bold"
-                                   TextColor="White" />
-                            <Label Text="Välj tempo och motstånd innan matchen startar."
-                                   FontSize="12"
-                                   TextColor="#A8FFFFFF" />
-                        </VerticalStackLayout>
-
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
-                            <Button x:Name="EasyButton"
-                                    Text="Lätt"
-                                    FontSize="14"
-                                    FontAttributes="Bold"
-                                    BackgroundColor="#2E7D32"
-                                    TextColor="White"
-                                    CornerRadius="14"
-                                    HeightRequest="48"
-                                    BorderColor="#AAFFFFFF"
-                                    BorderWidth="2"
-                                    Clicked="OnSelectEasy" />
-                            <Button x:Name="MediumButton"
-                                    Grid.Column="1"
-                                    Text="Normal"
-                                    FontSize="14"
-                                    FontAttributes="Bold"
-                                    BackgroundColor="{StaticResource AranasBlue}"
-                                    TextColor="White"
-                                    CornerRadius="14"
-                                    HeightRequest="48"
-                                    BorderColor="#AAFFFFFF"
-                                    BorderWidth="2"
-                                    Clicked="OnSelectMedium" />
-                            <Button x:Name="HardButton"
-                                    Grid.Column="2"
-                                    Text="Svår"
-                                    FontSize="14"
-                                    FontAttributes="Bold"
-                                    BackgroundColor="#37474F"
-                                    TextColor="White"
-                                    CornerRadius="14"
-                                    HeightRequest="48"
-                                    BorderColor="#AAFFFFFF"
-                                    BorderWidth="2"
-                                    Clicked="OnSelectHard" />
-                        </Grid>
-
-                        <VerticalStackLayout Spacing="4" Margin="0,2,0,0">
-                            <Label Text="Lagfärger"
-                                   FontSize="15"
-                                   FontAttributes="Bold"
-                                   TextColor="White" />
-                            <Label Text="Home och away använder separata färger för tydlighet."
-                                   FontSize="12"
-                                   TextColor="#A8FFFFFF" />
-                        </VerticalStackLayout>
-
-                        <Grid ColumnDefinitions="*,*"
-                              ColumnSpacing="16">
-                            <VerticalStackLayout Spacing="8">
-                                <Label Text="Hem"
-                                       FontSize="12"
-                                       FontAttributes="Bold"
-                                       TextColor="#E8FFFFFF" />
-                                <HorizontalStackLayout x:Name="HomeColorStack"
-                                                       Spacing="6"
-                                                       HorizontalOptions="Center" />
-                            </VerticalStackLayout>
-
-                            <VerticalStackLayout Grid.Column="1"
-                                                 Spacing="8">
-                                <Label Text="Borta"
-                                       FontSize="12"
-                                       FontAttributes="Bold"
-                                       TextColor="#E8FFFFFF" />
-                                <HorizontalStackLayout x:Name="AwayColorStack"
-                                                       Spacing="6"
-                                                       HorizontalOptions="Center" />
-                            </VerticalStackLayout>
-                        </Grid>
-
-                        <VerticalStackLayout Spacing="10">
-                            <Button x:Name="SinglePlayerButton"
-                                    Text="🏠  1 spelare"
-                                    FontSize="19"
-                                    FontAttributes="Bold"
-                                    BackgroundColor="{StaticResource AranasBlue}"
-                                    TextColor="White"
-                                    CornerRadius="18"
-                                    HeightRequest="58"
-                                    HorizontalOptions="Fill"
-                                    Style="{StaticResource PressableButtonStyle}"
-                                    Clicked="OnSinglePlayer" />
-
-                            <Button x:Name="TwoPlayerButton"
-                                    Text="👥  2 spelare (lokal)"
-                                    FontSize="19"
-                                    FontAttributes="Bold"
-                                    BackgroundColor="#1B5E20"
-                                    TextColor="White"
-                                    CornerRadius="18"
-                                    HeightRequest="58"
-                                    HorizontalOptions="Fill"
-                                    Style="{StaticResource PressableButtonStyle}"
-                                    Clicked="OnTwoPlayerLocal" />
-                        </VerticalStackLayout>
-
-                        <Border BackgroundColor="#12000000"
-                                Stroke="#25FFFFFF"
-                                StrokeThickness="1"
-                                StrokeShape="RoundRectangle 18"
-                                Padding="14,12">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <VerticalStackLayout Spacing="2">
-                                    <Label Text="Ljud"
-                                           FontSize="14"
-                                           FontAttributes="Bold"
-                                           TextColor="White" />
-                                    <Label Text="Aktivera klick och matchljud."
-                                           FontSize="11"
-                                           TextColor="#A8FFFFFF" />
-                                </VerticalStackLayout>
-                                <Switch x:Name="SoundSwitch"
-                                        Grid.Column="1"
-                                        IsToggled="True"
-                                        OnColor="{StaticResource AranasBlue}"
-                                        VerticalOptions="Center"
-                                        Toggled="OnSoundToggled" />
-                            </Grid>
-                        </Border>
-                    </VerticalStackLayout>
+    <ContentPage.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#172D48" Offset="0" />
+            <GradientStop Color="#09131F" Offset="1" />
+        </LinearGradientBrush>
+    </ContentPage.Background>
+    <ScrollView VerticalScrollBarVisibility="Default">
+        <VerticalStackLayout Padding="24,20" Spacing="18" MaximumWidthRequest="560"
+                             HorizontalOptions="Center">
+            <Grid ColumnDefinitions="64,*" ColumnSpacing="16">
+                <Border x:Name="BallFrame" BackgroundColor="{StaticResource AranasBlue}"
+                        Stroke="#4E9AEE" StrokeShape="RoundRectangle 18"
+                        WidthRequest="60" HeightRequest="60" Padding="0">
+                    <Label Text="HKA" TextColor="White" FontSize="18" FontAttributes="Bold"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
-            </VerticalStackLayout>
-        </ScrollView>
+                <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+                    <Label Text="HKA HANDBALL" TextColor="White" FontSize="27"
+                           FontAttributes="Bold" CharacterSpacing="1" />
+                    <Label Text="Din hemmaplan. Ditt spel." TextColor="{StaticResource MutedText}"
+                           FontSize="13" />
+                </VerticalStackLayout>
+            </Grid>
 
-        <!-- Bottom: Version / credits -->
-        <Label x:Name="VersionLabel"
-               Grid.Row="2"
-               FontSize="10"
-               TextColor="#55FFFFFF"
-               HorizontalOptions="Center"
-               VerticalOptions="End"
-               Margin="0,0,0,12" />
-    </Grid>
+            <Border BackgroundColor="{StaticResource SurfaceNavy}" Stroke="{StaticResource PanelStroke}"
+                    StrokeShape="RoundRectangle 22" Padding="22">
+                <VerticalStackLayout Spacing="14">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="DAGS FÖR AVKAST" TextColor="{StaticResource IceBlue}"
+                               FontSize="11" FontAttributes="Bold" CharacterSpacing="2" />
+                        <Label Text="Välj din match" TextColor="White" FontSize="24" FontAttributes="Bold" />
+                        <Label Text="En riktig hall. Två lag. Helt offline."
+                               TextColor="{StaticResource MutedText}" FontSize="13" />
+                    </VerticalStackLayout>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Button x:Name="SinglePlayerButton" Text="1 spelare" FontSize="16"
+                                FontAttributes="Bold" HeightRequest="54" CornerRadius="12"
+                                Style="{StaticResource PressableButtonStyle}" Clicked="OnSinglePlayer"
+                                SemanticProperties.Description="Starta match mot datorn" />
+                        <Button x:Name="TwoPlayerButton" Grid.Column="1" Text="2 spelare · lokal"
+                                FontSize="14" FontAttributes="Bold" HeightRequest="54" CornerRadius="12"
+                                BackgroundColor="#243D56" BorderColor="#4B6682" BorderWidth="1"
+                                Style="{StaticResource PressableButtonStyle}" Clicked="OnTwoPlayerLocal" />
+                    </Grid>
+                    <BoxView HeightRequest="1" Color="{StaticResource PanelStroke}" />
+                    <Label Text="Svårighetsgrad" FontSize="14" FontAttributes="Bold" TextColor="White" />
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                        <Button x:Name="EasyButton" Text="Lätt" FontSize="14" HeightRequest="44"
+                                CornerRadius="10" Clicked="OnSelectEasy" />
+                        <Button x:Name="MediumButton" Grid.Column="1" Text="Normal" FontSize="14"
+                                HeightRequest="44" CornerRadius="10" Clicked="OnSelectMedium" />
+                        <Button x:Name="HardButton" Grid.Column="2" Text="Svår" FontSize="14"
+                                HeightRequest="44" CornerRadius="10" Clicked="OnSelectHard" />
+                    </Grid>
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Matchställ" FontSize="14" FontAttributes="Bold" TextColor="White" />
+                        <Label Text="Välj färg för hemma- och bortalaget."
+                               TextColor="{StaticResource MutedText}" FontSize="12" />
+                    </VerticalStackLayout>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="HEMMA" FontSize="11" CharacterSpacing="1"
+                                   FontAttributes="Bold" TextColor="{StaticResource MutedText}" />
+                            <Grid x:Name="HomeColorStack" ColumnDefinitions="*,*,*,*"
+                                  RowDefinitions="44,44" ColumnSpacing="6" RowSpacing="6" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1" Spacing="6">
+                            <Label Text="BORTA" FontSize="11" CharacterSpacing="1"
+                                   FontAttributes="Bold" TextColor="{StaticResource MutedText}" />
+                            <Grid x:Name="AwayColorStack" ColumnDefinitions="*,*,*,*"
+                                  RowDefinitions="44,44" ColumnSpacing="6" RowSpacing="6" />
+                        </VerticalStackLayout>
+                    </Grid>
+                    <BoxView HeightRequest="1" Color="{StaticResource PanelStroke}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <VerticalStackLayout Spacing="3" VerticalOptions="Center">
+                            <Label Text="Matchljud" FontSize="14" FontAttributes="Bold" TextColor="White" />
+                            <Label Text="Visselpipa, boll och publik." FontSize="12"
+                                   TextColor="{StaticResource MutedText}" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="SoundSwitch" Grid.Column="1" IsToggled="True"
+                                OnColor="{StaticResource AranasBlueLight}" Toggled="OnSoundToggled"
+                                SemanticProperties.Description="Matchljud på eller av" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+            <Label x:Name="VersionLabel" FontSize="11" TextColor="{StaticResource MutedText}"
+                   HorizontalOptions="Center" />
+        </VerticalStackLayout>
+    </ScrollView>
 </ContentPage>

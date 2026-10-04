@@ -23,7 +23,7 @@ public class JoystickView : ContentView
     public JoystickView()
     {
         _drawable = new JoystickDrawable(() => _knobOffset, () => _pressed);
-        _view = new GraphicsView { Drawable = _drawable, HorizontalOptions = LayoutOptions.Start, VerticalOptions = LayoutOptions.End };
+        _view = new GraphicsView { Drawable = _drawable, HorizontalOptions = LayoutOptions.Fill, VerticalOptions = LayoutOptions.Fill };
 
         _pan = new PanGestureRecognizer();
         _pan.PanUpdated += OnPanUpdated;
@@ -105,25 +105,37 @@ public class JoystickView : ContentView
             var blueLight = Application.Current?.Resources.TryGetValue("AranasBlueLight", out var bl) == true ? (Color)bl : Color.FromArgb("#2E7CF6");
 
             // base circle
-            canvas.FillColor = Color.FromArgb("#22003DA5");
+            canvas.FillColor = Color.FromArgb("#B316283D");
             canvas.FillCircle((float)center.X, (float)center.Y, (float)radius);
-            canvas.StrokeColor = blueLight;
-            canvas.StrokeSize = 2;
+            canvas.StrokeColor = Color.FromArgb("#83C5FF");
+            canvas.StrokeSize = 1.5f;
             canvas.DrawCircle((float)center.X, (float)center.Y, (float)radius);
 
             // cross lines
-            canvas.StrokeColor = Color.FromArgb("#44FFFFFF");
-            canvas.DrawLine((float)(center.X - radius), (float)center.Y, (float)(center.X + radius), (float)center.Y);
-            canvas.DrawLine((float)center.X, (float)(center.Y - radius), (float)center.X, (float)(center.Y + radius));
+            canvas.StrokeColor = Color.FromArgb("#557F9BB5");
+            canvas.DrawCircle((float)center.X, (float)center.Y, (float)radius * 0.64f);
+            for (int i = 0; i < 4; i++)
+            {
+                float angle = i * MathF.PI / 2;
+                canvas.DrawLine((float)center.X + MathF.Cos(angle) * radius * 0.78f,
+                    (float)center.Y + MathF.Sin(angle) * radius * 0.78f,
+                    (float)center.X + MathF.Cos(angle) * radius * 0.9f,
+                    (float)center.Y + MathF.Sin(angle) * radius * 0.9f);
+            }
 
             // knob
             var offset = _getOffset();
             var knob = new Point(center.X + offset.X, center.Y + offset.Y);
+            canvas.FillColor = Color.FromArgb("#55000000");
+            canvas.FillCircle((float)knob.X + 1, (float)knob.Y + 3, (float)knobRadius + 1);
             canvas.FillColor = _getPressed() ? blue : blueLight;
             canvas.FillCircle((float)knob.X, (float)knob.Y, (float)knobRadius);
             canvas.StrokeColor = Colors.White;
             canvas.StrokeSize = 2;
             canvas.DrawCircle((float)knob.X, (float)knob.Y, (float)knobRadius);
+            canvas.FillColor = Colors.White.WithAlpha(0.18f);
+            canvas.FillEllipse((float)knob.X - knobRadius * 0.65f, (float)knob.Y - knobRadius * 0.7f,
+                knobRadius * 1.3f, knobRadius * 0.65f);
         }
     }
 }

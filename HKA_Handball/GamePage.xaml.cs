@@ -45,7 +45,11 @@ public partial class GamePage : ContentPage
         _state.GameEvent += OnGameEvent;
         _state.InputResetRequested += ResetInputState;
 
-        SizeChanged += (_, __) => _state.OnViewSizeChanged(new Size(Width, Height));
+        SizeChanged += (_, __) =>
+        {
+            _state.OnViewSizeChanged(new Size(Width, Height));
+            LayoutTouchControls();
+        };
 
         Joystick.ValueChanged += (_, p) =>
         {
@@ -96,6 +100,30 @@ public partial class GamePage : ContentPage
         _timer.Interval = TimeSpan.FromMilliseconds(16);
         _timer.Tick += OnTimerTick;
         _timer.Start();
+    }
+
+    void LayoutTouchControls()
+    {
+        if (Width <= 0 || Height <= 0) return;
+        double joystickSize = Width < 760 || Height < 420 ? 88 : 112;
+        double actionWidth = Width < 640 ? 172 : 196;
+        if (_gameMode == GameMode.TwoPlayerLocal && Width >= 600)
+            actionWidth = Math.Clamp(Width / 2 - joystickSize - 44, 156, 196);
+        Joystick.WidthRequest = Joystick.HeightRequest = joystickSize;
+        Joystick2.WidthRequest = Joystick2.HeightRequest = joystickSize;
+        Player1Buttons.WidthRequest = Player2Buttons.WidthRequest = actionWidth;
+        StatusBadge.MaximumWidthRequest = Math.Max(0, Width - 32);
+        if (_gameMode == GameMode.TwoPlayerLocal)
+        {
+            bool stacked = Width < 600;
+            double inset = stacked ? HudBottomMargin : joystickSize + 32;
+            Player1Buttons.Margin = new Microsoft.Maui.Thickness(inset, 0, 0, HudBottomMargin);
+            Player2Buttons.Margin = new Microsoft.Maui.Thickness(0, 0, inset, HudBottomMargin);
+            JoystickPanel.Margin = new Microsoft.Maui.Thickness(HudBottomMargin, 0, 0,
+                stacked ? 148 : HudBottomMargin);
+            Joystick2Panel.Margin = new Microsoft.Maui.Thickness(0, 0, HudBottomMargin,
+                stacked ? 148 : HudBottomMargin);
+        }
     }
 
     protected override void OnAppearing()
@@ -224,10 +252,12 @@ public partial class GamePage : ContentPage
         SwitchDefenderButton.IsVisible = defending && !_state.IsShootActive && controlsActive;
         Player1Buttons.IsVisible = controlsActive;
         JoystickPanel.IsVisible = controlsActive;
-        PassUpButton.IsEnabled = !restartPaused && !_state.IsDribbleActive;
-        PassDownButton.IsEnabled = !restartPaused && !_state.IsDribbleActive;
-        DribbleButton.IsEnabled = !restartPaused && !_state.IsDribbleActive;
-        HomeGoalAim.IsEnabled = !restartPaused && !_state.IsDribbleActive;
+        PassUpButton.IsEnabled = !restartPaused;
+        PassDownButton.IsEnabled = !restartPaused;
+        DribbleButton.IsEnabled = false;
+        DribbleButton.Text = _state.BallCarrierHasDribbled && !_state.IsDribbleActive
+            ? "Max 3 steg" : "↕ Auto-studs";
+        HomeGoalAim.IsEnabled = !restartPaused;
         SwitchDefenderButton.IsEnabled = !restartPaused;
 
         // Update home goal-aim view: show away GK position (home attacks right goal)
@@ -250,10 +280,12 @@ public partial class GamePage : ContentPage
             AwaySwitchDefenderButton.IsVisible = awayDefending && !_state.IsAwayShootActive && controlsActive;
             Joystick2Panel.IsVisible = controlsActive;
             Player2Buttons.IsVisible = controlsActive;
-            AwayPassUpButton.IsEnabled = !restartPaused && !_state.IsDribbleActive;
-            AwayPassDownButton.IsEnabled = !restartPaused && !_state.IsDribbleActive;
-            AwayDribbleButton.IsEnabled = !restartPaused && !_state.IsDribbleActive;
-            AwayGoalAim.IsEnabled = !restartPaused && !_state.IsDribbleActive;
+            AwayPassUpButton.IsEnabled = !restartPaused;
+            AwayPassDownButton.IsEnabled = !restartPaused;
+            AwayDribbleButton.IsEnabled = false;
+            AwayDribbleButton.Text = _state.BallCarrierHasDribbled && !_state.IsDribbleActive
+                ? "Max 3 steg" : "↕ Auto-studs";
+            AwayGoalAim.IsEnabled = !restartPaused;
             AwaySwitchDefenderButton.IsEnabled = !restartPaused;
 
             // Update away goal-aim view: show home GK position (away attacks left goal)
@@ -519,11 +551,10 @@ public class GameState
     const double BallCarrierStepDistance = 34;
     const double DribbleDurationSeconds = 0.28;
     const double DribbleBounceHeight = 14;
+    const double CarrierMovementThreshold = 5; // pixels/second, matching carrier input dead zone
+    const double DribblePickupDelaySeconds = 0.18; // tolerate brief pauses and joystick jitter
     const double FreeThrowRestartLineOffset = 8;
     const double FreeThrowRestartVerticalPadding = 45;
-    const double AwayAIDribblePressureDistance = 120;
-    const double AwayAIDribbleChance = 0.12;
-    const double AwayAIIllegalDribbleChance = 0.015;
     const int DribbleStatusTicks = 35;
     const int BallHandlingViolationStatusTicks = 110;
     const int GoalkeeperOutletHoldTicks = 28;
@@ -755,6 +786,7 @@ public class GameState
     bool _carrierHasDribbled;
     bool _dribbleActive;
     double _dribbleTime;
+    double _dribbleStoppedSeconds;
     BallOwnershipType _dribbleOwnerType;
     int _dribbleOwnerIndex = -1;
 
@@ -968,7 +1000,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0 || _dribbleActive) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         var owner = AwayPlayers[BallOwnerAwayIndex];
         (int idx, Actor actor)? best = null; double bestMetric = double.MaxValue;
@@ -999,7 +1031,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0 || _dribbleActive) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         StartAwayShoot(AwayPlayers[BallOwnerAwayIndex].Position);
     }
@@ -1010,7 +1042,7 @@ public class GameState
         if (BallOwnerType != BallOwnershipType.Opponent) return;
         if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
-        TryStartDribble(BallOwnershipType.Opponent, BallOwnerAwayIndex);
+        RejectManualDribbleAfterPickup();
     }
 
     /// <summary>
@@ -1022,7 +1054,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0 || _dribbleActive) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         StartAwayShootAt(AwayPlayers[BallOwnerAwayIndex].Position, normalizedAimX);
     }
@@ -1058,7 +1090,7 @@ public class GameState
     public void QueuePassVertical(int dirY)
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0 || _dribbleActive) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         var owner = HomePlayers[BallOwnerPlayerIndex];
         (int idx, Actor actor)? best = null; double bestMetric = double.MaxValue;
@@ -1094,7 +1126,7 @@ public class GameState
     public void QueueShoot()
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0 || _dribbleActive) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
@@ -1134,7 +1166,7 @@ public class GameState
     public void QueueShootAt(double normalizedAimX)
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0 || _dribbleActive) return;
+        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
@@ -1166,32 +1198,45 @@ public class GameState
         if (BallOwnerType != BallOwnershipType.Player) return;
         if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
-        TryStartDribble(BallOwnershipType.Player, BallOwnerPlayerIndex);
+        RejectManualDribbleAfterPickup();
     }
 
-    bool TryStartDribble(BallOwnershipType ownerType, int ownerIndex)
+    void RejectManualDribbleAfterPickup()
     {
-        if (_dribbleActive || ownerIndex < 0)
-            return false;
-
-        if (_carrierHasDribbled)
-        {
+        // Movement owns automatic dribbling; legacy input must not stop it or restart after pickup.
+        if (_carrierHasDribbled && !_dribbleActive)
             ApplyBallHandlingViolation("Dubbelstuds");
-            return true;
-        }
+    }
 
+    void StartCarrierDribble()
+    {
         _carrierHasDribbled = true;
         _dribbleActive = true;
         _dribbleTime = 0;
-        _dribbleOwnerType = ownerType;
-        _dribbleOwnerIndex = ownerIndex;
+        _dribbleStoppedSeconds = 0;
+        _dribbleOwnerType = BallOwnerType;
+        _dribbleOwnerIndex = BallOwnerType == BallOwnershipType.Player
+            ? BallOwnerPlayerIndex : BallOwnerAwayIndex;
         _carrierStepCount = 0;
         _carrierStepDistance = 0;
         _carrierHoldSeconds = 0;
         _possessionTimer = 0;
         PassivePlayWarningActive = false;
-        SetStatusOverride("Studsning", DribbleStatusTicks);
-        return true;
+        SetStatusOverride("Auto-studs", DribbleStatusTicks);
+    }
+
+    void PickUpDribble()
+    {
+        _dribbleActive = false;
+        _dribbleTime = 0;
+        _dribbleStoppedSeconds = 0;
+        _dribbleOwnerType = BallOwnershipType.Loose;
+        _dribbleOwnerIndex = -1;
+        _carrierStepCount = 0;
+        _carrierStepDistance = 0;
+        _carrierHoldSeconds = 0;
+        BallHeight = 0;
+        SetStatusOverride("Boll upptagen - passa/skjut inom 3 steg", DribbleStatusTicks);
     }
 
     void ResetBallHandlingState()
@@ -1202,6 +1247,7 @@ public class GameState
         _carrierHasDribbled = false;
         _dribbleActive = false;
         _dribbleTime = 0;
+        _dribbleStoppedSeconds = 0;
         _dribbleOwnerType = BallOwnershipType.Loose;
         _dribbleOwnerIndex = -1;
     }
@@ -1221,13 +1267,32 @@ public class GameState
 
     bool TrackBallCarrierHandling(Actor carrier, Point previousPosition, double dt)
     {
-        if (_dribbleActive || _freeThrowCooldownTicks > 0 || _matchIntroActive)
+        if (_freeThrowCooldownTicks > 0 || _matchIntroActive || dt <= 0)
             return false;
         if (!ReferenceEquals(GetCurrentBallCarrier(), carrier))
             return false;
 
-        _carrierHoldSeconds += Math.Max(0, dt);
-        _carrierStepDistance += Distance(previousPosition, carrier.Position);
+        double distanceMoved = Distance(previousPosition, carrier.Position);
+        bool isMoving = distanceMoved > CarrierMovementThreshold * dt;
+        if (_dribbleActive)
+        {
+            _dribbleStoppedSeconds = isMoving ? 0 : _dribbleStoppedSeconds + dt;
+            if (_dribbleStoppedSeconds >= DribblePickupDelaySeconds)
+                PickUpDribble();
+            // The pickup frame is not a held-ball step; counting starts on the next movement.
+            return false;
+        }
+
+        if (isMoving && !_carrierHasDribbled)
+        {
+            if (RejectBallHandlingActionIfIllegal())
+                return true;
+            StartCarrierDribble();
+            return false;
+        }
+
+        _carrierHoldSeconds += dt;
+        _carrierStepDistance += distanceMoved;
         while (_carrierStepDistance >= BallCarrierStepDistance)
         {
             _carrierStepDistance -= BallCarrierStepDistance;
@@ -1649,7 +1714,7 @@ public class GameState
             owner.Velocity = Point.Zero;
             var previousOwnerPosition = owner.Position;
             double fastBreakMult = _homeFastBreakTicks > 0 ? FastBreakSpeedMultiplier : 1.0;
-            bool hasManualInput = Math.Abs(ActiveMoveInput.X) > 5 || Math.Abs(ActiveMoveInput.Y) > 5
+            bool hasManualInput = Math.Abs(ActiveMoveInput.X) > CarrierMovementThreshold || Math.Abs(ActiveMoveInput.Y) > CarrierMovementThreshold
                                   || _advanceBoost || Math.Abs(_attackDiagonalBoostY) > 0.1;
 
             if (_freeThrowCooldownTicks > 0)
@@ -2055,17 +2120,18 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                 var previousAwayOwnerPosition = a.Position;
                 if (RejectBallHandlingActionIfIllegal())
                     return;
+                if (_freeThrowCooldownTicks > 0)
+                {
+                    ClampActor(a);
+                    continue;
+                }
                 double fastBreakMult = _awayFastBreakTicks > 0 ? FastBreakSpeedMultiplier : 1.0;
 
                 if (Mode == GameMode.TwoPlayerLocal)
                 {
                     // Player 2 direct control of away ball carrier
-                    bool hasManualInput2 = Math.Abs(AwayActiveMoveInput.X) > 5 || Math.Abs(AwayActiveMoveInput.Y) > 5 || _awayAdvanceBoost2;
-                    if (_freeThrowCooldownTicks > 0)
-                    {
-                        // Away carrier stays still during free throw pause
-                    }
-                    else if (hasManualInput2)
+                    bool hasManualInput2 = Math.Abs(AwayActiveMoveInput.X) > CarrierMovementThreshold || Math.Abs(AwayActiveMoveInput.Y) > CarrierMovementThreshold || _awayAdvanceBoost2;
+                    if (hasManualInput2)
                     {
                         double forwardExtra = _awayAdvanceBoost2 ? -220 : 0; // negative = attacking left
                         var nextPos = new Point(
@@ -2093,11 +2159,9 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                         ClampActor(a);
                         return;
                     }
-                }
-
-                if (_dribbleActive && _dribbleOwnerType == BallOwnershipType.Opponent && _dribbleOwnerIndex == i)
-                {
                     ClampActor(a);
+                    if (TrackBallCarrierHandling(a, previousAwayOwnerPosition, dt))
+                        return;
                     continue;
                 }
 
@@ -2125,6 +2189,9 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                     }
                     double newY = Lerp(a.Position.Y, targetY, 0.08);
                     a.Position = new Point(newX, newY);
+                    ClampActor(a);
+                    if (TrackBallCarrierHandling(a, previousAwayOwnerPosition, dt))
+                        return;
 
                     var awayShootLineX = attackStopX + 4;
                     if (!_awayShootActive && a.Position.X <= awayShootLineX)
@@ -2143,13 +2210,13 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                     a.Position = new Point(
                         Lerp(a.Position.X, arcPos.X, lerpRate),
                         Lerp(a.Position.Y, arcPos.Y, 0.04));
+                    ClampActor(a);
+                    if (TrackBallCarrierHandling(a, previousAwayOwnerPosition, dt))
+                        return;
 
                     // Pass or breakthrough decision (only when near arc) — difficulty adjusted
                     if (!_awayPassActive && _awayPassCooldownTicks == 0 && _freeThrowCooldownTicks == 0 && a.Position.X <= arcPos.X + AwayPushForwardThreshold)
                     {
-                        if (TryStartAwayDribble(i, a.Position))
-                            continue;
-
                         if (TryStartAwayDirectShot(i, a.Position, arcPos.X))
                         {
                             continue;
@@ -2177,9 +2244,6 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                         }
                     }
                 }
-
-                if (TrackBallCarrierHandling(a, previousAwayOwnerPosition, dt))
-                    return;
             }
             else
             {
@@ -2246,19 +2310,8 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                 return;
             }
 
-            _dribbleTime += dt;
-            double phase = Math.Clamp(_dribbleTime / DribbleDurationSeconds, 0, 1);
+            _dribbleTime = (_dribbleTime + dt) % DribbleDurationSeconds;
             BallPos = dribbleCarrier.Position;
-            if (phase >= 1)
-            {
-                _dribbleActive = false;
-                _dribbleTime = 0;
-                _carrierStepCount = 0;
-                _carrierStepDistance = 0;
-                _carrierHoldSeconds = 0;
-                BallPos = dribbleCarrier.Position;
-                BallHeight = 0;
-            }
             return;
         }
 
@@ -2974,27 +3027,6 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
 
     /// <summary>Returns true for the away team's wing positions (indices 1 and 6).</summary>
     static bool IsAwayWing(int playerIndex) => playerIndex == 1 || playerIndex == 6;
-
-    bool TryStartAwayDribble(int ownerIndex, Point from)
-    {
-        if (Mode == GameMode.TwoPlayerLocal
-            || _awayPassActive
-            || _awayShootActive
-            || _freeThrowCooldownTicks > 0)
-            return false;
-
-        bool pressured = HomePlayers.Skip(1)
-            .Where(player => !player.IsSuspended)
-            .Any(player => Distance(player.Position, from) < AwayAIDribblePressureDistance);
-        if (!pressured && _awayFastBreakTicks == 0)
-            return false;
-
-        double attemptChance = _carrierHasDribbled ? AwayAIIllegalDribbleChance : AwayAIDribbleChance;
-        if (Random.Shared.NextDouble() >= attemptChance)
-            return false;
-
-        return TryStartDribble(BallOwnershipType.Opponent, ownerIndex);
-    }
 
     bool TryStartAwayDirectShot(int ownerIndex, Point from, double arcPosX)
     {
@@ -4116,15 +4148,27 @@ public class GameDrawable : IDrawable
     readonly Color AranasWhite;
 
     // Frequently used colors extracted to avoid repeated allocation
-    static readonly Color ArenaBackground = Color.FromArgb("#2C1B0E");
+    static readonly Color ArenaBackground = Color.FromArgb("#0D1928");
     static readonly Color SkinColor = Color.FromArgb("#FFDAB9");
     static readonly Color HairColor = Color.FromArgb("#3E2723");
-    static readonly Color BallColor = Color.FromArgb("#FF8C00");
+    static readonly Color BallColor = Color.FromArgb("#E9A13B");
     static readonly Color ShadowColor = Color.FromArgb("#33000000");
     static readonly Color ShoesColor = Color.FromArgb("#333333");
     static readonly Color ShortsColor = Color.FromArgb("#1A237E");
-    static readonly Color ScoreboardBg = Color.FromArgb("#EE1A1208");
-    static readonly Color OverlayBg = Color.FromArgb("#CC2C1B0E");
+    static readonly Color ScoreboardBg = Color.FromArgb("#F20D1928");
+    static readonly Color OverlayBg = Color.FromArgb("#E60D1928");
+    static readonly Color MapleFloor = Color.FromArgb("#D5B88A");
+    static readonly Color FloorSeam = Color.FromArgb("#26755C38");
+    static readonly Color FloorGrain = Color.FromArgb("#106F532D");
+    static readonly Color PaintedGoalArea = Color.FromArgb("#416C7A");
+    static readonly Color CourtWhite = Color.FromArgb("#F5F5EE");
+    static readonly Color[] PlayerSkinTones =
+    [
+        Color.FromArgb("#EFC39E"), Color.FromArgb("#B87D55"),
+        Color.FromArgb("#DCA479"), Color.FromArgb("#82563F")
+    ];
+    static readonly string[] JerseyNumbers = ["MV", "1", "2", "3", "4", "5", "6"];
+    static readonly float[] FreeThrowDash = [10, 6];
     static readonly Color TorsoHighlight = Colors.White.WithAlpha(0.2f);
     static readonly Color GoalkeeperTorsoHighlight = Colors.White.WithAlpha(0.16f);
     static readonly Color TorsoShade = Colors.Black.WithAlpha(0.12f);
@@ -4238,14 +4282,19 @@ public class GameDrawable : IDrawable
         // Spectator dots along the sidelines for atmosphere
         DrawSpectators(canvas, dirtyRect, fieldMargin);
 
-        // Wooden floor base
-        canvas.FillColor = Color.FromArgb("#C8956C");
+        canvas.FillColor = ShadowColor;
+        canvas.FillRoundedRectangle(courtLeft - 3, courtTop + 5, courtW + 6, courtH + 2, 5);
+        canvas.SaveState();
+        canvas.ClipRectangle(courtLeft, courtTop, courtW, courtH);
+
+        // Maple boards under a matte sports-floor finish.
+        canvas.FillColor = MapleFloor;
         canvas.FillRoundedRectangle(courtLeft, courtTop, courtW, courtH, 4);
 
         // Wood plank lines (horizontal grain)
-        canvas.StrokeColor = Color.FromArgb("#18000000");
-        canvas.StrokeSize = 1;
-        float plankHeight = 28f;
+        canvas.StrokeColor = FloorSeam;
+        canvas.StrokeSize = 0.6f;
+        float plankHeight = 22f;
         for (float py = courtTop + plankHeight; py < courtTop + courtH; py += plankHeight)
         {
             canvas.DrawLine(courtLeft, py, courtLeft + courtW, py);
@@ -4255,18 +4304,20 @@ public class GameDrawable : IDrawable
         for (float py = courtTop; py < courtTop + courtH; py += plankHeight * 2)
         {
             float h = Math.Min(plankHeight, courtTop + courtH - py);
-            canvas.FillColor = Color.FromArgb("#06000000");
+            canvas.FillColor = Colors.White.WithAlpha(0.045f);
             canvas.FillRectangle(courtLeft, py, courtW, h);
         }
         // Secondary grain: faint vertical stagger marks for realism
-        canvas.StrokeColor = Color.FromArgb("#0A000000");
+        canvas.StrokeColor = FloorGrain;
         canvas.StrokeSize = 0.5f;
         for (float px = courtLeft + 60; px < courtLeft + courtW; px += 120)
         {
             float stagger = ((int)(px / 120) % 2 == 0) ? plankHeight * 0.5f : 0;
             for (float py = courtTop + stagger; py < courtTop + courtH; py += plankHeight)
             {
-                canvas.DrawLine(px, py, px, py + plankHeight * 0.3f);
+                canvas.DrawLine(px, py, px, Math.Min(py + plankHeight, courtTop + courtH));
+                canvas.DrawLine(px - 50, py + 7, px - 12, py + 7.5f);
+                canvas.DrawLine(px + 8, py + 15, px + 65, py + 14.5f);
             }
         }
 
@@ -4304,27 +4355,31 @@ public class GameDrawable : IDrawable
         var leftGoalCenterX = (float)GameState.GoalCenterInset;
         var rightGoalCenterX = dirtyRect.Width - (float)GameState.GoalCenterInset;
 
-        // Goal area fill (colored gradient-like tint)
-        canvas.FillColor = HomeColor.WithAlpha(0.13f);
+        // The painted six-metre areas stay neutral so every kit remains legible.
+        canvas.FillColor = PaintedGoalArea;
         canvas.FillCircle(leftGoalCenterX, centerY, goalAreaRadius);
-        canvas.FillColor = AwayColor.WithAlpha(0.13f);
         canvas.FillCircle(rightGoalCenterX, centerY, goalAreaRadius);
 
-        // Inner goal area accent (subtle inner glow)
-        canvas.FillColor = HomeColor.WithAlpha(0.06f);
-        canvas.FillCircle(leftGoalCenterX, centerY, goalAreaRadius * 0.7f);
-        canvas.FillColor = AwayColor.WithAlpha(0.06f);
-        canvas.FillCircle(rightGoalCenterX, centerY, goalAreaRadius * 0.7f);
+        canvas.StrokeColor = Colors.White.WithAlpha(0.045f);
+        canvas.StrokeSize = 1;
+        for (float py = courtTop + plankHeight; py < courtTop + courtH; py += plankHeight)
+        {
+            float dy = py - centerY;
+            if (Math.Abs(dy) >= goalAreaRadius) continue;
+            float span = MathF.Sqrt(goalAreaRadius * goalAreaRadius - dy * dy);
+            canvas.DrawLine(courtLeft, py, leftGoalCenterX + span, py);
+            canvas.DrawLine(rightGoalCenterX - span, py, courtLeft + courtW, py);
+        }
 
         // Goal area line (solid)
-        canvas.StrokeColor = Color.FromArgb("#BBFFFFFF");
+        canvas.StrokeColor = CourtWhite;
         canvas.StrokeSize = 2.5f;
         canvas.DrawCircle(leftGoalCenterX, centerY, goalAreaRadius);
         canvas.DrawCircle(rightGoalCenterX, centerY, goalAreaRadius);
 
         // Free throw line (9m, dashed)
-        canvas.StrokeDashPattern = [10, 6];
-        canvas.StrokeColor = Color.FromArgb("#77FFFFFF");
+        canvas.StrokeDashPattern = FreeThrowDash;
+        canvas.StrokeColor = CourtWhite.WithAlpha(0.85f);
         canvas.StrokeSize = 2;
         canvas.DrawCircle(leftGoalCenterX, centerY, freeThrowRadius);
         canvas.DrawCircle(rightGoalCenterX, centerY, freeThrowRadius);
@@ -4343,6 +4398,11 @@ public class GameDrawable : IDrawable
 
         // Dynamic arena lighting effects based on game state
         DrawDynamicLighting(canvas, dirtyRect);
+        canvas.RestoreState();
+
+        canvas.StrokeColor = CourtWhite;
+        canvas.StrokeSize = 2.5f;
+        canvas.DrawRectangle(courtLeft, courtTop, courtW, courtH);
 
         // Goals (nets with depth)
         DrawGoal(canvas, new RectF(4, centerY - 80, 16, 160), HomeColor);
@@ -4382,7 +4442,13 @@ public class GameDrawable : IDrawable
 
     void DrawSpectators(ICanvas canvas, RectF dirtyRect, float margin)
     {
-        // Draw tiny spectator dots along the top and bottom edges to create arena atmosphere
+        canvas.FillColor = Color.FromArgb("#20344B");
+        canvas.FillRectangle(margin, margin * 0.12f, dirtyRect.Width - margin * 2, 8);
+        canvas.FillRectangle(margin, dirtyRect.Height - margin * 0.42f, dirtyRect.Width - margin * 2, 8);
+        canvas.StrokeColor = Color.FromArgb("#51667B");
+        canvas.StrokeSize = 1;
+        canvas.DrawLine(margin, margin * 0.64f, dirtyRect.Width - margin, margin * 0.64f);
+        canvas.DrawLine(margin, dirtyRect.Height - margin * 0.64f, dirtyRect.Width - margin, dirtyRect.Height - margin * 0.64f);
         float topY = margin * 0.3f;
         float bottomY = dirtyRect.Height - margin * 0.3f;
 
@@ -4425,25 +4491,12 @@ public class GameDrawable : IDrawable
 
     void DrawDynamicLighting(ICanvas canvas, RectF dirtyRect)
     {
-        // Spotlight effect following the ball during shots and fast breaks
-        bool highlightBall = _state.IsShootActive || _state.IsAwayShootActive
-                             || _state.IsHomeFastBreak || _state.IsAwayFastBreak;
-
-        if (highlightBall)
+        // Broad fixed light reflections, not moving spotlights that obscure play.
+        canvas.FillColor = Colors.White.WithAlpha(0.035f);
+        for (int i = 1; i <= 3; i++)
         {
-            float ballX = (float)_state.BallPos.X;
-            float ballY = (float)_state.BallPos.Y;
-            float spotRadius = _state.IsShootActive || _state.IsAwayShootActive ? 220f : 160f;
-
-            // Radial gradient spotlight (outer layers)
-            int layers = 3;
-            for (int i = 0; i < layers; i++)
-            {
-                float layerRadius = spotRadius * (1f + i * 0.4f);
-                float layerAlpha = 0.04f / (i + 1);
-                canvas.FillColor = Colors.White.WithAlpha(layerAlpha);
-                canvas.FillCircle(ballX, ballY, layerRadius);
-            }
+            float x = dirtyRect.Width * i / 4;
+            canvas.FillEllipse(x - 80, dirtyRect.Height * 0.16f, 160, dirtyRect.Height * 0.68f);
         }
 
         // Pulsing ambient light during goal celebrations
@@ -4454,13 +4507,6 @@ public class GameDrawable : IDrawable
             canvas.FillRectangle(dirtyRect);
         }
 
-        // Fast break indicator - subtle cyan glow
-        if (_state.IsHomeFastBreak || _state.IsAwayFastBreak)
-        {
-            float fbPulse = (float)(0.015 + 0.01 * Math.Sin(Environment.TickCount / 80.0));
-            canvas.FillColor = Colors.Cyan.WithAlpha(fbPulse);
-            canvas.FillRectangle(dirtyRect);
-        }
     }
 
     void DrawPlayers(ICanvas canvas)
@@ -4509,21 +4555,28 @@ public class GameDrawable : IDrawable
 
         float x = (float)pos.X;
         float y = (float)pos.Y;
-        float bodyW = isGoalkeeper ? 22f : 18f;
-        float bodyH = isGoalkeeper ? 18f : 14f;
-        float headR = isGoalkeeper ? 7f : 6f;
+        float bodyW = isGoalkeeper ? 17f : 15f;
+        float bodyH = isGoalkeeper ? 21f : 18f;
+        float headR = 4.5f;
+        var skin = PlayerSkinTones[(number + (isAwayPlayer ? 2 : 0)) % PlayerSkinTones.Length];
+        var jerseyInk = jerseyColor.Red * 0.299f + jerseyColor.Green * 0.587f
+            + jerseyColor.Blue * 0.114f > 0.65f ? ArenaBackground : Colors.White;
 
         // Running animation: leg sway based on time + player index for variety
         float runPhase = (float)(Environment.TickCount / 180.0 + number * 2.1);
         float legSway = (float)Math.Sin(runPhase) * 3f;
-        bool isMoving = isActive && (Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).X) > 5
-                                  || Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).Y) > 5);
+        var actor = isAwayPlayer ? _state.AwayPlayers[number] : _state.HomePlayers[number];
+        bool isMoving = Math.Abs(actor.Velocity.X) > 5 || Math.Abs(actor.Velocity.Y) > 5
+            || (isActive && (Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).X) > 5
+                            || Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).Y) > 5));
 
         // Enhanced shadow with motion blur effect when moving fast
         float shadowStretch = isMoving ? 1.25f : 1f;
         float shadowAlpha = isMoving ? 0.25f : 0.2f;
         canvas.FillColor = Colors.Black.WithAlpha(shadowAlpha);
-        canvas.FillEllipse(x - bodyW / 2 * shadowStretch + 1, y - bodyH / 2 + 3, bodyW * shadowStretch, bodyH * 0.8f);
+        canvas.FillEllipse(x - bodyW / 2 * shadowStretch + 4, y + 6, bodyW * shadowStretch + 6, bodyH * 0.65f);
+        canvas.FillColor = Colors.Black.WithAlpha(0.08f);
+        canvas.FillEllipse(x - bodyW / 2 + 2, y + 5, bodyW + 12, bodyH * 0.85f);
 
         // Additional motion blur shadow when active and moving
         if (isActive && isMoving)
@@ -4548,12 +4601,12 @@ public class GameDrawable : IDrawable
         float legOffset = isMoving ? legSway : 0;
 
         // Shorts
-        canvas.FillColor = ShortsColor;
+        canvas.FillColor = isAwayPlayer ? Color.FromArgb("#302D36") : ShortsColor;
         canvas.FillRoundedRectangle(x - bodyW / 2 + 1, legY - 2, bodyW - 2, 5, 2);
 
         // Leg lines
-        canvas.StrokeColor = SkinColor;
-        canvas.StrokeSize = 2.5f;
+        canvas.StrokeColor = isGoalkeeper ? ShoesColor : skin;
+        canvas.StrokeSize = isGoalkeeper ? 3.5f : 3;
         canvas.DrawLine(leftLegX, legY + 2, leftLegX + legOffset, legY + 7);
         canvas.DrawLine(rightLegX, legY + 2, rightLegX - legOffset, legY + 7);
 
@@ -4561,6 +4614,10 @@ public class GameDrawable : IDrawable
         canvas.FillColor = ShoesColor;
         canvas.FillRoundedRectangle(leftLegX + legOffset - 2.5f, legY + 6, 5, 3, 1.5f);
         canvas.FillRoundedRectangle(rightLegX - legOffset - 2.5f, legY + 6, 5, 3, 1.5f);
+        canvas.StrokeColor = CourtWhite;
+        canvas.StrokeSize = 1;
+        canvas.DrawLine(leftLegX + legOffset - 2, legY + 8.5f, leftLegX + legOffset + 2, legY + 8.5f);
+        canvas.DrawLine(rightLegX - legOffset - 2, legY + 8.5f, rightLegX - legOffset + 2, legY + 8.5f);
 
         // Body (jersey torso)
         canvas.FillColor = jerseyColor;
@@ -4595,59 +4652,43 @@ public class GameDrawable : IDrawable
         canvas.StrokeSize = 3;
         canvas.DrawLine(x - bodyW / 2, armY, x - bodyW / 2 - 6, armY + 4 - armSway);
         canvas.DrawLine(x + bodyW / 2, armY, x + bodyW / 2 + 6, armY + 4 + armSway);
-        // Hands — goalkeepers have colored gloves, field players have skin-colored hands
-        if (isGoalkeeper)
-        {
-            canvas.FillColor = jerseyColor;
-            canvas.FillCircle(x - bodyW / 2 - 6, armY + 4 - armSway, 2.5f);
-            canvas.FillCircle(x + bodyW / 2 + 6, armY + 4 + armSway, 2.5f);
-            // Glove outline
-            canvas.StrokeColor = Colors.White.WithAlpha(0.5f);
-            canvas.StrokeSize = 0.8f;
-            canvas.DrawCircle(x - bodyW / 2 - 6, armY + 4 - armSway, 2.5f);
-            canvas.DrawCircle(x + bodyW / 2 + 6, armY + 4 + armSway, 2.5f);
-        }
-        else
-        {
-            canvas.FillColor = SkinColor;
-            canvas.FillCircle(x - bodyW / 2 - 6, armY + 4 - armSway, 2);
-            canvas.FillCircle(x + bodyW / 2 + 6, armY + 4 + armSway, 2);
-        }
+        canvas.StrokeColor = skin;
+        canvas.StrokeSize = 2.5f;
+        canvas.DrawLine(x - bodyW / 2 - 4, armY + 3 - armSway,
+            x - bodyW / 2 - 7, armY + 7 - armSway);
+        canvas.DrawLine(x + bodyW / 2 + 4, armY + 3 + armSway,
+            x + bodyW / 2 + 7, armY + 7 + armSway);
+        canvas.FillColor = skin;
+        canvas.FillCircle(x - bodyW / 2 - 7, armY + 7 - armSway, 1.8f);
+        canvas.FillCircle(x + bodyW / 2 + 7, armY + 7 + armSway, 1.8f);
 
         // Head
-        canvas.FillColor = SkinColor;
+        canvas.FillColor = skin;
         canvas.FillCircle(x, y - bodyH / 2 - headR + 4, headR);
         canvas.StrokeColor = HeadOutline;
         canvas.StrokeSize = 0.8f;
         canvas.DrawCircle(x, y - bodyH / 2 - headR + 4, headR);
 
-        // Hair / Goalkeeper cap
-        if (isGoalkeeper)
-        {
-            // Goalkeeper cap (matching jersey color, covers top of head)
-            canvas.FillColor = jerseyColor;
-            float capY = y - bodyH / 2 - headR + 2;
-            canvas.FillCircle(x, capY, headR * 0.75f);
-            // Cap brim
-            canvas.FillRoundedRectangle(x - headR * 0.8f, capY + headR * 0.15f, headR * 1.6f, 2.5f, 1);
-        }
-        else
-        {
-            canvas.FillColor = HairColor;
-            canvas.FillCircle(x, y - bodyH / 2 - headR + 2, headR * 0.65f);
-        }
+        float headY = y - bodyH / 2 - headR + 4;
+        canvas.FillColor = HairColor;
+        canvas.FillEllipse(x - headR, headY - headR, headR * 2, headR * 1.05f);
+        canvas.FillColor = HeadOutline;
+        canvas.FillCircle(x - 1.6f, headY + 0.8f, 0.55f);
+        canvas.FillCircle(x + 1.6f, headY + 0.8f, 0.55f);
 
         // Number on jersey
-        canvas.FontColor = Colors.White;
+        canvas.FontColor = jerseyInk;
         canvas.FontSize = 8;
-        canvas.DrawString(number.ToString(), x - 5, y - 1, 10, 10,
+        canvas.DrawString(JerseyNumbers[number], x - 5, y - 1, 10, 10,
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
         // Position label below player
         string posLabel = GetPositionLabel(number, isGoalkeeper);
-        canvas.FontColor = Colors.White.WithAlpha(0.6f);
-        canvas.FontSize = 6;
-        canvas.DrawString(posLabel, x - 8, y + bodyH / 2 + 10, 16, 8,
+        canvas.FillColor = ArenaBackground.WithAlpha(0.72f);
+        canvas.FillRoundedRectangle(x - 9, y + bodyH / 2 + 10, 18, 10, 3);
+        canvas.FontColor = CourtWhite;
+        canvas.FontSize = 7;
+        canvas.DrawString(posLabel, x - 9, y + bodyH / 2 + 10, 18, 10,
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
         // Selection ring — pulsing for active player
@@ -4657,11 +4698,11 @@ public class GameDrawable : IDrawable
             float pulse = (float)(0.7 + 0.3 * Math.Sin(Environment.TickCount / 150.0));
             canvas.StrokeColor = Colors.White.WithAlpha(pulse);
             canvas.StrokeSize = 2.5f;
-            canvas.DrawCircle(x, y + 2, ringR);
-
-            // Active player glow
-            canvas.FillColor = Colors.White.WithAlpha(0.08f);
-            canvas.FillCircle(x, y + 2, ringR + 3);
+            canvas.DrawEllipse(x - ringR, y + bodyH / 2 + 3, ringR * 2, 9);
+            canvas.StrokeColor = CourtWhite;
+            canvas.StrokeSize = 2.5f;
+            canvas.DrawLine(x - 4, headY - 12, x, headY - 8);
+            canvas.DrawLine(x + 4, headY - 12, x, headY - 8);
 
             // Direction arrow showing movement input (use away input for away players)
             var moveInput = isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput;
@@ -4696,11 +4737,9 @@ public class GameDrawable : IDrawable
             float pulse = (float)(0.7 + 0.3 * Math.Sin(Environment.TickCount / 200.0));
             canvas.StrokeColor = Colors.Gold.WithAlpha(pulse);
             canvas.StrokeSize = 3;
-            canvas.DrawCircle(x, y + 2, ringR);
-
-            // Defender shield icon (small triangle)
-            canvas.FillColor = Colors.Gold.WithAlpha(0.4f);
-            canvas.FillCircle(x, y + 2, ringR - 2);
+            canvas.DrawEllipse(x - ringR, y + bodyH / 2 + 3, ringR * 2, 9);
+            canvas.DrawLine(x - 4, headY - 12, x, headY - 8);
+            canvas.DrawLine(x + 4, headY - 12, x, headY - 8);
         }
     }
 
@@ -4755,6 +4794,12 @@ public class GameDrawable : IDrawable
         // Ball body
         canvas.FillColor = BallColor;
         canvas.FillCircle(bx, visualBy, ballRadius);
+        canvas.StrokeColor = Color.FromArgb("#7B4B22");
+        canvas.StrokeSize = 1;
+        canvas.DrawCircle(bx, visualBy, ballRadius);
+        canvas.FillColor = Colors.Black.WithAlpha(0.12f);
+        canvas.FillEllipse(bx - ballRadius * 0.5f, visualBy + ballRadius * 0.25f,
+            ballRadius * 1.25f, ballRadius * 0.5f);
 
         // Ball panel pattern (spinning seam lines for realism)
         float spinAngle = (float)(Environment.TickCount / 80.0);
@@ -4804,10 +4849,9 @@ public class GameDrawable : IDrawable
 
     void DrawScore(ICanvas canvas, RectF dirtyRect)
     {
-        // Enhanced score display with team colors, clock, half indicator, and difficulty
-        float pillW = 250, pillH = 50;
+        float pillW = Math.Min(292, dirtyRect.Width - 24), pillH = 52;
         float pillX = dirtyRect.Center.X - pillW / 2;
-        float pillY = 3;
+        float pillY = 6;
 
         // Soft drop shadow so the pill lifts off the busy court background
         canvas.FillColor = Color.FromArgb("#33000000");
@@ -4840,15 +4884,15 @@ public class GameDrawable : IDrawable
         canvas.DrawCircle(pillX + pillW - 18, dotY, 5);
 
         // Team labels next to dots
-        canvas.FontColor = HomeColor;
-        canvas.FontSize = 9;
+        canvas.FontColor = CourtWhite;
+        canvas.FontSize = 10;
         canvas.DrawString("HEM",
             new RectF(pillX + 26, pillY + 5, 35, 14),
             G.HorizontalAlignment.Left, G.VerticalAlignment.Center);
 
-        canvas.FontColor = AwayColor;
-        canvas.DrawString("BOR",
-            new RectF(pillX + pillW - 62, pillY + 5, 35, 14),
+        canvas.FontColor = CourtWhite;
+        canvas.DrawString("BORTA",
+            new RectF(pillX + pillW - 70, pillY + 5, 44, 14),
             G.HorizontalAlignment.Right, G.VerticalAlignment.Center);
 
         // Score numbers (larger and bolder)
@@ -4975,87 +5019,19 @@ public class GameDrawable : IDrawable
     {
         if (!_state.IsMatchIntro) return;
 
-        // Draw intro particles (fire, sparks, smoke)
-        for (int i = 0; i < _state.IntroParticleCount; i++)
-        {
-            ref readonly var p = ref _state.IntroParticles[i];
-            if (p.LifeTicks <= 0) continue;
-
-            float alpha = Math.Clamp(p.LifeTicks / 60f, 0f, 1f);
-            float size = p.Size;
-
-            if (p.ParticleType == 0) // Fire
-            {
-                // Fire gradient: bright yellow/orange core fading to red
-                float coreAlpha = alpha * 0.9f;
-                canvas.FillColor = Color.FromArgb("#FFAA00").WithAlpha(coreAlpha);
-                canvas.FillCircle(p.X, p.Y, size);
-                canvas.FillColor = Color.FromArgb("#FF5500").WithAlpha(alpha * 0.6f);
-                canvas.FillCircle(p.X, p.Y, size * 0.7f);
-                canvas.FillColor = Color.FromArgb("#FFFF00").WithAlpha(alpha * 0.8f);
-                canvas.FillCircle(p.X, p.Y, size * 0.4f);
-            }
-            else if (p.ParticleType == 1) // Spark
-            {
-                // Bright white/yellow sparks
-                canvas.FillColor = Colors.Yellow.WithAlpha(alpha);
-                canvas.FillCircle(p.X, p.Y, size);
-                canvas.FillColor = Colors.White.WithAlpha(alpha * 0.7f);
-                canvas.FillCircle(p.X, p.Y, size * 0.5f);
-            }
-            else // Smoke
-            {
-                // Dark gray smoke that fades
-                float smokeAlpha = alpha * 0.3f;
-                canvas.FillColor = Color.FromArgb("#333333").WithAlpha(smokeAlpha);
-                canvas.FillCircle(p.X, p.Y, size);
-            }
-        }
-
-        // Screen flash effect — bright burst at start
         int ticksRemaining = _state.IntroParticleCount > 0 ?
             _state.IntroParticles[0].LifeTicks : 0;
-        if (ticksRemaining > 120)
-        {
-            float flashAlpha = (ticksRemaining - 120) / 60f * 0.15f;
-            canvas.FillColor = Colors.Orange.WithAlpha(flashAlpha);
-            canvas.FillRectangle(dirtyRect);
-        }
-
-        // Radial light burst from center
-        float centerX = dirtyRect.Center.X;
-        float centerY = dirtyRect.Center.Y;
-        float burstProgress = 1f - (ticksRemaining / 180f);
-        float burstRadius = burstProgress * dirtyRect.Width * 0.4f;
-        float burstAlpha = (1f - burstProgress) * 0.12f;
-        canvas.FillColor = Colors.Gold.WithAlpha(burstAlpha);
-        canvas.FillCircle(centerX, centerY, burstRadius);
-
-        // "MATCH START" text with dramatic entrance
         if (ticksRemaining > 60)
         {
-            float textAlpha = Math.Min((180 - ticksRemaining) / 30f, (ticksRemaining - 60) / 30f);
-            float textScale = 0.8f + (1f - textAlpha) * 0.4f; // zoom in effect
-
-            // Shadow
-            canvas.FontColor = Color.FromArgb("#88000000");
-            canvas.FontSize = 48 * textScale;
-            canvas.DrawString("MATCH START!",
-                new RectF(3, dirtyRect.Height * 0.38f + 3, dirtyRect.Width, 60),
-                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
-
-            // Glow
-            canvas.FontColor = Colors.Orange.WithAlpha(textAlpha * 0.4f);
-            canvas.FontSize = 50 * textScale;
-            canvas.DrawString("MATCH START!",
-                new RectF(0, dirtyRect.Height * 0.38f, dirtyRect.Width, 60),
-                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
-
-            // Main text
-            canvas.FontColor = Colors.Gold.WithAlpha(textAlpha);
-            canvas.FontSize = 48 * textScale;
-            canvas.DrawString("MATCH START!",
-                new RectF(0, dirtyRect.Height * 0.38f, dirtyRect.Width, 60),
+            float alpha = Math.Clamp(Math.Min((180 - ticksRemaining) / 30f,
+                (ticksRemaining - 60) / 30f), 0, 1);
+            float w = Math.Min(220, dirtyRect.Width - 32);
+            float x = dirtyRect.Center.X - w / 2;
+            canvas.FillColor = ArenaBackground.WithAlpha(alpha * 0.9f);
+            canvas.FillRoundedRectangle(x, 106, w, 36, 12);
+            canvas.FontColor = CourtWhite.WithAlpha(alpha);
+            canvas.FontSize = 16;
+            canvas.DrawString("DAGS FÖR AVKAST", new RectF(x, 106, w, 36),
                 G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
         }
     }
@@ -5142,7 +5118,7 @@ public class GameDrawable : IDrawable
         if (_state.IsMatchOver)
         {
             // Full-time overlay
-            canvas.FillColor = Color.FromArgb("#DD2C1B0E");
+            canvas.FillColor = OverlayBg;
             canvas.FillRectangle(dirtyRect);
 
             canvas.FontColor = Colors.Gold;
@@ -5360,9 +5336,15 @@ public class GameDrawable : IDrawable
         canvas.StrokeSize = 6;
         canvas.DrawRoundedRectangle(rect.X + 1, rect.Y + 1, rect.Width, rect.Height, 2);
 
-        canvas.StrokeColor = color;
+        canvas.StrokeColor = CourtWhite;
         canvas.StrokeSize = 4;
         canvas.DrawRoundedRectangle(rect, 2);
+        canvas.StrokeColor = Color.FromArgb("#A52B3A");
+        for (float y = rect.Top + 10; y < rect.Bottom - 4; y += 20)
+        {
+            canvas.DrawLine(rect.Left, y, rect.Left, Math.Min(y + 10, rect.Bottom));
+            canvas.DrawLine(rect.Right, y, rect.Right, Math.Min(y + 10, rect.Bottom));
+        }
 
         // Inner frame highlight (sheen)
         canvas.StrokeColor = Colors.White.WithAlpha(0.2f);

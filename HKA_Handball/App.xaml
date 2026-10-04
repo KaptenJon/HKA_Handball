@@ -9,6 +9,10 @@
             <Color x:Key="AranasBlue">#003DA5</Color>
             <Color x:Key="AranasBlueLight">#2E7CF6</Color>
             <Color x:Key="AranasWhite">#FFFFFF</Color>
+            <Color x:Key="ArenaNavy">#0D1928</Color>
+            <Color x:Key="SurfaceNavy">#16283D</Color>
+            <Color x:Key="MutedText">#ACBED1</Color>
+            <Color x:Key="IceBlue">#83C5FF</Color>
             <Color x:Key="FieldGreen">#1B5E20</Color>
 
             <!-- Shared accent used for focus rings and warning/celebration highlights,
@@ -17,7 +21,7 @@
 
             <!-- Glass-panel treatment shared by menu cards and in-game HUD panels
                  so both screens read as one consistent design language. -->
-            <Color x:Key="PanelStroke">#33FFFFFF</Color>
+            <Color x:Key="PanelStroke">#354B62</Color>
 
             <Style x:Key="BaseButtonStyle" TargetType="Button">
                 <Setter Property="BackgroundColor" Value="{StaticResource AranasBlue}" />

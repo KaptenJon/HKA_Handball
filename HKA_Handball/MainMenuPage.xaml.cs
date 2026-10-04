@@ -35,6 +35,27 @@ public partial class MainMenuPage : ContentPage
         Loaded += OnPageLoaded;
         UpdateDifficultyButtons();
         BuildColorSwatches();
+        HomeColorStack.SizeChanged += (_, _) => ResizePalette(HomeColorStack);
+        AwayColorStack.SizeChanged += (_, _) => ResizePalette(AwayColorStack);
+    }
+
+    static void ResizePalette(Grid palette)
+    {
+        if (palette.Width <= 0) return;
+        int columns = Math.Clamp((int)((palette.Width + 6) / 50), 1, 4);
+        if (palette.ColumnDefinitions.Count == columns) return;
+        palette.ColumnDefinitions.Clear();
+        palette.RowDefinitions.Clear();
+        for (int i = 0; i < columns; i++)
+            palette.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        int rows = (int)Math.Ceiling(ColorPresets.Length / (double)columns);
+        for (int i = 0; i < rows; i++)
+            palette.RowDefinitions.Add(new RowDefinition(44));
+        for (int i = 0; i < palette.Children.Count; i++)
+        {
+            palette.SetColumn(palette.Children[i], i % columns);
+            palette.SetRow(palette.Children[i], i / columns);
+        }
     }
 
     async void OnPageLoaded(object? sender, EventArgs e)
@@ -108,15 +129,15 @@ public partial class MainMenuPage : ContentPage
 
     static void UpdateDifficultyButton(Button button, bool selected, string selectedBackground)
     {
-        const string unselectedBackground = "#253038";
-        const string selectedBorder = "#EFFFFFFF";
-        const string unselectedBorder = "#75FFFFFF";
+        const string unselectedBackground = "#20344B";
+        const string selectedBorder = "#83C5FF";
+        const string unselectedBorder = "#4B6682";
 
         button.BackgroundColor = Color.FromArgb(selected ? selectedBackground : unselectedBackground);
         button.BorderColor = Color.FromArgb(selected ? selectedBorder : unselectedBorder);
-        button.BorderWidth = selected ? 3 : 1;
-        button.Opacity = selected ? 1.0 : 0.78;
-        button.Scale = selected ? 1.0 : 0.96;
+        button.BorderWidth = selected ? 2 : 1;
+        button.Opacity = 1;
+        button.Scale = 1;
     }
 
     async void OnSinglePlayer(object? sender, EventArgs e)
@@ -144,8 +165,14 @@ public partial class MainMenuPage : ContentPage
         AwayColorStack.Children.Clear();
         for (int i = 0; i < ColorPresets.Length; i++)
         {
-            HomeColorStack.Children.Add(CreateSwatch(i, isHome: true));
-            AwayColorStack.Children.Add(CreateSwatch(i, isHome: false));
+            var home = CreateSwatch(i, isHome: true);
+            var away = CreateSwatch(i, isHome: false);
+            Grid.SetColumn(home, i % 4);
+            Grid.SetRow(home, i / 4);
+            Grid.SetColumn(away, i % 4);
+            Grid.SetRow(away, i / 4);
+            HomeColorStack.Children.Add(home);
+            AwayColorStack.Children.Add(away);
         }
         UpdateColorSwatches();
     }
@@ -154,13 +181,16 @@ public partial class MainMenuPage : ContentPage
     {
         var swatch = new Border
         {
-            WidthRequest = 30,
-            HeightRequest = 30,
+            WidthRequest = 44,
+            HeightRequest = 44,
+            HorizontalOptions = LayoutOptions.Start,
             BackgroundColor = Color.FromArgb(ColorPresets[index].Primary),
             StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 8 },
             Stroke = Colors.Transparent,
             StrokeThickness = 1.5f,
         };
+        SemanticProperties.SetDescription(swatch,
+            $"{(isHome ? "Hemma" : "Borta")}: {ColorPresets[index].Name}");
         var tap = new TapGestureRecognizer();
         int capturedIndex = index;
         bool capturedIsHome = isHome;
@@ -186,7 +216,13 @@ public partial class MainMenuPage : ContentPage
                 var selected = i == _selectedHomeColorIndex;
                 b.Stroke = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
                 b.StrokeThickness = selected ? 2.5f : 1.0f;
-                b.Scale = selected ? 1.08 : 1.0;
+                b.Content = selected ? new Label
+                {
+                    Text = "✓", FontSize = 19, FontAttributes = FontAttributes.Bold,
+                    TextColor = i is 3 or 7 ? Color.FromArgb("#0D1928") : Colors.White,
+                    HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center,
+                    InputTransparent = true
+                } : null;
                 // Dim already-picked color by blending with dark background instead of Opacity
                 // (Opacity changes trigger layout recalculation causing swatches to jump)
                 var baseColor = Color.FromArgb(ColorPresets[i].Primary);
@@ -202,7 +238,13 @@ public partial class MainMenuPage : ContentPage
                 var selected = i == _selectedAwayColorIndex;
                 b.Stroke = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
                 b.StrokeThickness = selected ? 2.5f : 1.0f;
-                b.Scale = selected ? 1.08 : 1.0;
+                b.Content = selected ? new Label
+                {
+                    Text = "✓", FontSize = 19, FontAttributes = FontAttributes.Bold,
+                    TextColor = i is 3 or 7 ? Color.FromArgb("#0D1928") : Colors.White,
+                    HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center,
+                    InputTransparent = true
+                } : null;
                 var baseColor = Color.FromArgb(ColorPresets[i].Primary);
                 b.BackgroundColor = i == _selectedHomeColorIndex
                     ? baseColor.WithAlpha(0.3f)

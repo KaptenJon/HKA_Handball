@@ -4,7 +4,7 @@
              x:Class="HKA_Handball.GamePage"
              Title="HKA Handball"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="#2C1B0E">
+             BackgroundColor="{StaticResource ArenaNavy}">
     <Grid>
         <GraphicsView x:Name="GameView"
                       HorizontalOptions="FillAndExpand"
@@ -18,9 +18,9 @@
         <Border x:Name="StatusBadge"
                 HorizontalOptions="Center"
                 VerticalOptions="Start"
-                Margin="0,72,0,0"
+                Margin="12,62,12,0"
                 Padding="10,6"
-                BackgroundColor="#38110804"
+                BackgroundColor="#E616283D"
                 Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 18"
@@ -38,6 +38,8 @@
                        Grid.Column="1"
                        TextColor="#F4F4F4"
                        FontSize="12"
+                       LineBreakMode="WordWrap"
+                       MaxLines="2"
                        FontAttributes="Bold"
                        HorizontalOptions="Center"
                        VerticalOptions="Center" />
@@ -49,15 +51,16 @@
                 HorizontalOptions="Start"
                 VerticalOptions="End"
                 Margin="12,0,0,12"
-                Padding="8"
-                BackgroundColor="#1A0E0A06"
+                Padding="4"
+                BackgroundColor="#A60D1928"
                 Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 26">
             <Border.Shadow>
                 <Shadow Brush="#80000000" Offset="0,4" Radius="10" Opacity="0.35" />
             </Border.Shadow>
-            <controls:JoystickView x:Name="Joystick" WidthRequest="140" HeightRequest="140" />
+            <controls:JoystickView x:Name="Joystick" WidthRequest="112" HeightRequest="112"
+                                   SemanticProperties.Description="Flytta hemmaspelaren" />
         </Border>
 
         <!-- PLAYER 1 RIGHT THUMB: Action buttons (single-player and two-player, left side) -->
@@ -65,8 +68,8 @@
                 HorizontalOptions="End"
                 VerticalOptions="End"
                 Margin="0,0,12,12"
-                Padding="10"
-                BackgroundColor="#1A0E0A06"
+                Padding="8"
+                BackgroundColor="#DF0D1928"
                 Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 26">
@@ -74,32 +77,30 @@
                 <Shadow Brush="#80000000" Offset="0,4" Radius="10" Opacity="0.35" />
             </Border.Shadow>
             <Grid x:Name="Player1ButtonsGrid"
-                  RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,Auto"
+                  RowDefinitions="Auto,Auto" ColumnDefinitions="*,*"
                   RowSpacing="6" ColumnSpacing="6">
 
                 <!-- Attack controls (visible when attacking) -->
-                <Button x:Name="PassUpButton" Text="⬆ Pass" FontSize="15"
+                <Button x:Name="PassUpButton" Text="↑ Pass" FontSize="14"
                         BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
-                        HeightRequest="52" MinimumWidthRequest="90"
+                        HeightRequest="44" MinimumWidthRequest="76"
                         Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnPassUp" />
-                <Button x:Name="PassDownButton" Grid.Row="1" Text="⬇ Pass" FontSize="15"
+                <Button x:Name="PassDownButton" Grid.Column="1" Text="↓ Pass" FontSize="14"
                         BackgroundColor="#003DA5" TextColor="White" CornerRadius="12"
-                        HeightRequest="52" MinimumWidthRequest="90"
+                        HeightRequest="44" MinimumWidthRequest="76"
                         Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnPassDown" />
-                <Button x:Name="DribbleButton" Grid.Row="2" Text="↕ Studsa" FontSize="15"
-                        BackgroundColor="#1565C0" TextColor="White" CornerRadius="12"
-                        HeightRequest="52" MinimumWidthRequest="90"
-                        Style="{StaticResource PressableButtonStyle}"
-                        Pressed="OnDribble" />
-                <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="2" Grid.Column="1"
-                        HeightRequest="65" WidthRequest="100" />
+                <Label x:Name="DribbleButton" Grid.Row="1" Text="↕ Auto-studs" FontSize="11"
+                       TextColor="#ACBED1" VerticalOptions="Center"
+                       HorizontalTextAlignment="Center" InputTransparent="True" />
+                <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="1" Grid.Column="1"
+                        HeightRequest="64" SemanticProperties.Description="Tryck i målet för att sikta och skjuta" />
 
                 <!-- Defense controls (visible when defending) -->
-                <Button x:Name="SwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
-                        BackgroundColor="#FF8F00" TextColor="White" CornerRadius="12"
-                        HeightRequest="52" MinimumWidthRequest="90"
+                <Button x:Name="SwitchDefenderButton" Grid.ColumnSpan="2" Text="Byt försvarare" FontSize="14"
+                        BackgroundColor="#B7791F" TextColor="White" CornerRadius="12"
+                        HeightRequest="44" MinimumWidthRequest="76"
                         Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnSwitchDefender" />
             </Grid>
@@ -110,8 +111,8 @@
                 HorizontalOptions="End"
                 VerticalOptions="End"
                 Margin="0,0,182,12"
-                Padding="8"
-                BackgroundColor="#1A0E0A06"
+                Padding="4"
+                BackgroundColor="#A60D1928"
                 Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 26"
@@ -119,7 +120,8 @@
             <Border.Shadow>
                 <Shadow Brush="#80000000" Offset="0,4" Radius="10" Opacity="0.35" />
             </Border.Shadow>
-            <controls:JoystickView x:Name="Joystick2" WidthRequest="140" HeightRequest="140" />
+            <controls:JoystickView x:Name="Joystick2" WidthRequest="112" HeightRequest="112"
+                                   SemanticProperties.Description="Flytta bortaspelaren" />
         </Border>
 
         <!-- PLAYER 2 LEFT THUMB: Action buttons for away team (two-player mode only) -->
@@ -127,8 +129,8 @@
                 HorizontalOptions="Start"
                 VerticalOptions="End"
                 Margin="182,0,0,12"
-                Padding="10"
-                BackgroundColor="#1A0E0A06"
+                Padding="8"
+                BackgroundColor="#DF0D1928"
                 Stroke="{StaticResource PanelStroke}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 26"
@@ -137,32 +139,30 @@
                 <Shadow Brush="#80000000" Offset="0,4" Radius="10" Opacity="0.35" />
             </Border.Shadow>
             <Grid x:Name="Player2ButtonsGrid"
-                  RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,Auto"
+                  RowDefinitions="Auto,Auto" ColumnDefinitions="*,*"
                   RowSpacing="6" ColumnSpacing="6">
 
                 <!-- Away attack controls -->
-                <Button x:Name="AwayPassUpButton" Text="⬆ Pass" FontSize="15"
+                <Button x:Name="AwayPassUpButton" Text="↑ Pass" FontSize="14"
                         BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
-                        HeightRequest="52" MinimumWidthRequest="90"
+                        HeightRequest="44" MinimumWidthRequest="76"
                         Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnAwayPassUp" />
-                <Button x:Name="AwayPassDownButton" Grid.Row="1" Text="⬇ Pass" FontSize="15"
+                <Button x:Name="AwayPassDownButton" Grid.Column="1" Text="↓ Pass" FontSize="14"
                         BackgroundColor="#B71C1C" TextColor="White" CornerRadius="12"
-                        HeightRequest="52" MinimumWidthRequest="90"
+                        HeightRequest="44" MinimumWidthRequest="76"
                         Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnAwayPassDown" />
-                <Button x:Name="AwayDribbleButton" Grid.Row="2" Text="↕ Studsa" FontSize="15"
-                        BackgroundColor="#C62828" TextColor="White" CornerRadius="12"
-                        HeightRequest="52" MinimumWidthRequest="90"
-                        Style="{StaticResource PressableButtonStyle}"
-                        Pressed="OnAwayDribble" />
-                <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="2" Grid.Column="1"
-                        HeightRequest="65" WidthRequest="100" />
+                <Label x:Name="AwayDribbleButton" Grid.Row="1" Text="↕ Auto-studs" FontSize="11"
+                       TextColor="#ACBED1" VerticalOptions="Center"
+                       HorizontalTextAlignment="Center" InputTransparent="True" />
+                <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="1" Grid.Column="1"
+                        HeightRequest="64" SemanticProperties.Description="Tryck i målet för att sikta och skjuta" />
 
                 <!-- Away defense controls -->
-                <Button x:Name="AwaySwitchDefenderButton" Grid.Row="2" Text="🔄 Byt" FontSize="15"
-                        BackgroundColor="#E65100" TextColor="White" CornerRadius="12"
-                        HeightRequest="52" MinimumWidthRequest="90"
+                <Button x:Name="AwaySwitchDefenderButton" Grid.ColumnSpan="2" Text="Byt försvarare" FontSize="14"
+                        BackgroundColor="#B7791F" TextColor="White" CornerRadius="12"
+                        HeightRequest="44" MinimumWidthRequest="76"
                         Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnAwaySwitchDefender" />
             </Grid>

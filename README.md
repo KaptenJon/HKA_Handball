@@ -8,6 +8,22 @@ A free, offline handball game built with .NET MAUI.
 - 🏐 **Handball rules** – goal area, free throws, goalkeeper saves
 - 📱 **Fully offline** – no internet, no ads, no data collection
 - 🆓 **100% free** – open source, no in-app purchases
+- 🏟️ **Indoor arena presentation** – maple court, painted goal areas, striped
+  goals, shaded player kits and ball, and compact high-contrast match controls
+
+The menu's team-colour palettes wrap on smaller screens. Match controls resize
+for compact landscape windows and local two-player play. White markers identify
+the ball carrier; gold markers identify the controlled defender. The mini goal
+labelled **SIKTA / SKJUT** is the touch shooting control. **Auto-studs** and
+**Max 3 steg** are ball-handling indicators, not buttons.
+
+### Ball handling
+
+The ball carrier automatically dribbles continuously while moving, for both teams
+and in single-player or two-player local mode. After stopping briefly and picking
+up the ball, the carrier cannot dribble again until a new catch or possession.
+They may take up to three steps and hold the ball for at most three seconds before
+passing or shooting. Pass and shoot controls remain available during dribbling.
 
 ## Download
 
