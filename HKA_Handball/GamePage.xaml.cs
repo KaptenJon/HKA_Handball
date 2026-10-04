@@ -507,6 +507,9 @@ public class GameState
     const double GoalResetCarrierSpeed = 380;
     const double GoalResetBaseFieldSpeed = 260;
     const double GoalResetSpeedStepPerLane = 22;
+    const double AIOutfieldMaxSpeed = 260;
+    const double AIOutfieldAcceleration = 900;
+    const double AIOutfieldDeceleration = 1100;
 
     // Free throw positioning
     public const double FreeThrowMinDefenderDistance = 45; // ~3 meters — IHF minimum distance defenders must keep
@@ -694,7 +697,17 @@ public class GameState
     public double MatchClockSeconds { get; private set; } // game-time elapsed in current half
     public bool IsHalfTime { get; private set; }
     public bool IsMatchOver { get; private set; }
-    public bool IsPaused { get; set; }
+    bool _isPaused;
+    public bool IsPaused
+    {
+        get => _isPaused;
+        set
+        {
+            if (_isPaused == value) return;
+            _isPaused = value;
+            ResetAIOutfieldVelocities();
+        }
+    }
     public bool ShowKeyboardHelp { get; set; }
     int _halfTimeCountdown;
 
@@ -1572,6 +1585,8 @@ public class GameState
                 for (int pi = 0; pi < team.Length; pi++)
                 {
                     var actor = team[pi];
+                    if (!actor.IsGoalkeeper)
+                        actor.Velocity = Point.Zero;
                     var target = team == HomePlayers ? _goalResetHomeTargets[pi] : _goalResetAwayTargets[pi];
                     var dx = target.X - actor.Position.X;
                     var dy = target.Y - actor.Position.Y;
@@ -1625,11 +1640,13 @@ public class GameState
             var owner = HomePlayers[BallOwnerPlayerIndex];
             if (owner.IsSuspended)
             {
+                owner.Velocity = Point.Zero;
                 GiveBallToOpponent(GetNearestAwayIndex(owner.Position), "Spelare utvisad: motståndarboll");
                 ApplyRestartPause();
                 return;
             }
 
+            owner.Velocity = Point.Zero;
             var previousOwnerPosition = owner.Position;
             double fastBreakMult = _homeFastBreakTicks > 0 ? FastBreakSpeedMultiplier : 1.0;
             bool hasManualInput = Math.Abs(ActiveMoveInput.X) > 5 || Math.Abs(ActiveMoveInput.Y) > 5
@@ -1690,6 +1707,7 @@ public class GameState
             // Suspended players stay off-field
             if (HomePlayers[i].IsSuspended)
             {
+                HomePlayers[i].Velocity = Point.Zero;
                 HomePlayers[i].Position = new Point(20, 30); // bench area top-left
                 continue;
             }
@@ -1704,6 +1722,7 @@ public class GameState
                 if (hasManualDefenseInput)
                 {
                     var c = HomePlayers[i];
+                    c.Velocity = Point.Zero;
                     const double defenderControlBoost = 1.7;
                     double forwardBoost = _defenderAdvanceBoost ? 180 : 0;
                     double sideBoost = _defenderSideBoostY;
@@ -1809,10 +1828,8 @@ public class GameState
                         desiredY = slotY;
                 }
             }
-            double movementLerp = (_passActive && i == _passTargetHomeIndex) ? 0.07 : 0.04;
-            double newX = p.Position.X + (desiredX - p.Position.X) * movementLerp;
-            double newY = p.Position.Y + (desiredY - p.Position.Y) * movementLerp;
-            p.Position = new Point(newX, newY);
+            double movementSpeedMultiplier = (_passActive && i == _passTargetHomeIndex) ? 1.5 : 1.0;
+            MoveActorTowardTarget(p, new Point(desiredX, desiredY), dt, movementSpeedMultiplier);
             ClampActor(p);
         }
 
@@ -1908,7 +1925,7 @@ public class GameState
             var r = HomePlayers[_formerOwnerIndex];
             double targetX = Math.Min(pressLineX - (_formerOwnerIndex * 18), ViewSize.Width - 200);
             targetX = Math.Max(r.BaseX + 30, targetX);
-            r.Position = new Point(r.Position.X + (targetX - r.Position.X) * 0.01, r.Position.Y + (r.BaseY - r.Position.Y) * 0.04);
+            MoveActorTowardTarget(r, new Point(targetX, r.BaseY), dt);
             ClampActor(r);
             if (Math.Abs(r.Position.X - targetX) < 2 && Math.Abs(r.Position.Y - r.BaseY) < 2)
             {
@@ -1935,6 +1952,7 @@ public class GameState
 
             if (a.IsSuspended)
             {
+                a.Velocity = Point.Zero;
                 a.Position = new Point(ViewSize.Width > 0 ? ViewSize.Width - 20 : 700, 30);
                 continue;
             }
@@ -1949,6 +1967,7 @@ public class GameState
                                               || _awayAdvanceBoost2;
                     if (hasManualDefense2)
                     {
+                        a.Velocity = Point.Zero;
                         const double defenderControlBoost = 1.7;
                         double forwardBoost = _awayAdvanceBoost2 ? -180 : 0; // negative = step out leftward to pressure home attackers
                         a.Position = new Point(
@@ -2016,17 +2035,13 @@ public class GameState
                         i,
                         trackedIdx,
                         homeDefending: false);
-                    a.Position = new Point(
-                        Lerp(a.Position.X, markedPos.X, 0.08),
-                        Lerp(a.Position.Y, markedPos.Y, 0.08));
+                    MoveActorTowardTarget(a, markedPos, dt);
                 }
                 else
                 {
                     // No specific attacker: smoothly sway toward base position
                     var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
-                    a.Position = new Point(
-                        Lerp(a.Position.X, a.BaseX, 0.06),
-                        Lerp(a.Position.Y, a.BaseY + swing, 0.06));
+                    MoveActorTowardTarget(a, new Point(a.BaseX, a.BaseY + swing), dt);
                 }
                 ClampActor(a);
                 continue;
@@ -2034,6 +2049,7 @@ public class GameState
 
             if (awayAttacking && i == BallOwnerAwayIndex)
             {
+                a.Velocity = Point.Zero;
                 var previousAwayOwnerPosition = a.Position;
                 if (RejectBallHandlingActionIfIllegal())
                     return;
@@ -2180,13 +2196,10 @@ public class GameState
                     supportX = Math.Max(GoalCenterInset + GoalAreaRadius + 20, supportX - RollingPlayRunLeadX);
                     supportY = Lerp(supportY, BallPos.Y, 0.18);
                 }
-                // Use faster lerp during fast break to match home team transition speed
-                double supportLerp = _awayPassActive && i == _awayPassTargetIndex
-                    ? 0.08
-                    : (_awayFastBreakTicks > 0 ? 0.07 : 0.05);
-                a.Position = new Point(
-                    Lerp(a.Position.X, supportX, supportLerp),
-                    Lerp(a.Position.Y, supportY, supportLerp));
+                MoveActorTowardTarget(a, new Point(supportX, supportY), dt,
+                    _awayPassActive && i == _awayPassTargetIndex
+                        ? 1.5
+                        : (_awayFastBreakTicks > 0 ? 1.4 : 1.0));
             }
             ClampActor(a);
         }
@@ -2598,6 +2611,84 @@ public class GameState
             BallOwnershipType.Opponent => $"Försvarar med #{ControlledDefenderIndex} | Borta #{BallOwnerAwayIndex}" + (_awayFastBreakTicks > 0 ? " ⚡" : ""),
             _ => "Lös boll"
         };
+    }
+
+    void ResetAIOutfieldVelocities()
+    {
+        foreach (var team in new[] { HomePlayers, AwayPlayers })
+            for (int i = 1; i < team.Length; i++)
+                team[i].Velocity = Point.Zero;
+    }
+
+    void MoveActorTowardTarget(Actor actor, Point target, double dt, double speedMultiplier = 1.0)
+    {
+        if (dt <= 0 || actor.IsGoalkeeper || actor.IsSuspended)
+        {
+            actor.Velocity = Point.Zero;
+            return;
+        }
+
+        double dx = target.X - actor.Position.X;
+        double dy = target.Y - actor.Position.Y;
+        double distance = Math.Sqrt(dx * dx + dy * dy);
+        double currentSpeed = Math.Sqrt(
+            actor.Velocity.X * actor.Velocity.X + actor.Velocity.Y * actor.Velocity.Y);
+        if (distance < 0.5 && currentSpeed < 3)
+        {
+            actor.Position = target;
+            actor.Velocity = Point.Zero;
+            return;
+        }
+
+        double desiredSpeed = Math.Min(
+            AIOutfieldMaxSpeed * speedMultiplier,
+            Math.Sqrt(2 * AIOutfieldDeceleration * distance));
+        double desiredVelocityX = distance > 0 ? dx / distance * desiredSpeed : 0;
+        double desiredVelocityY = distance > 0 ? dy / distance * desiredSpeed : 0;
+        double velocityDeltaX = desiredVelocityX - actor.Velocity.X;
+        double velocityDeltaY = desiredVelocityY - actor.Velocity.Y;
+        double velocityDelta = Math.Sqrt(velocityDeltaX * velocityDeltaX + velocityDeltaY * velocityDeltaY);
+        double currentTowardTarget = actor.Velocity.X * desiredVelocityX + actor.Velocity.Y * desiredVelocityY;
+        double maxVelocityChange = (desiredSpeed < currentSpeed || currentTowardTarget <= 0
+            ? AIOutfieldDeceleration
+            : AIOutfieldAcceleration) * dt;
+
+        if (velocityDelta > maxVelocityChange && velocityDelta > 0)
+        {
+            double scale = maxVelocityChange / velocityDelta;
+            velocityDeltaX *= scale;
+            velocityDeltaY *= scale;
+        }
+
+        double nextVelocityX = actor.Velocity.X + velocityDeltaX;
+        double nextVelocityY = actor.Velocity.Y + velocityDeltaY;
+        double nextSpeed = Math.Sqrt(nextVelocityX * nextVelocityX + nextVelocityY * nextVelocityY);
+        double maxSpeed = AIOutfieldMaxSpeed * speedMultiplier;
+        if (nextSpeed > maxSpeed)
+        {
+            nextVelocityX *= maxSpeed / nextSpeed;
+            nextVelocityY *= maxSpeed / nextSpeed;
+        }
+
+        var nextPosition = new Point(
+            actor.Position.X + (actor.Velocity.X + nextVelocityX) * 0.5 * dt,
+            actor.Position.Y + (actor.Velocity.Y + nextVelocityY) * 0.5 * dt);
+        double remainingX = target.X - nextPosition.X;
+        double remainingY = target.Y - nextPosition.Y;
+        if (dx * remainingX + dy * remainingY <= 0
+            || (Math.Sqrt(remainingX * remainingX + remainingY * remainingY) < 0.5
+                && nextSpeed < 3))
+        {
+            actor.Position = target;
+            actor.Velocity = Point.Zero;
+            return;
+        }
+
+        actor.Position = nextPosition;
+        actor.Velocity = new Point(nextVelocityX, nextVelocityY);
+        ClampActor(actor);
+        if (Distance(actor.Position, nextPosition) > 0.01)
+            actor.Velocity = Point.Zero;
     }
 
     void ClampActor(Actor a)
