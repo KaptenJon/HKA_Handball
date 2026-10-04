@@ -1711,6 +1711,7 @@ public class GameState
                 HomePlayers[i].Position = new Point(20, 30); // bench area top-left
                 continue;
             }
+            if (_retreatingFormerOwner && i == _formerOwnerIndex) continue;
             if (BallOwnerType == BallOwnershipType.Player && i == BallOwnerPlayerIndex) continue;
             if (IsHomeDefending && i == ControlledDefenderIndex)
             {
