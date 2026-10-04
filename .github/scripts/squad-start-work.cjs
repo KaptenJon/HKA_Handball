@@ -1,7 +1,7 @@
 const { readFileSync } = require('node:fs');
+const isCopilotLogin = require('./copilot-identity.cjs');
 
 const marker = '<!-- squad-execution-status -->';
-const copilotLogins = new Set(['copilot-swe-agent', 'copilot-swe-agent[bot]']);
 
 module.exports = async function startWork({
   github, context, core, env = process.env, fetchImpl = fetch
@@ -37,7 +37,11 @@ module.exports = async function startWork({
     return;
   }
 
-  if (issue.assignees?.some(assignee => copilotLogins.has(assignee.login))) {
+  if (issue.assignees?.some(assignee => isCopilotLogin(assignee.login))) {
+    if (comments.some(comment => comment.user?.login === 'github-actions[bot]' &&
+        comment.body?.includes(marker) && comment.body.includes('**Squad could not start:**'))) {
+      await report('**Squad running:** the existing Copilot assignment is confirmed. The earlier kickoff failure was incorrect; no additional session was started.');
+    }
     core.info(`Copilot is already assigned to #${issueNumber}; no duplicate session started.`);
     return;
   }
@@ -101,7 +105,7 @@ module.exports = async function startWork({
     if (!response.ok) {
       throw new Error(`Copilot assignment failed (HTTP ${response.status}): ${assigned.message || response.statusText}`);
     }
-    if (!assigned.assignees?.some(assignee => copilotLogins.has(assignee.login))) {
+    if (!assigned.assignees?.some(assignee => isCopilotLogin(assignee.login))) {
       throw new Error('GitHub did not assign Copilot. Verify the token permissions and cloud-agent access for this repository.');
     }
     await report('**Squad started:** Copilot is assigned using the Squad Cloud coordinator. Squad will plan, implement, review and open a draft PR. A human must review it and mark it ready; auto-merge then waits for required approval and checks.');

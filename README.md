@@ -75,6 +75,10 @@ To pause work, add `go:no`, `go:blocked` or `go:needs-human`. To retry a failed
 kickoff or process an existing issue such as #111, use **Actions -> Issue Agent
 Pipeline -> Run workflow** and supply `issue_number`. Existing Copilot assignees
 prevent duplicate starts; retries update a single execution-status comment.
+Assignment verification, heartbeat retries and PR author checks share the same
+case-insensitive Copilot identity check, including the REST login `Copilot`.
+Retrying an already-assigned issue corrects any old false kickoff-failure comment
+without starting another session.
 Ralph's heartbeat also re-dispatches open, unassigned Squad issues. Issues from
 external contributors still need a maintainer-triggered retry if kickoff fails.
 
