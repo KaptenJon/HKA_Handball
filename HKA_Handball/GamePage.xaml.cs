@@ -1829,7 +1829,8 @@ public class GameState
                 }
             }
             double movementSpeedMultiplier = (_passActive && i == _passTargetHomeIndex) ? 1.5 : 1.0;
-            MoveActorTowardTarget(p, new Point(desiredX, desiredY), dt, movementSpeedMultiplier);
+if (!_retreatingFormerOwner || i != _formerOwnerIndex)
+                MoveActorTowardTarget(p, new Point(desiredX, desiredY), dt, movementSpeedMultiplier);
             ClampActor(p);
         }
 
