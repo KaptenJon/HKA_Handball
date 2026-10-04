@@ -3,9 +3,16 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const startWork = require('./squad-start-work.cjs');
 const enableAutoMerge = require('./squad-auto-merge.cjs');
+const isCopilotLogin = require('./copilot-identity.cjs');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
-function kickoffFixture(overrides = {}) {
+test('the identity check rejects missing, unrelated and lookalike logins', () => {
+  for (const login of [undefined, null, 123, '', 'KaptenJon', 'copilot-helper', 'copilot-swe-agent-human']) {
+    assert.equal(isCopilotLogin(login), false);
+  }
+});
+
+function kickoffFixture(overrides = {}, assignmentLogin = 'Copilot') {
   const calls = [];
   const issue = {
     number: 111, state: 'open', labels: [{ name: 'squad' }, { name: 'squad:maja' }],
@@ -31,7 +38,7 @@ function kickoffFixture(overrides = {}) {
     github, issue, calls, comments,
     fetchImpl: async (url, input) => {
       calls.push(['assign', JSON.parse(input.body), input, url]);
-      issue.assignees = [{ login: 'copilot-swe-agent[bot]' }];
+      issue.assignees = [{ login: assignmentLogin }];
       return { ok: true, json: async () => issue };
     },
     context: { repo: { owner: 'KaptenJon', repo: 'HKA_Handball' }, actor: 'KaptenJon' },
@@ -65,13 +72,32 @@ test('the actual cloud profile fits GitHub limits and requires real delegated re
   assert.match(profile, /specialist invocation is unavailable/);
 });
 
-for (const login of ['copilot-swe-agent', 'copilot-swe-agent[bot]']) {
+for (const login of ['Copilot', 'copilot', 'copilot-swe-agent', 'copilot-swe-agent[bot]']) {
+  test(`the assignment response recognizes ${login} as successful execution`, async () => {
+    const f = kickoffFixture({}, login);
+    await startWork(f);
+    assert.equal(f.calls.filter(([kind]) => kind === 'assign').length, 1);
+    assert.match(f.calls.find(([kind]) => kind === 'comment')[1].body, /Squad started/);
+  });
+
   test(`an existing ${login} assignee prevents duplicate sessions`, async () => {
     const f = kickoffFixture({ assignees: [{ login }] });
     await startWork(f);
     assert.equal(f.calls.length, 0);
   });
 }
+
+test('an existing Copilot assignment repairs the old false failure comment without a new session', async () => {
+  const f = kickoffFixture({ assignees: [{ login: 'Copilot' }] });
+  f.comments.push({
+    id: 2, user: { login: 'github-actions[bot]' },
+    body: '<!-- squad-execution-status -->\n**Squad could not start:** GitHub did not assign Copilot.'
+  });
+  await startWork(f);
+  assert.deepEqual(f.calls.map(([kind]) => kind), ['update']);
+  assert.equal(f.calls[0][1].comment_id, 2);
+  assert.match(f.calls[0][1].body, /Squad running/);
+});
 
 for (const label of ['go:no', 'go:blocked', 'go:needs-human']) {
   test(`${label} blocks execution with a visible comment`, async () => {
@@ -232,6 +258,16 @@ test('enables native squash auto-merge rather than directly merging', async () =
   assert.deepEqual(f.calls[1].variables, { id: 'PR_112' });
 });
 
+for (const login of ['Copilot', 'copilot', 'copilot-swe-agent', 'copilot-swe-agent[bot]']) {
+  test(`auto-merge recognizes the Copilot author alias ${login}`, async () => {
+    const f = mergeFixture();
+    f.pr.user.login = login;
+    await enableAutoMerge(f);
+    assert.equal(f.calls.length, 2);
+    assert.match(f.calls[1].query, /enablePullRequestAutoMerge/);
+  });
+}
+
 for (const [name, change] of [
   ['draft', f => { f.pr.draft = true; }],
   ['closed', f => { f.pr.state = 'closed'; }],
@@ -288,8 +324,10 @@ for (const [name, change] of [
 }
 
 function workflowScript(path) {
-  const source = readFileSync(path, 'utf8');
-  const script = source.split('          script: |\n')[1];
+  const source = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
+  const scripts = source.split('          script: |\n');
+  assert.ok(scripts.length > 1, `No script block in ${path}`);
+  const script = scripts.at(-1);
   assert.ok(script, `No script in ${path}`);
   return new AsyncFunction('github', 'context', 'core', 'require',
     script.replace(/^            /gm, ''));
@@ -316,6 +354,31 @@ test('actual triage routes a weekly UI improvement to maja without overriding a 
   assert.deepEqual(labels, ['squad:maja']);
   assert.match(f.calls.find(([kind]) => kind === 'comment')[1].body, /Squad Triage/);
 });
+
+for (const login of ['Copilot', 'copilot', 'copilot-swe-agent', 'copilot-swe-agent[bot]']) {
+  test(`the actual heartbeat skips ${login} assignments but resumes unassigned issues`, async () => {
+    const { createRequire } = require('node:module');
+    const { resolve } = require('node:path');
+    const calls = [];
+    const github = {
+      rest: { issues: { listForRepo() {} }, actions: {
+        createWorkflowDispatch: async input => calls.push(input)
+      } },
+      paginate: async () => [
+        { number: 114, assignees: [{ login }], labels: [{ name: 'squad' }] },
+        { number: 111, assignees: [], labels: [{ name: 'squad' }] }
+      ]
+    };
+    const context = {
+      repo: { owner: 'KaptenJon', repo: 'HKA_Handball' },
+      payload: { repository: { default_branch: 'master' } }
+    };
+    await workflowScript('.github/workflows/squad-heartbeat.yml')(
+      github, context, { info() {} }, createRequire(resolve('workflow-script.cjs')));
+    assert.deepEqual(calls.map(call => call.inputs.issue_number), ['111']);
+    assert.equal(calls[0].workflow_id, 'issue-agent-pipeline.yml');
+  });
+}
 
 test('production entry points call execution directly and templates stay synchronized', () => {
   const pipeline = readFileSync('.github/workflows/issue-agent-pipeline.yml', 'utf8');

@@ -113,12 +113,13 @@ jobs:
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b #v7
         with:
           script: |
+            const isCopilotLogin = require('./.github/scripts/copilot-identity.cjs');
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               ...context.repo, labels: 'squad', state: 'open', per_page: 100
             });
             for (const issue of issues) {
               if (issue.pull_request ||
-                  issue.assignees?.some(a => ['copilot-swe-agent', 'copilot-swe-agent[bot]'].includes(a.login)) ||
+                  issue.assignees?.some(a => isCopilotLogin(a.login)) ||
                   issue.labels.some(l => ['go:no', 'go:blocked', 'go:needs-human'].includes(l.name))) continue;
               await github.rest.actions.createWorkflowDispatch({
                 ...context.repo,

@@ -1,3 +1,5 @@
+const isCopilotLogin = require('./copilot-identity.cjs');
+
 module.exports = async function enableAutoMerge({ github, context, core }) {
   const { owner, repo } = context.repo;
   const pullNumber = context.payload.pull_request.number;
@@ -9,7 +11,7 @@ module.exports = async function enableAutoMerge({ github, context, core }) {
       pr.head.repo?.full_name !== repository.full_name ||
       pr.base.ref !== repository.default_branch ||
       !pr.head.ref.startsWith('copilot/') ||
-      !['copilot-swe-agent[bot]', 'Copilot'].includes(pr.user.login)) {
+      !isCopilotLogin(pr.user.login)) {
     core.info('Not a ready, same-repository Copilot PR against the default branch.');
     return;
   }
