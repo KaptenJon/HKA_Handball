@@ -10,6 +10,19 @@ A free, offline handball game built with .NET MAUI.
 - 🆓 **100% free** – open source, no in-app purchases
 - 🏟️ **Indoor arena presentation** – maple court, painted goal areas, striped
   goals, shaded player kits and ball, and compact high-contrast match controls
+- **TV camera** – an elevated long-side view with upright, depth-sorted players.
+  The camera button cycles between **TV fast** (the whole court), **TV följ**
+  (a closer view that smoothly follows the ball) and **plan** (a flat tactical
+  view), without changing play. The following view widens to keep controlled
+  defenders and the ball visible. Panning stops while the match is paused.
+
+The court keeps the same 2:1 proportions and simulation coordinates on every
+screen. Landscape Android phones are the primary layout: the camera fits the
+court between the scoreboard and the touch controls, while player and ball
+markers retain a readable minimum size. Running animation follows actual
+movement, including bent-elbow arm swings, defensive guards and a wider
+goalkeeper stance. In the TV views, raised goal frames and net roofs add depth
+above the floor. Fixed simulation steps catch up after brief dropped frames.
 
 The menu's team-colour palettes wrap on smaller screens. Match controls resize
 for compact landscape windows and local two-player play. White markers identify

@@ -14,6 +14,20 @@
             </GraphicsView.GestureRecognizers>
         </GraphicsView>
 
+        <Button x:Name="CameraButton"
+                Text="Kamera: TV fast"
+                HorizontalOptions="End"
+                VerticalOptions="Start"
+                Margin="8"
+                Padding="10,4"
+                HeightRequest="44"
+                FontSize="11"
+                BackgroundColor="#DF0D1928"
+                TextColor="#F4F4F4"
+                CornerRadius="12"
+                SemanticProperties.Description="Byt mellan fast TV-kamera, följande TV-kamera och plan taktisk kamera"
+                Clicked="OnCameraClicked" />
+
         <!-- Status badge top center, below the scoreboard -->
         <Border x:Name="StatusBadge"
                 HorizontalOptions="Center"

@@ -22,6 +22,8 @@ public partial class GamePage : ContentPage
     readonly IDispatcherTimer _timer;
     readonly SoundManager? _soundManager;
     readonly GameMode _gameMode;
+    long _lastFrameTimestamp;
+    double _accumulatedFrameSeconds;
 #if WINDOWS
     HashSet<VirtualKey> _keysDown = new();
     UIElement? _winKeyTarget;
@@ -45,11 +47,7 @@ public partial class GamePage : ContentPage
         _state.GameEvent += OnGameEvent;
         _state.InputResetRequested += ResetInputState;
 
-        SizeChanged += (_, __) =>
-        {
-            _state.OnViewSizeChanged(new Size(Width, Height));
-            LayoutTouchControls();
-        };
+        SizeChanged += (_, __) => LayoutTouchControls();
 
         Joystick.ValueChanged += (_, p) =>
         {
@@ -107,15 +105,35 @@ public partial class GamePage : ContentPage
         if (Width <= 0 || Height <= 0) return;
         double joystickSize = Width < 760 || Height < 420 ? 88 : 112;
         double actionWidth = Width < 640 ? 172 : 196;
-        if (_gameMode == GameMode.TwoPlayerLocal && Width >= 600)
-            actionWidth = Math.Clamp(Width / 2 - joystickSize - 44, 156, 196);
+        if (_gameMode == GameMode.TwoPlayerLocal && Width >= 512)
+            actionWidth = Math.Clamp(Width / 2 - joystickSize - 44, 136, 196);
         Joystick.WidthRequest = Joystick.HeightRequest = joystickSize;
         Joystick2.WidthRequest = Joystick2.HeightRequest = joystickSize;
         Player1Buttons.WidthRequest = Player2Buttons.WidthRequest = actionWidth;
+        bool compact = Height < 420;
+        HomeGoalAim.HeightRequest = AwayGoalAim.HeightRequest = compact ? 44 : 64;
+        Player1Buttons.Padding = Player2Buttons.Padding = new Microsoft.Maui.Thickness(compact ? 6 : 8);
+        Player1ButtonsGrid.RowSpacing = Player2ButtonsGrid.RowSpacing = compact ? 4 : 6;
+        PassUpButton.HeightRequest = PassDownButton.HeightRequest =
+            AwayPassUpButton.HeightRequest = AwayPassDownButton.HeightRequest = 44;
+        bool compactLocal = _gameMode == GameMode.TwoPlayerLocal && Width < 760;
+        PassUpButton.MinimumWidthRequest = PassDownButton.MinimumWidthRequest =
+            AwayPassUpButton.MinimumWidthRequest = AwayPassDownButton.MinimumWidthRequest = compactLocal ? 56 : 76;
+        PassUpButton.FontSize = PassDownButton.FontSize =
+            AwayPassUpButton.FontSize = AwayPassDownButton.FontSize = compactLocal ? 12 : 14;
+        PassUpButton.Padding = PassDownButton.Padding =
+            AwayPassUpButton.Padding = AwayPassDownButton.Padding = new Microsoft.Maui.Thickness(6, 0);
+        _drawable.ControlsBottomInset = compact ? 120 : 148;
+        _drawable.CourtTopInset = 100;
+        if (_gameMode == GameMode.SinglePlayer)
+        {
+            StatusBadge.VerticalOptions = LayoutOptions.End;
+            StatusBadge.Margin = new Microsoft.Maui.Thickness(joystickSize + 36, 0, actionWidth + 36, 20);
+        }
         StatusBadge.MaximumWidthRequest = Math.Max(0, Width - 32);
         if (_gameMode == GameMode.TwoPlayerLocal)
         {
-            bool stacked = Width < 600;
+            bool stacked = Width < 512;
             double inset = stacked ? HudBottomMargin : joystickSize + 32;
             Player1Buttons.Margin = new Microsoft.Maui.Thickness(inset, 0, 0, HudBottomMargin);
             Player2Buttons.Margin = new Microsoft.Maui.Thickness(0, 0, inset, HudBottomMargin);
@@ -123,7 +141,11 @@ public partial class GamePage : ContentPage
                 stacked ? 148 : HudBottomMargin);
             Joystick2Panel.Margin = new Microsoft.Maui.Thickness(0, 0, HudBottomMargin,
                 stacked ? 148 : HudBottomMargin);
+            if (stacked)
+                _drawable.ControlsBottomInset = (float)(148 + joystickSize + 24);
         }
+        UpdateCameraButtonText();
+        GameView.Invalidate();
     }
 
     protected override void OnAppearing()
@@ -165,6 +187,8 @@ public partial class GamePage : ContentPage
     void ResetInputState()
     {
         _state.ResetInputState();
+        _lastFrameTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        _accumulatedFrameSeconds = 0;
         Joystick.Reset();
         Joystick2.Reset();
 #if WINDOWS
@@ -189,8 +213,13 @@ public partial class GamePage : ContentPage
 
     void OnTimerTick(object? sender, EventArgs e)
     {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        double elapsed = _lastFrameTimestamp == 0 ? GameState.SimulationStepSeconds
+            : (double)(now - _lastFrameTimestamp) / System.Diagnostics.Stopwatch.Frequency;
+        _lastFrameTimestamp = now;
         if (_state.IsPaused)
         {
+            _accumulatedFrameSeconds = 0;
             // Hide all controls while paused
             PassUpButton.IsVisible = false;
             PassDownButton.IsVisible = false;
@@ -298,7 +327,13 @@ public partial class GamePage : ContentPage
             AwayGoalAim.InvalidateView();
         }
 
-        _state.Update(0.016f);
+        // Fixed simulation steps preserve rule/AI tick durations when Android drops a frame.
+        _accumulatedFrameSeconds += Math.Min(elapsed, 0.096);
+        while (_accumulatedFrameSeconds >= GameState.SimulationStepSeconds)
+        {
+            _accumulatedFrameSeconds -= GameState.SimulationStepSeconds;
+            _state.Update(GameState.SimulationStepSeconds);
+        }
         StatusLabel.Text = _state.StatusText;
         // Highlight warnings (passive-play etc.) in amber so they read as an alert, not just info.
         StatusLabel.TextColor = _state.StatusText.StartsWith('⚠') ? Colors.Orange : Color.FromArgb("#F4F4F4");
@@ -332,8 +367,31 @@ public partial class GamePage : ContentPage
                 _state.RestartMatch();
                 return;
             }
-            _state.TargetPoint = p;
+            _state.TargetPoint = _drawable.ScreenToCourt(p, new Size(GameView.Width, GameView.Height));
         }
+    }
+
+    void OnCameraClicked(object? sender, EventArgs e)
+    {
+        _drawable.CameraMode = _drawable.CameraMode switch
+        {
+            CourtCameraMode.BroadcastFixed => CourtCameraMode.BroadcastFollow,
+            CourtCameraMode.BroadcastFollow => CourtCameraMode.Tactical,
+            _ => CourtCameraMode.BroadcastFixed
+        };
+        UpdateCameraButtonText();
+        GameView.Invalidate();
+    }
+
+    void UpdateCameraButtonText()
+    {
+        string mode = _drawable.CameraMode switch
+        {
+            CourtCameraMode.BroadcastFollow => "TV f\u00f6lj",
+            CourtCameraMode.Tactical => "plan",
+            _ => "TV fast"
+        };
+        CameraButton.Text = Width < 640 ? mode : $"Kamera: {mode}";
     }
 
     void OnPassUp(object? sender, EventArgs e)
@@ -449,6 +507,9 @@ public class Actor
     public bool WasAdvancing; // track if this actor initiated advance
     public int SuspensionTicks; // remaining ticks of 2-minute suspension (0 = active)
     public bool IsSuspended => SuspensionTicks > 0;
+    public Point PreviousPosition;
+    public double MovementSpeed;
+    public double StridePhase;
 }
 
 // ── Confetti particle for goal celebration ──
@@ -480,6 +541,9 @@ public struct MotionTrail
 public class GameState
 {
     const int TeamSize = 7;
+    public const double CourtWidth = 1200;
+    public const double CourtHeight = 600;
+    public const double SimulationStepSeconds = 0.016;
     public const double GoalCenterInset = 20;
     public const double GoalAreaRadius = 160;
     public const double FreeThrowRadius = 240;
@@ -763,6 +827,7 @@ public class GameState
 
     // Ball height simulation for visual arcs
     public double BallHeight { get; private set; } // 0 = ground, 1 = max height
+    public double SimulationSeconds { get; private set; }
 
     // Goalkeeper hold after save
     int _keeperHoldTicks; // ticks remaining for away keeper to hold ball before auto-throw
@@ -863,6 +928,7 @@ public class GameState
 
         // Start match with intro effects
         StartMatchIntro();
+        OnViewSizeChanged(new Size(CourtWidth, CourtHeight));
     }
 
     void InitTeam(Actor[] team, double startX, bool leftToRight)
@@ -932,6 +998,7 @@ public class GameState
 
     public void SwitchControlledDefender()
     {
+        if (IsPaused) return;
         int startIdx = ControlledDefenderIndex;
         for (int attempt = 0; attempt < HomePlayers.Length - 1; attempt++)
         {
@@ -970,6 +1037,7 @@ public class GameState
 
     public void AwaySwitchControlledAttacker()
     {
+        if (IsPaused) return;
         if (Mode != GameMode.TwoPlayerLocal) return;
         for (int attempt = 0; attempt < AwayPlayers.Length - 1; attempt++)
         {
@@ -984,6 +1052,7 @@ public class GameState
 
     public void AwaySwitchControlledDefender()
     {
+        if (IsPaused) return;
         if (Mode != GameMode.TwoPlayerLocal) return;
         for (int attempt = 0; attempt < AwayPlayers.Length - 1; attempt++)
         {
@@ -1000,7 +1069,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
+        if (IsPaused || IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         var owner = AwayPlayers[BallOwnerAwayIndex];
         (int idx, Actor actor)? best = null; double bestMetric = double.MaxValue;
@@ -1031,7 +1100,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
+        if (IsPaused || IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         StartAwayShoot(AwayPlayers[BallOwnerAwayIndex].Position);
     }
@@ -1040,7 +1109,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
+        if (IsPaused || IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         RejectManualDribbleAfterPickup();
     }
@@ -1054,7 +1123,7 @@ public class GameState
     {
         if (Mode != GameMode.TwoPlayerLocal) return;
         if (BallOwnerType != BallOwnershipType.Opponent) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
+        if (IsPaused || IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         StartAwayShootAt(AwayPlayers[BallOwnerAwayIndex].Position, normalizedAimX);
     }
@@ -1090,7 +1159,7 @@ public class GameState
     public void QueuePassVertical(int dirY)
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
+        if (IsPaused || IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         var owner = HomePlayers[BallOwnerPlayerIndex];
         (int idx, Actor actor)? best = null; double bestMetric = double.MaxValue;
@@ -1126,7 +1195,7 @@ public class GameState
     public void QueueShoot()
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
+        if (IsPaused || IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
@@ -1166,7 +1235,7 @@ public class GameState
     public void QueueShootAt(double normalizedAimX)
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
+        if (IsPaused || IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         _formerOwnerIndex = BallOwnerPlayerIndex;
         _retreatingFormerOwner = true;
@@ -1196,7 +1265,7 @@ public class GameState
     public void QueueDribble()
     {
         if (BallOwnerType != BallOwnershipType.Player) return;
-        if (IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
+        if (IsPaused || IsMatchOver || IsHalfTime || _freeThrowCooldownTicks > 0) return;
         if (RejectBallHandlingActionIfIllegal()) return;
         RejectManualDribbleAfterPickup();
     }
@@ -1432,6 +1501,8 @@ public class GameState
 
     public void Update(double dt)
     {
+        if (IsPaused || dt <= 0) return;
+        SimulationSeconds += dt;
         if (_awayPassCooldownTicks > 0)
             _awayPassCooldownTicks--;
 
@@ -1629,12 +1700,30 @@ public class GameState
                 _viewInitialized = true;
             }
         }
+        for (int i = 0; i < TeamSize; i++)
+        {
+            HomePlayers[i].PreviousPosition = HomePlayers[i].Position;
+            AwayPlayers[i].PreviousPosition = AwayPlayers[i].Position;
+        }
         UpdatePlayers(dt);
+        for (int i = 0; i < TeamSize; i++)
+        {
+            UpdatePlayerAnimation(HomePlayers[i], dt);
+            UpdatePlayerAnimation(AwayPlayers[i], dt);
+        }
         UpdateBall(dt);
         UpdateBallHeight(dt);
         UpdateConfetti(dt);
         UpdateMotionTrails(dt);
         UpdateStatus();
+    }
+
+    static void UpdatePlayerAnimation(Actor actor, double dt)
+    {
+        double distance = Distance(actor.Position, actor.PreviousPosition);
+        actor.MovementSpeed = actor.IsSuspended ? 0 : Math.Min(distance / dt, 500);
+        if (actor.MovementSpeed > CarrierMovementThreshold)
+            actor.StridePhase = (actor.StridePhase + Math.Min(distance, 8) * 0.14) % (Math.PI * 2);
     }
 
     void UpdatePlayers(double dt)
@@ -4174,9 +4263,27 @@ public class GameDrawable : IDrawable
     static readonly Color TorsoShade = Colors.Black.WithAlpha(0.12f);
     static readonly Color TorsoOutline = Colors.Black.WithAlpha(0.25f);
     static readonly Color HeadOutline = Colors.Black.WithAlpha(0.15f);
-    const float CameraTiltVerticalScale = 0.92f;
-    // Leave a bottom margin for spectators after the camera tilt
-    const float CameraTiltYOffsetFactor = 0.03f;
+    readonly int[] _playerDrawOrder = new int[14];
+    readonly PathF _courtScreenClip = new();
+    readonly PathF _goalRoof = new();
+    CourtCamera _camera;
+    Point _cameraFocus = new(GameState.CourtWidth / 2, GameState.CourtHeight / 2);
+    double _lastCameraSimulationSeconds;
+    float _followZoom = 1.55f;
+    CourtCameraMode _cameraMode;
+    public CourtCameraMode CameraMode
+    {
+        get => _cameraMode;
+        set
+        {
+            _cameraMode = value;
+            _cameraFocus = _state.BallPos;
+            _followZoom = 1.55f;
+            _lastCameraSimulationSeconds = _state.SimulationSeconds;
+        }
+    }
+    public float ControlsBottomInset { get; set; } = 148;
+    public float CourtTopInset { get; set; } = 100;
 
     // Confetti colors (updated per-game based on team colors)
     readonly Color[] _confettiColors;
@@ -4184,6 +4291,16 @@ public class GameDrawable : IDrawable
     public GameDrawable(GameState state, TeamColorOption? homeColors = null, TeamColorOption? awayColors = null)
     {
         _state = state;
+        _courtScreenClip.MoveTo(0, 0);
+        _courtScreenClip.LineTo(1, 0);
+        _courtScreenClip.LineTo(1, 1);
+        _courtScreenClip.LineTo(0, 1);
+        _courtScreenClip.Close();
+        _goalRoof.MoveTo(0, 0);
+        _goalRoof.LineTo(1, 0);
+        _goalRoof.LineTo(1, 1);
+        _goalRoof.LineTo(0, 1);
+        _goalRoof.Close();
 
         // Home team colors
         if (homeColors != null)
@@ -4229,27 +4346,64 @@ public class GameDrawable : IDrawable
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
-        // Sync game state ViewSize with actual render area to prevent
-        // coordinate mismatch between drawing and game logic (fixes players outside field)
-        if (_state.ViewSize.Width != dirtyRect.Width || _state.ViewSize.Height != dirtyRect.Height)
-            _state.OnViewSizeChanged(new Size(dirtyRect.Width, dirtyRect.Height));
+        double cameraElapsed = Math.Max(0, _state.SimulationSeconds - _lastCameraSimulationSeconds);
+        _lastCameraSimulationSeconds = _state.SimulationSeconds;
+        if (CameraMode == CourtCameraMode.BroadcastFollow)
+        {
+            var controlled = _state.HomePlayers[_state.IsHomeDefending
+                ? _state.ControlledDefenderIndex : Math.Max(0, _state.BallOwnerPlayerIndex)].Position;
+            double minX = Math.Min(controlled.X, _state.BallPos.X);
+            double maxX = Math.Max(controlled.X, _state.BallPos.X);
+            double minY = Math.Min(controlled.Y, _state.BallPos.Y);
+            double maxY = Math.Max(controlled.Y, _state.BallPos.Y);
+            if (_state.Mode == GameMode.TwoPlayerLocal)
+            {
+                var away = _state.AwayPlayers[_state.BallOwnerType == BallOwnershipType.Opponent
+                    ? _state.ControlledAwayAttackerIndex : _state.ControlledAwayDefenderIndex].Position;
+                minX = Math.Min(minX, away.X);
+                maxX = Math.Max(maxX, away.X);
+                minY = Math.Min(minY, away.Y);
+                maxY = Math.Max(maxY, away.Y);
+            }
+            var focus = new Point((minX + maxX) / 2, (minY + maxY) / 2);
+            var viewport = GetCourtViewport(new Size(dirtyRect.Width, dirtyRect.Height));
+            var wideCamera = new CourtCamera(viewport, true);
+            float zoomX = viewport.Width / ((float)(maxX - minX + 100
+                + Math.Abs(CourtCamera.ArenaShear) * (maxY - minY)) * wideCamera.Scale);
+            float zoomY = viewport.Height / ((float)(maxY - minY + 140)
+                * CourtCamera.ArenaVerticalScale * wideCamera.Scale);
+            float desiredZoom = Math.Clamp(Math.Min(zoomX, zoomY), 1, 1.55f);
+            double blend = 1 - Math.Exp(-cameraElapsed * 3.5);
+            _followZoom = desiredZoom < _followZoom ? desiredZoom
+                : _followZoom + (desiredZoom - _followZoom) * (float)blend;
+            _cameraFocus = new Point(
+                _cameraFocus.X + (focus.X - _cameraFocus.X) * blend,
+                _cameraFocus.Y + (focus.Y - _cameraFocus.Y) * blend);
+        }
+        _camera = CreateCamera(new Size(dirtyRect.Width, dirtyRect.Height));
+        var courtRect = new RectF(0, 0, (float)GameState.CourtWidth, (float)GameState.CourtHeight);
 
         // Paint the full arena background in screen coordinates before tilting the court
         canvas.FillColor = ArenaBackground;
         canvas.FillRectangle(dirtyRect);
 
         canvas.SaveState();
-        ApplyCourtCameraTransform(canvas, dirtyRect);
-        DrawField(canvas, dirtyRect);
+        canvas.ConcatenateTransform(_camera.Transform);
+        DrawField(canvas, courtRect);
         DrawMotionTrails(canvas);
-        DrawPlayers(canvas);
         DrawShotTrail(canvas);
-        DrawBall(canvas);
         DrawPassIndicator(canvas);
-        DrawPenaltySpotIndicator(canvas, dirtyRect);
+        DrawPenaltySpotIndicator(canvas, courtRect);
         DrawConfetti(canvas);
         canvas.RestoreState();
 
+        DrawPlayers(canvas);
+        DrawBall(canvas);
+
+        // Keep the zoomed court out of the touch-control strip.
+        canvas.FillColor = ArenaBackground;
+        canvas.FillRectangle(0, dirtyRect.Height - ControlsBottomInset, dirtyRect.Width, ControlsBottomInset);
+        canvas.FillRectangle(0, 0, dirtyRect.Width, Math.Max(0, CourtTopInset - 36));
         DrawIntroEffects(canvas, dirtyRect);
         DrawScore(canvas, dirtyRect);
         DrawSuspensionIndicator(canvas, dirtyRect);
@@ -4260,14 +4414,19 @@ public class GameDrawable : IDrawable
         DrawKeyboardHelp(canvas, dirtyRect);
     }
 
-    static void ApplyCourtCameraTransform(ICanvas canvas, RectF dirtyRect)
+    RectF GetCourtViewport(Size viewSize)
     {
-        float cameraYOffset = dirtyRect.Height * CameraTiltYOffsetFactor;
-        canvas.Translate(0, cameraYOffset);
-        canvas.Translate(dirtyRect.Center.X, dirtyRect.Center.Y);
-        canvas.Scale(1f, CameraTiltVerticalScale);
-        canvas.Translate(-dirtyRect.Center.X, -dirtyRect.Center.Y);
+        float width = Math.Max(1, (float)viewSize.Width - 24);
+        float height = Math.Max(1, (float)viewSize.Height - CourtTopInset - ControlsBottomInset);
+        return new RectF(12, CourtTopInset, width, height);
     }
+
+    CourtCamera CreateCamera(Size viewSize) => new(GetCourtViewport(viewSize),
+        CameraMode != CourtCameraMode.Tactical,
+        CameraMode == CourtCameraMode.BroadcastFollow ? _followZoom : 1,
+        CameraMode == CourtCameraMode.BroadcastFollow ? _cameraFocus : null);
+
+    public Point ScreenToCourt(Point screen, Size viewSize) => CreateCamera(viewSize).Unproject(screen);
 
     void DrawField(ICanvas canvas, RectF dirtyRect)
     {
@@ -4285,7 +4444,20 @@ public class GameDrawable : IDrawable
         canvas.FillColor = ShadowColor;
         canvas.FillRoundedRectangle(courtLeft - 3, courtTop + 5, courtW + 6, courtH + 2, 5);
         canvas.SaveState();
-        canvas.ClipRectangle(courtLeft, courtTop, courtW, courtH);
+        // Win2D intersects clip paths with screen bounds before applying transforms.
+        // Establish the projected clip in screen space, then return to court space.
+        var corner = _camera.Project(new Point(courtLeft, courtTop));
+        _courtScreenClip.SetPoint(0, (float)corner.X, (float)corner.Y);
+        corner = _camera.Project(new Point(courtLeft + courtW, courtTop));
+        _courtScreenClip.SetPoint(1, (float)corner.X, (float)corner.Y);
+        corner = _camera.Project(new Point(courtLeft + courtW, courtTop + courtH));
+        _courtScreenClip.SetPoint(2, (float)corner.X, (float)corner.Y);
+        corner = _camera.Project(new Point(courtLeft, courtTop + courtH));
+        _courtScreenClip.SetPoint(3, (float)corner.X, (float)corner.Y);
+        System.Numerics.Matrix3x2.Invert(_camera.Transform, out var inverse);
+        canvas.ConcatenateTransform(inverse);
+        canvas.ClipPath(_courtScreenClip);
+        canvas.ConcatenateTransform(_camera.Transform);
 
         // Maple boards under a matte sports-floor finish.
         canvas.FillColor = MapleFloor;
@@ -4511,30 +4683,46 @@ public class GameDrawable : IDrawable
 
     void DrawPlayers(ICanvas canvas)
     {
-        for (int i = 0; i < _state.HomePlayers.Length; i++)
+        // Sort a reusable index buffer by court depth; nearer players occlude farther players.
+        int count = _state.HomePlayers.Length + _state.AwayPlayers.Length;
+        for (int i = 0; i < count; i++)
         {
-            var p = _state.HomePlayers[i];
-            bool isActive = _state.BallOwnerType == BallOwnershipType.Player && _state.BallOwnerPlayerIndex == i;
-            bool isDefender = _state.IsHomeDefending && i == _state.ControlledDefenderIndex;
-            var jerseyColor = i == 0 ? HomeColorLight : HomeColor;
-            DrawPlayerFigure(canvas, p.Position, jerseyColor, i, isActive, isDefender, p.IsGoalkeeper, false, p.IsSuspended);
+            int j = i;
+            while (j > 0 && GetDrawActor(_playerDrawOrder[j - 1]).Position.Y > GetDrawActor(i).Position.Y)
+            {
+                _playerDrawOrder[j] = _playerDrawOrder[j - 1];
+                j--;
+            }
+            _playerDrawOrder[j] = i;
         }
-
         bool awayAttacking = _state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex >= 0;
-        for (int i = 0; i < _state.AwayPlayers.Length; i++)
+        float figureScale = Math.Max(0.85f, _camera.Scale);
+        for (int slot = 0; slot < count; slot++)
         {
-            var a = _state.AwayPlayers[i];
-            bool isActive = _state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex == i;
-            // In two-player mode, highlight the controlled attacker even if not the ball carrier
-            if (_state.Mode == GameMode.TwoPlayerLocal && awayAttacking && i == _state.ControlledAwayAttackerIndex)
-                isActive = true;
-            // In two-player mode, highlight the controlled defender when home has the ball
-            bool isDefender = _state.Mode == GameMode.TwoPlayerLocal
-                              && !awayAttacking && i == _state.ControlledAwayDefenderIndex;
-            var jerseyColor = i == 0 ? AwayColorLight : AwayColor;
-            DrawPlayerFigure(canvas, a.Position, jerseyColor, i, isActive, isDefender, a.IsGoalkeeper, true, a.IsSuspended);
+            int index = _playerDrawOrder[slot];
+            bool away = index >= _state.HomePlayers.Length;
+            int i = away ? index - _state.HomePlayers.Length : index;
+            var actor = GetDrawActor(index);
+            bool isActive = away
+                ? awayAttacking && (_state.BallOwnerAwayIndex == i
+                    || (_state.Mode == GameMode.TwoPlayerLocal && _state.ControlledAwayAttackerIndex == i))
+                : _state.BallOwnerType == BallOwnershipType.Player && _state.BallOwnerPlayerIndex == i;
+            bool isDefender = away
+                ? _state.Mode == GameMode.TwoPlayerLocal && !awayAttacking && i == _state.ControlledAwayDefenderIndex
+                : _state.IsHomeDefending && i == _state.ControlledDefenderIndex;
+            var jerseyColor = away ? (i == 0 ? AwayColorLight : AwayColor) : (i == 0 ? HomeColorLight : HomeColor);
+            var screen = _camera.Project(actor.Position);
+            canvas.SaveState();
+            canvas.Translate((float)screen.X, (float)screen.Y);
+            canvas.Scale(figureScale, figureScale);
+            DrawPlayerFigure(canvas, new Point(0, -20), jerseyColor, i, isActive, isDefender,
+                actor.IsGoalkeeper, away, actor.IsSuspended);
+            canvas.RestoreState();
         }
     }
+
+    Actor GetDrawActor(int index) => index < _state.HomePlayers.Length
+        ? _state.HomePlayers[index] : _state.AwayPlayers[index - _state.HomePlayers.Length];
 
     void DrawPlayerFigure(ICanvas canvas, Point pos, Color jerseyColor, int number,
         bool isActive, bool isDefender, bool isGoalkeeper, bool isAwayPlayer = false, bool isSuspended = false)
@@ -4555,28 +4743,25 @@ public class GameDrawable : IDrawable
 
         float x = (float)pos.X;
         float y = (float)pos.Y;
-        float bodyW = isGoalkeeper ? 17f : 15f;
-        float bodyH = isGoalkeeper ? 21f : 18f;
+        float bodyW = isGoalkeeper ? 20f : 18f;
+        float bodyH = isGoalkeeper ? 25f : 24f;
         float headR = 4.5f;
         var skin = PlayerSkinTones[(number + (isAwayPlayer ? 2 : 0)) % PlayerSkinTones.Length];
         var jerseyInk = jerseyColor.Red * 0.299f + jerseyColor.Green * 0.587f
             + jerseyColor.Blue * 0.114f > 0.65f ? ArenaBackground : Colors.White;
 
-        // Running animation: leg sway based on time + player index for variety
-        float runPhase = (float)(Environment.TickCount / 180.0 + number * 2.1);
-        float legSway = (float)Math.Sin(runPhase) * 3f;
         var actor = isAwayPlayer ? _state.AwayPlayers[number] : _state.HomePlayers[number];
-        bool isMoving = Math.Abs(actor.Velocity.X) > 5 || Math.Abs(actor.Velocity.Y) > 5
-            || (isActive && (Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).X) > 5
-                            || Math.Abs((isAwayPlayer ? _state.AwayActiveMoveInput : _state.ActiveMoveInput).Y) > 5));
+        float legSway = (float)Math.Sin(actor.StridePhase) * 3f;
+        bool isMoving = actor.MovementSpeed > 5;
 
         // Enhanced shadow with motion blur effect when moving fast
         float shadowStretch = isMoving ? 1.25f : 1f;
         float shadowAlpha = isMoving ? 0.25f : 0.2f;
+        float groundY = y + bodyH / 2 + 8;
         canvas.FillColor = Colors.Black.WithAlpha(shadowAlpha);
-        canvas.FillEllipse(x - bodyW / 2 * shadowStretch + 4, y + 6, bodyW * shadowStretch + 6, bodyH * 0.65f);
+        canvas.FillEllipse(x - bodyW / 2 * shadowStretch + 4, groundY - 3, bodyW * shadowStretch + 6, 8);
         canvas.FillColor = Colors.Black.WithAlpha(0.08f);
-        canvas.FillEllipse(x - bodyW / 2 + 2, y + 5, bodyW + 12, bodyH * 0.85f);
+        canvas.FillEllipse(x - bodyW / 2 + 2, groundY - 4, bodyW + 12, 10);
 
         // Additional motion blur shadow when active and moving
         if (isActive && isMoving)
@@ -4645,22 +4830,43 @@ public class GameDrawable : IDrawable
             canvas.FillRoundedRectangle(x - bodyW / 2 + 2, y + 1, bodyW - 4, 5, 2);
         }
 
-        // Arms
+        // Opposite arm/leg swing, with bent elbows and a raised defensive guard.
         float armY = y - bodyH / 2 + 6;
-        float armSway = isMoving ? legSway * 0.6f : 0;
+        float armSway = isMoving ? (float)Math.Sin(actor.StridePhase) * 7
+            : (float)Math.Sin(_state.SimulationSeconds * 2 + number) * 0.6f;
+        bool defending = isAwayPlayer
+            ? _state.BallOwnerType == BallOwnershipType.Player
+            : _state.BallOwnerType == BallOwnershipType.Opponent;
+        float guard = isGoalkeeper ? 10 : defending ? 6 : 0;
+        float reach = isGoalkeeper ? 9 : defending ? 7 : 5;
+        float leftShoulderX = x - bodyW / 2;
+        float rightShoulderX = x + bodyW / 2;
+        float leftElbowX = leftShoulderX - reach;
+        float rightElbowX = rightShoulderX + reach;
+        float leftElbowY = armY + 5 - guard - armSway;
+        float rightElbowY = armY + 5 - guard + armSway;
+        float leftHandX = leftElbowX + (defending || isGoalkeeper ? -2 : 3);
+        float rightHandX = rightElbowX + (defending || isGoalkeeper ? 2 : -3);
+        float leftHandY = leftElbowY - 5 - Math.Max(0, armSway * 0.4f);
+        float rightHandY = rightElbowY - 5 + Math.Min(0, armSway * 0.4f);
+        if (isActive)
+        {
+            rightHandX = x + 3;
+            rightHandY = _state.IsDribbleActive ? y + 6 - (float)_state.BallHeight * 12 : y - 3;
+        }
+        canvas.StrokeLineCap = LineCap.Round;
         canvas.StrokeColor = jerseyColor;
-        canvas.StrokeSize = 3;
-        canvas.DrawLine(x - bodyW / 2, armY, x - bodyW / 2 - 6, armY + 4 - armSway);
-        canvas.DrawLine(x + bodyW / 2, armY, x + bodyW / 2 + 6, armY + 4 + armSway);
+        canvas.StrokeSize = 4;
+        canvas.DrawLine(leftShoulderX, armY, leftElbowX, leftElbowY);
+        canvas.DrawLine(rightShoulderX, armY, rightElbowX, rightElbowY);
         canvas.StrokeColor = skin;
-        canvas.StrokeSize = 2.5f;
-        canvas.DrawLine(x - bodyW / 2 - 4, armY + 3 - armSway,
-            x - bodyW / 2 - 7, armY + 7 - armSway);
-        canvas.DrawLine(x + bodyW / 2 + 4, armY + 3 + armSway,
-            x + bodyW / 2 + 7, armY + 7 + armSway);
+        canvas.StrokeSize = 3;
+        canvas.DrawLine(leftElbowX, leftElbowY, leftHandX, leftHandY);
+        canvas.DrawLine(rightElbowX, rightElbowY, rightHandX, rightHandY);
         canvas.FillColor = skin;
-        canvas.FillCircle(x - bodyW / 2 - 7, armY + 7 - armSway, 1.8f);
-        canvas.FillCircle(x + bodyW / 2 + 7, armY + 7 + armSway, 1.8f);
+        canvas.FillCircle(leftHandX, leftHandY, 1.8f);
+        canvas.FillCircle(rightHandX, rightHandY, 1.8f);
+        canvas.StrokeLineCap = LineCap.Butt;
 
         // Head
         canvas.FillColor = skin;
@@ -4684,12 +4890,15 @@ public class GameDrawable : IDrawable
 
         // Position label below player
         string posLabel = GetPositionLabel(number, isGoalkeeper);
-        canvas.FillColor = ArenaBackground.WithAlpha(0.72f);
-        canvas.FillRoundedRectangle(x - 9, y + bodyH / 2 + 10, 18, 10, 3);
-        canvas.FontColor = CourtWhite;
-        canvas.FontSize = 7;
-        canvas.DrawString(posLabel, x - 9, y + bodyH / 2 + 10, 18, 10,
-            G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+        if (isActive || isDefender || isGoalkeeper)
+        {
+            canvas.FillColor = ArenaBackground.WithAlpha(0.72f);
+            canvas.FillRoundedRectangle(x - 9, y + bodyH / 2 + 10, 18, 10, 3);
+            canvas.FontColor = CourtWhite;
+            canvas.FontSize = 7;
+            canvas.DrawString(posLabel, x - 9, y + bodyH / 2 + 10, 18, 10,
+                G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
+        }
 
         // Selection ring — pulsing for active player
         float ringR = bodyW / 2 + 5;
@@ -4750,7 +4959,7 @@ public class GameDrawable : IDrawable
         {
             1 => "VY", // Vänster ytter (Left wing)
             2 => "VB", // Vänster back (Left back)
-            3 => "M",  // Mittsexa (Center back)
+            3 => "MB", // Mittback
             4 => "HB", // Höger back (Right back)
             5 => "HY", // Höger ytter (Right wing)
             6 => "PV", // Pivot
@@ -4760,8 +4969,13 @@ public class GameDrawable : IDrawable
 
     void DrawBall(ICanvas canvas)
     {
-        float bx = (float)_state.BallPos.X;
-        float by = (float)_state.BallPos.Y;
+        var screen = _camera.Project(_state.BallPos);
+        canvas.SaveState();
+        canvas.Translate((float)screen.X, (float)screen.Y);
+        float ballScale = Math.Max(0.85f, _camera.Scale);
+        canvas.Scale(ballScale, ballScale);
+        float bx = 0;
+        float by = 0;
         float height = (float)_state.BallHeight;
 
         // Ball shadow on ground (offset increases with height)
@@ -4771,25 +4985,10 @@ public class GameDrawable : IDrawable
         canvas.FillEllipse(bx - 5 * shadowScale + 1, by + 2 + shadowOffset, 10 * shadowScale, 6 * shadowScale);
 
         // Lift ball visually based on height
-        float visualBy = by - height * 20;
-        float ballRadius = 7f + height * 2f; // ball appears slightly larger when high
-
-        // Ball glow during shots (enhanced with multiple layers)
-        if (_state.IsShootActive || _state.IsAwayShootActive || _state.IsPenaltyActive)
-        {
-            canvas.FillColor = Colors.Orange.WithAlpha(0.12f);
-            canvas.FillCircle(bx, visualBy, ballRadius + 10);
-            canvas.FillColor = Colors.Yellow.WithAlpha(0.25f);
-            canvas.FillCircle(bx, visualBy, ballRadius + 6);
-        }
-
-        // Fast break indicator glow
-        if (_state.IsHomeFastBreak || _state.IsAwayFastBreak)
-        {
-            float fbPulse = (float)(0.1 + 0.08 * Math.Sin(Environment.TickCount / 100.0));
-            canvas.FillColor = Colors.Cyan.WithAlpha(fbPulse);
-            canvas.FillCircle(bx, visualBy, ballRadius + 5);
-        }
+        bool held = !_state.IsDribbleActive
+            && _state.BallOwnerType is BallOwnershipType.Player or BallOwnershipType.Opponent;
+        float visualBy = by - (held ? 22 : height * 20);
+        float ballRadius = 5.5f + height;
 
         // Ball body
         canvas.FillColor = BallColor;
@@ -4802,7 +5001,8 @@ public class GameDrawable : IDrawable
             ballRadius * 1.25f, ballRadius * 0.5f);
 
         // Ball panel pattern (spinning seam lines for realism)
-        float spinAngle = (float)(Environment.TickCount / 80.0);
+        float spinAngle = _state.IsDribbleActive || _state.BallOwnerType == BallOwnershipType.Loose
+            ? (float)(_state.SimulationSeconds * 12.5) : 0.6f;
         canvas.StrokeColor = Color.FromArgb("#44000000");
         canvas.StrokeSize = 0.8f;
         // Horizontal seam
@@ -4821,6 +5021,7 @@ public class GameDrawable : IDrawable
         // Secondary highlight
         canvas.FillColor = Colors.White.WithAlpha(0.15f);
         canvas.FillCircle(bx + 1, visualBy + 1, 1.5f);
+        canvas.RestoreState();
     }
 
     void DrawPassIndicator(ICanvas canvas)
@@ -5296,6 +5497,11 @@ public class GameDrawable : IDrawable
 
     void DrawGoal(ICanvas canvas, RectF rect, Color color)
     {
+        if (CameraMode != CourtCameraMode.Tactical)
+        {
+            DrawBroadcastGoal(canvas, rect);
+            return;
+        }
         // Goal depth/net background — deeper shadow for 3D effect
         canvas.FillColor = Color.FromArgb("#66000000");
         canvas.FillRoundedRectangle(rect.X - 3, rect.Y + 3, rect.Width + 6, rect.Height - 6, 3);
@@ -5350,6 +5556,61 @@ public class GameDrawable : IDrawable
         canvas.StrokeColor = Colors.White.WithAlpha(0.2f);
         canvas.StrokeSize = 1;
         canvas.DrawRoundedRectangle(rect.X + 2, rect.Y + 2, rect.Width - 4, rect.Height - 4, 1);
+    }
+
+    void DrawBroadcastGoal(ICanvas canvas, RectF rect)
+    {
+        bool leftGoal = rect.Center.X < GameState.CourtWidth / 2;
+        float frontX = leftGoal ? rect.Right : rect.Left;
+        float backX = leftGoal ? rect.Left : rect.Right;
+        var frontA = _camera.Project(new Point(frontX, rect.Top));
+        var frontB = _camera.Project(new Point(frontX, rect.Bottom));
+        var backA = _camera.Project(new Point(backX, rect.Top));
+        var backB = _camera.Project(new Point(backX, rect.Bottom));
+        float height = Math.Max(40, _camera.Scale * 48);
+        canvas.SaveState();
+        System.Numerics.Matrix3x2.Invert(_camera.Transform, out var inverse);
+        canvas.ConcatenateTransform(inverse);
+
+        _goalRoof.SetPoint(0, (float)frontA.X, (float)frontA.Y - height);
+        _goalRoof.SetPoint(1, (float)frontB.X, (float)frontB.Y - height);
+        _goalRoof.SetPoint(2, (float)backB.X, (float)backB.Y - height);
+        _goalRoof.SetPoint(3, (float)backA.X, (float)backA.Y - height);
+        canvas.FillColor = CourtWhite.WithAlpha(0.10f);
+        canvas.FillPath(_goalRoof);
+
+        canvas.StrokeColor = CourtWhite.WithAlpha(0.32f);
+        canvas.StrokeSize = 0.8f;
+        for (int i = 0; i <= 12; i++)
+        {
+            float t = i / 12f;
+            float fx = (float)(frontA.X + (frontB.X - frontA.X) * t);
+            float fy = (float)(frontA.Y + (frontB.Y - frontA.Y) * t);
+            float bx = (float)(backA.X + (backB.X - backA.X) * t);
+            float by = (float)(backA.Y + (backB.Y - backA.Y) * t);
+            canvas.DrawLine(fx, fy - height, bx, by - height);
+            canvas.DrawLine(bx, by - height, bx, by);
+        }
+        for (int i = 0; i <= 5; i++)
+        {
+            float lift = height * i / 5;
+            canvas.DrawLine((float)backA.X, (float)backA.Y - lift,
+                (float)backB.X, (float)backB.Y - lift);
+        }
+
+        canvas.StrokeColor = CourtWhite;
+        canvas.StrokeSize = 3;
+        canvas.DrawLine((float)frontA.X, (float)frontA.Y, (float)frontA.X, (float)frontA.Y - height);
+        canvas.DrawLine((float)frontB.X, (float)frontB.Y, (float)frontB.X, (float)frontB.Y - height);
+        canvas.DrawLine((float)frontA.X, (float)frontA.Y - height, (float)frontB.X, (float)frontB.Y - height);
+        canvas.StrokeColor = Color.FromArgb("#A52B3A");
+        for (float lift = 4; lift < height; lift += 12)
+        {
+            float end = Math.Min(height, lift + 6);
+            canvas.DrawLine((float)frontA.X, (float)frontA.Y - lift, (float)frontA.X, (float)frontA.Y - end);
+            canvas.DrawLine((float)frontB.X, (float)frontB.Y - lift, (float)frontB.X, (float)frontB.Y - end);
+        }
+        canvas.RestoreState();
     }
 
     void DrawShotTrail(ICanvas canvas)
