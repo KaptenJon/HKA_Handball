@@ -401,6 +401,106 @@ test('production entry points call execution directly and templates stay synchro
   assert.match(weekly, /await dispatchIssue\(created.data.number\)/);
 });
 
+test('weekly issue creation reuses the open issue and dispatches the string issue number', async () => {
+  const dispatches = [];
+  const queries = [];
+  const existingIssue = { number: 126, title: 'Weekly Improvement this week' };
+  const github = {
+    rest: {
+      issues: {
+        listForRepo() {},
+        getLabel: async () => ({}),
+        createLabel: async () => {},
+        create: async () => { throw new Error('Should reuse the open weekly issue'); }
+      },
+      actions: {
+        createWorkflowDispatch: async input => dispatches.push(input)
+      }
+    },
+    paginate: async (_method, params) => {
+      queries.push(params);
+      return [existingIssue];
+    }
+  };
+  const context = { repo: { owner: 'KaptenJon', repo: 'HKA_Handball' } };
+
+  await workflowScript('.github/workflows/weekly-improvement-issue.yml')(
+    github, context, { info() {} }, require);
+
+  assert.equal(queries.length, 1);
+  assert.equal(queries[0].state, 'open');
+  assert.match(queries[0].labels, /^weekly-\d{4}-W\d{2}$/);
+  assert.equal(dispatches.length, 1);
+  assert.equal(dispatches[0].workflow_id, 'issue-agent-pipeline.yml');
+  assert.equal(dispatches[0].ref, '${{ github.ref_name }}');
+  assert.equal(dispatches[0].inputs.issue_number, '126');
+});
+
+test('weekly issue prompt reviews UI and gameplay, includes recent history, and dispatches creation', async () => {
+  const dispatches = [];
+  const createdIssues = [];
+  const historyQueries = [];
+  const github = {
+    rest: {
+      issues: {
+        listForRepo: async params => {
+          historyQueries.push(params);
+          return { data: [
+            {
+              number: 125,
+              title: 'Weekly Improvement 2026-W39',
+              body: 'Improve substitution feedback when players enter the match.'
+            },
+            {
+              number: 124,
+              title: 'Weekly Improvement 2026-W38',
+              body: 'An old idea that should not appear in the bounded context.',
+              pull_request: { url: 'https://api.github.com/repos/example/pulls/124' }
+            }
+          ] };
+        },
+        getLabel: async () => ({}),
+        createLabel: async () => {},
+        create: async input => {
+          createdIssues.push(input);
+          return { data: { number: 127 } };
+        }
+      },
+      actions: {
+        createWorkflowDispatch: async input => dispatches.push(input)
+      }
+    },
+    paginate: async () => []
+  };
+  const context = { repo: { owner: 'KaptenJon', repo: 'HKA_Handball' } };
+
+  await workflowScript('.github/workflows/weekly-improvement-issue.yml')(
+    github, context, { info() {} }, require);
+
+  assert.equal(historyQueries.length, 1);
+  assert.equal(historyQueries[0].state, 'all');
+  assert.equal(historyQueries[0].labels, 'weekly-improvement');
+  assert.equal(historyQueries[0].per_page, 100);
+  assert.equal(historyQueries[0].sort, 'updated');
+  assert.equal(historyQueries[0].direction, 'desc');
+  assert.equal(createdIssues.length, 1);
+  const body = createdIssues[0].body;
+  assert.match(body, /Review the current app and repository/);
+  assert.match(body, /UI and the gameplay\/general match experience/);
+  assert.match(body, /multiple distinct suggestions/);
+  assert.match(body, /likely player impact and point to relevant screens, systems, or code areas/);
+  assert.match(body, /Avoid generic ideas and avoid repeating or lightly rewording recent weekly improvements/);
+  assert.match(body, /select and implement one small, high-value improvement/);
+  assert.match(body, /"Weekly Improvement 2026-W39".*"Improve substitution feedback when players enter the match\."/);
+  assert.doesNotMatch(body, /old idea that should not appear/);
+  assert.match(body, /authentic handball rules and gameplay/);
+  assert.match(body, /offline-first and privacy-respecting/);
+  assert.equal(dispatches.length, 1);
+  assert.equal(dispatches[0].workflow_id, 'issue-agent-pipeline.yml');
+  assert.equal(dispatches[0].ref, '${{ github.ref_name }}');
+  assert.equal(dispatches[0].inputs.issue_number, '127');
+});
+
 test('CI runs the actual automation contract assertions', () => {
   const build = readFileSync('.github/workflows/build.yml', 'utf8');
   assert.match(build, /automation-contracts:/);

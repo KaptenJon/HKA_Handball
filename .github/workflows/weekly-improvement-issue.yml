@@ -56,39 +56,6 @@ jobs:
 
             const title = `Weekly Improvement ${year}-W${weekPadded}`;
 
-            const themes = [
-              {
-                name: "Visual polish",
-                summary: "Make the app look better with focused UI polish.",
-                suggestions: [
-                  "Improve spacing, typography, and hierarchy in menu or HUD screens.",
-                  "Refine colors/contrast for readability on Android and Windows.",
-                  "Polish animations or transitions that improve perceived quality."
-                ]
-              },
-              {
-                name: "Game flow",
-                summary: "Improve match flow, control responsiveness, or gameplay pacing.",
-                suggestions: [
-                  "Tune transitions between possession changes and restart scenarios.",
-                  "Improve input responsiveness for joysticks and action buttons.",
-                  "Refine AI or movement pacing so the game feels smoother and fairer."
-                ]
-              },
-              {
-                name: "Bug fixing",
-                summary: "Fix one high-value bug that impacts stability or player experience.",
-                suggestions: [
-                  "Reproduce and fix a gameplay bug with clear before/after behavior.",
-                  "Fix a UI bug that causes layout issues across screen sizes.",
-                  "Fix a platform-specific bug affecting Android or Windows build/runtime."
-                ]
-              }
-            ];
-
-            // Rotate theme by week number for predictable variety.
-            const theme = themes[(week - 1) % themes.length];
-
             // Avoid duplicate issue creation for the same week.
             const existing = await github.paginate(github.rest.issues.listForRepo, {
               owner,
@@ -120,18 +87,45 @@ jobs:
             await ensureLabel("auto-agent-candidate", "1d76db", "Issues created for automated improvement pipeline");
             await ensureLabel(weekLabel, "5319e7", `Week marker for ${year} W${weekPadded}`);
 
+            // Keep the prompt grounded in a small, recent sample of prior weekly issues.
+            const historyResponse = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: "all",
+              labels: baseLabel,
+              sort: "updated",
+              direction: "desc",
+              per_page: 100
+            });
+            const history = historyResponse.data
+              .filter(issue => !issue.pull_request && issue.title !== title)
+              .slice(0, 5)
+              .map(issue => {
+                const historyTitle = JSON.stringify(String(issue.title || "Untitled weekly improvement").slice(0, 160));
+                const description = String(issue.body || "No description provided.")
+                  .replace(/\s+/g, " ")
+                  .slice(0, 400);
+                return `- ${historyTitle}: ${JSON.stringify(description)}`;
+              });
+
             const body = [
               "## Weekly Improvement Goal",
-              `${theme.summary}`,
+              "Review the current app and repository, then propose several specific, distinct improvement ideas grounded in what the code and game actually do.",
               "",
-              `Focus area: ${theme.name}`,
+              "### Review and suggestions",
+              "- Inspect the current UI and the gameplay/general match experience; cover both areas in your suggestions.",
+              "- Give multiple distinct suggestions. For each, explain the likely player impact and point to relevant screens, systems, or code areas.",
+              "- Avoid generic ideas and avoid repeating or lightly rewording recent weekly improvements listed below.",
+              "- After presenting the suggestions, select and implement one small, high-value improvement.",
               "",
-              "### Suggested directions",
-              ...theme.suggestions.map(item => `- ${item}`),
+              "### Recent weekly improvements (historical reference only)",
+              ...(history.length > 0
+                ? history
+                : ["No prior weekly improvements found. Avoid generic or recycled ideas and ground suggestions in the current app and code."]),
               "",
               "### Acceptance criteria",
-              "- One concrete improvement is implemented and verified.",
-              "- Changes keep gameplay authentic to handball rules.",
+              "- The selected improvement is implemented and verified.",
+              "- Preserve authentic handball rules and gameplay.",
               "- Android build still succeeds.",
               "",
               "### Notes",
