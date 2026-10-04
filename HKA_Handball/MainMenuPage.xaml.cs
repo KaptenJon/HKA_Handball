@@ -150,23 +150,42 @@ public partial class MainMenuPage : ContentPage
         UpdateColorSwatches();
     }
 
-    Button CreateSwatch(int index, bool isHome)
+    Grid CreateSwatch(int index, bool isHome)
     {
-        var swatch = new Button
+        var swatch = new Grid
+        {
+            WidthRequest = 48,
+            HeightRequest = 48,
+            Margin = 3,
+        };
+        var visual = new Border
         {
             WidthRequest = 30,
             HeightRequest = 30,
-            Padding = 0,
             BackgroundColor = Color.FromArgb(ColorPresets[index].Primary),
-            CornerRadius = 8,
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 8 },
+            Stroke = Colors.Transparent,
+            StrokeThickness = 1,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+        };
+        var button = new Button
+        {
+            Padding = 0,
+            BackgroundColor = Colors.Transparent,
+            CornerRadius = 24,
             BorderColor = Colors.Transparent,
-            BorderWidth = 1,
+            BorderWidth = 0,
             Text = string.Empty,
             IsTabStop = true,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
         };
+        swatch.Children.Add(visual);
+        swatch.Children.Add(button);
         int capturedIndex = index;
         bool capturedIsHome = isHome;
-        swatch.Clicked += (_, _) =>
+        button.Clicked += (_, _) =>
         {
             _soundManager.PlayClick();
             if (capturedIsHome)
@@ -175,7 +194,7 @@ public partial class MainMenuPage : ContentPage
                 _selectedAwayColorIndex = capturedIndex;
             UpdateColorSwatches();
         };
-        SemanticProperties.SetHint(swatch, isHome ? "Välj hemfärg." : "Välj bortafärg.");
+        SemanticProperties.SetHint(button, isHome ? "Välj hemfärg." : "Välj bortafärg.");
         return swatch;
     }
 
@@ -183,32 +202,36 @@ public partial class MainMenuPage : ContentPage
     {
         for (int i = 0; i < HomeColorStack.Children.Count; i++)
         {
-            if (HomeColorStack.Children[i] is Button b)
+            if (HomeColorStack.Children[i] is Grid swatch)
             {
                 var selected = i == _selectedHomeColorIndex;
-                b.BorderColor = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
-                b.BorderWidth = selected ? 2.5 : 1.0;
-                b.Scale = selected ? 1.08 : 1.0;
-                SemanticProperties.SetDescription(b, $"Hem, {ColorPresets[i].Name}, {(selected ? "vald" : "inte vald")}.");
+                var visual = (Border)swatch.Children[0];
+                var button = (Button)swatch.Children[1];
+                visual.Stroke = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
+                visual.StrokeThickness = selected ? 2.5 : 1.0;
+                visual.Scale = selected ? 1.08 : 1.0;
+                SemanticProperties.SetDescription(button, $"Hem, {ColorPresets[i].Name}, {(selected ? "vald" : "inte vald")}.");
                 // Dim already-picked color by blending with dark background instead of Opacity
                 // (Opacity changes trigger layout recalculation causing swatches to jump)
                 var baseColor = Color.FromArgb(ColorPresets[i].Primary);
-                b.BackgroundColor = i == _selectedAwayColorIndex
+                visual.BackgroundColor = i == _selectedAwayColorIndex
                     ? baseColor.WithAlpha(0.3f)
                     : baseColor;
             }
         }
         for (int i = 0; i < AwayColorStack.Children.Count; i++)
         {
-            if (AwayColorStack.Children[i] is Button b)
+            if (AwayColorStack.Children[i] is Grid swatch)
             {
                 var selected = i == _selectedAwayColorIndex;
-                b.BorderColor = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
-                b.BorderWidth = selected ? 2.5 : 1.0;
-                b.Scale = selected ? 1.08 : 1.0;
-                SemanticProperties.SetDescription(b, $"Borta, {ColorPresets[i].Name}, {(selected ? "vald" : "inte vald")}.");
+                var visual = (Border)swatch.Children[0];
+                var button = (Button)swatch.Children[1];
+                visual.Stroke = selected ? Colors.White : Color.FromArgb("#55FFFFFF");
+                visual.StrokeThickness = selected ? 2.5 : 1.0;
+                visual.Scale = selected ? 1.08 : 1.0;
+                SemanticProperties.SetDescription(button, $"Borta, {ColorPresets[i].Name}, {(selected ? "vald" : "inte vald")}.");
                 var baseColor = Color.FromArgb(ColorPresets[i].Primary);
-                b.BackgroundColor = i == _selectedHomeColorIndex
+                visual.BackgroundColor = i == _selectedHomeColorIndex
                     ? baseColor.WithAlpha(0.3f)
                     : baseColor;
             }

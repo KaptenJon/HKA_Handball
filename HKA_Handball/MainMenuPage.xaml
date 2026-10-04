@@ -132,9 +132,11 @@
                                        FontAttributes="Bold"
                                        TextColor="#E8FFFFFF"
                                        SemanticProperties.HeadingLevel="Level3" />
-                                <HorizontalStackLayout x:Name="HomeColorStack"
-                                                       Spacing="6"
-                                                       HorizontalOptions="Center" />
+                                <FlexLayout x:Name="HomeColorStack"
+                                            Wrap="Wrap"
+                                            JustifyContent="Center"
+                                            AlignContent="Start"
+                                            HorizontalOptions="Fill" />
                             </VerticalStackLayout>
 
                             <VerticalStackLayout Grid.Column="1"
@@ -144,9 +146,11 @@
                                        FontAttributes="Bold"
                                        TextColor="#E8FFFFFF"
                                        SemanticProperties.HeadingLevel="Level3" />
-                                <HorizontalStackLayout x:Name="AwayColorStack"
-                                                       Spacing="6"
-                                                       HorizontalOptions="Center" />
+                                <FlexLayout x:Name="AwayColorStack"
+                                            Wrap="Wrap"
+                                            JustifyContent="Center"
+                                            AlignContent="Start"
+                                            HorizontalOptions="Fill" />
                             </VerticalStackLayout>
                         </Grid>
 
