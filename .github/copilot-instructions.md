@@ -55,6 +55,33 @@ When opening a PR:
 - If this is a 🟡 needs-review task, add to the PR description: `⚠️ This task was flagged as "needs review" — please have a squad member review before merging.`
 - Follow any project conventions in `.squad/decisions.md`
 
+## Android Versioning at Chat Task Completion
+
+When the chat's tasks are complete ("när chattens uppgifter är klara"), and the
+completed work batch changes the Android app, increment the integer
+`ApplicationVersion` in `HKA_Handball\HKA_Handball.csproj` by exactly **1** from
+its latest value, **once per completed work batch**; never reset, decrease or
+reuse it. At that completion, explicitly write a valid, suitable human-facing
+app version in `ApplicationDisplayVersion` in the same `.csproj`.
+Do not increment for each validation build or retry. Questions,
+documentation-only tasks and Windows-only changes do not trigger this update.
+This is a developer/agent obligation, not automated versioning.
+
+## UI Verification Requirement
+
+All UI changes must be tested visually in the running app, following
+`.github/instructions/handball.instructions.md` and the **UI visual verification**
+section in `README.md`. Report the inspected views, interactions, screen/window
+sizes, platform and results, plus any unverified targets or blockers. Builds and
+headless checks alone are insufficient; Windows runtime inspection is useful
+when Android is unavailable, but does not count as Android-device verification.
+
+Keep verification focused on changed behavior/views and representative relevant
+formats. Reuse still-valid prior evidence for unchanged systems rather than
+rerunning full game/system or multi-viewport suites after every edit; expand
+only when change risk or a targeted failure warrants it. Changed UI still
+requires runtime visual verification; disclose blockers and pre-existing failures.
+
 ## Decisions
 
 If you make a decision that affects other team members, write it to:

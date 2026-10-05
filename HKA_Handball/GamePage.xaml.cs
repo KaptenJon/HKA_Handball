@@ -42,6 +42,10 @@ public partial class GamePage : ContentPage
 
         InitializeComponent();
         _drawable = new GameDrawable(_state, homeColors, awayColors);
+#if ANDROID
+        _drawable.GetCanvasPixelSize = () => GameView.Handler?.PlatformView is Android.Views.View view
+            ? new Size(view.Width, view.Height) : default;
+#endif
         GameView.Drawable = _drawable;
 
         _state.GameEvent += OnGameEvent;
@@ -111,7 +115,13 @@ public partial class GamePage : ContentPage
         Joystick2.WidthRequest = Joystick2.HeightRequest = joystickSize;
         Player1Buttons.WidthRequest = Player2Buttons.WidthRequest = actionWidth;
         bool compact = Height < 420;
-        HomeGoalAim.HeightRequest = AwayGoalAim.HeightRequest = compact ? 44 : 64;
+        float courtTopInset = compact || _gameMode == GameMode.SinglePlayer ? 76 : 100;
+        double controlOverhead = 44 + (compact ? 4 + 12 : 6 + 16) + 16;
+        double maxGoalHeight = compact
+            ? Math.Clamp(Height - courtTopInset - controlOverhead - Math.Max(90, Height * 0.32), 72, 110)
+            : 136;
+        double goalHeight = Math.Clamp((actionWidth - (compact ? 12 : 16) - 8) * 2 / 3 + 22, 72, maxGoalHeight);
+        HomeGoalAim.HeightRequest = AwayGoalAim.HeightRequest = goalHeight;
         Player1Buttons.Padding = Player2Buttons.Padding = new Microsoft.Maui.Thickness(compact ? 6 : 8);
         Player1ButtonsGrid.RowSpacing = Player2ButtonsGrid.RowSpacing = compact ? 4 : 6;
         PassUpButton.HeightRequest = PassDownButton.HeightRequest =
@@ -123,8 +133,10 @@ public partial class GamePage : ContentPage
             AwayPassUpButton.FontSize = AwayPassDownButton.FontSize = compactLocal ? 12 : 14;
         PassUpButton.Padding = PassDownButton.Padding =
             AwayPassUpButton.Padding = AwayPassDownButton.Padding = new Microsoft.Maui.Thickness(6, 0);
-        _drawable.ControlsBottomInset = compact ? 120 : 148;
-        _drawable.CourtTopInset = 100;
+        _drawable.ControlsBottomInset = (float)(goalHeight + controlOverhead);
+        _drawable.CourtTopInset = courtTopInset;
+        _drawable.ControlsSideInset = (float)(actionWidth + 8);
+        _drawable.JoystickBottomInset = (float)(joystickSize + 24);
         if (_gameMode == GameMode.SinglePlayer)
         {
             StatusBadge.VerticalOptions = LayoutOptions.End;
@@ -137,12 +149,13 @@ public partial class GamePage : ContentPage
             double inset = stacked ? HudBottomMargin : joystickSize + 32;
             Player1Buttons.Margin = new Microsoft.Maui.Thickness(inset, 0, 0, HudBottomMargin);
             Player2Buttons.Margin = new Microsoft.Maui.Thickness(0, 0, inset, HudBottomMargin);
+            double stackedJoystickInset = _drawable.ControlsBottomInset + HudBottomMargin;
             JoystickPanel.Margin = new Microsoft.Maui.Thickness(HudBottomMargin, 0, 0,
-                stacked ? 148 : HudBottomMargin);
+                stacked ? stackedJoystickInset : HudBottomMargin);
             Joystick2Panel.Margin = new Microsoft.Maui.Thickness(0, 0, HudBottomMargin,
-                stacked ? 148 : HudBottomMargin);
+                stacked ? stackedJoystickInset : HudBottomMargin);
             if (stacked)
-                _drawable.ControlsBottomInset = (float)(148 + joystickSize + 24);
+                _drawable.ControlsBottomInset = (float)(stackedJoystickInset + joystickSize + 12);
         }
         UpdateCameraButtonText();
         GameView.Invalidate();
@@ -223,7 +236,6 @@ public partial class GamePage : ContentPage
             // Hide all controls while paused
             PassUpButton.IsVisible = false;
             PassDownButton.IsVisible = false;
-            DribbleButton.IsVisible = false;
             HomeGoalAim.IsVisible = false;
             SwitchDefenderButton.IsVisible = false;
             Player1Buttons.IsVisible = false;
@@ -232,7 +244,6 @@ public partial class GamePage : ContentPage
             {
                 AwayPassUpButton.IsVisible = false;
                 AwayPassDownButton.IsVisible = false;
-                AwayDribbleButton.IsVisible = false;
                 AwayGoalAim.IsVisible = false;
                 AwaySwitchDefenderButton.IsVisible = false;
                 Joystick2Panel.IsVisible = false;
@@ -276,16 +287,12 @@ public partial class GamePage : ContentPage
         // Player 1 controls — goal aim stays visible during shot to show GK diving
         PassUpButton.IsVisible = !defending && controlsActive;
         PassDownButton.IsVisible = !defending && controlsActive;
-        DribbleButton.IsVisible = !defending && controlsActive;
         HomeGoalAim.IsVisible = (!defending || _state.IsShootActive) && controlsActive;
         SwitchDefenderButton.IsVisible = defending && !_state.IsShootActive && controlsActive;
         Player1Buttons.IsVisible = controlsActive;
         JoystickPanel.IsVisible = controlsActive;
         PassUpButton.IsEnabled = !restartPaused;
         PassDownButton.IsEnabled = !restartPaused;
-        DribbleButton.IsEnabled = false;
-        DribbleButton.Text = _state.BallCarrierHasDribbled && !_state.IsDribbleActive
-            ? "Max 3 steg" : "↕ Auto-studs";
         HomeGoalAim.IsEnabled = !restartPaused;
         SwitchDefenderButton.IsEnabled = !restartPaused;
 
@@ -304,16 +311,12 @@ public partial class GamePage : ContentPage
             bool awayDefending = !awayAttacking && !_state.IsMatchOver;
             AwayPassUpButton.IsVisible = awayAttacking && controlsActive;
             AwayPassDownButton.IsVisible = awayAttacking && controlsActive;
-            AwayDribbleButton.IsVisible = awayAttacking && controlsActive;
             AwayGoalAim.IsVisible = (awayAttacking || _state.IsAwayShootActive) && controlsActive;
             AwaySwitchDefenderButton.IsVisible = awayDefending && !_state.IsAwayShootActive && controlsActive;
             Joystick2Panel.IsVisible = controlsActive;
             Player2Buttons.IsVisible = controlsActive;
             AwayPassUpButton.IsEnabled = !restartPaused;
             AwayPassDownButton.IsEnabled = !restartPaused;
-            AwayDribbleButton.IsEnabled = false;
-            AwayDribbleButton.Text = _state.BallCarrierHasDribbled && !_state.IsDribbleActive
-                ? "Max 3 steg" : "↕ Auto-studs";
             AwayGoalAim.IsEnabled = !restartPaused;
             AwaySwitchDefenderButton.IsEnabled = !restartPaused;
 
@@ -334,9 +337,10 @@ public partial class GamePage : ContentPage
             _accumulatedFrameSeconds -= GameState.SimulationStepSeconds;
             _state.Update(GameState.SimulationStepSeconds);
         }
-        StatusLabel.Text = _state.StatusText;
+        string notification = GetMatchNotification(_state.StatusText);
+        StatusLabel.Text = notification;
         // Highlight warnings (passive-play etc.) in amber so they read as an alert, not just info.
-        StatusLabel.TextColor = _state.StatusText.StartsWith('⚠') ? Colors.Orange : Color.FromArgb("#F4F4F4");
+        StatusLabel.TextColor = notification.StartsWith('⚠') ? Colors.Orange : Color.FromArgb("#F4F4F4");
         StatusAccent.Color = _state.PassivePlayWarningActive
             ? Colors.Orange
             : _state.IsGoalCelebration
@@ -344,8 +348,30 @@ public partial class GamePage : ContentPage
                 : _state.IsRestartingAfterGoal
                     ? Colors.CornflowerBlue
                     : Color.FromArgb("#66FFFFFF");
-        StatusBadge.IsVisible = !string.IsNullOrWhiteSpace(_state.StatusText);
+        StatusBadge.IsVisible = !string.IsNullOrWhiteSpace(notification);
         GameView.Invalidate();
+    }
+
+    static string GetMatchNotification(string status)
+    {
+        if (status.StartsWith("Boll:", StringComparison.Ordinal)
+            || status.StartsWith("Försvarar med #", StringComparison.Ordinal)
+            || status.StartsWith("Försvarare #", StringComparison.Ordinal)
+            || status.StartsWith("Borta #", StringComparison.Ordinal)
+            || status.StartsWith("Borta försvarare #", StringComparison.Ordinal))
+            return "";
+
+        return status switch
+        {
+            "Lös boll" or "Auto-studs" or "Skott!" or "Motståndaren skjuter!" or "Borta skjuter!"
+                or "Pass i luften" or "Kontring!" or "Genombrott!" or "Kontringsavslut!"
+                or "Kantavslut!" or "Distansskott!" or "Snabbt avslut!" => "",
+            "MÅL! 🎉" => "Mål – hemma!",
+            "Borta gör mål!" => "Mål – borta!",
+            "STRAFFMÅL! 🎉" => "Straffmål – hemma!",
+            "Borta straffmål!" => "Straffmål – borta!",
+            _ => status
+        };
     }
 
     void OnTapped(object? sender, TappedEventArgs e)
@@ -592,9 +618,15 @@ public class GameState
     const double AwayPushForwardThreshold = 40; // distance from arc before AI settles and starts passing
     const int ThrowOffCarrierIndex = 1; // preferred field player index used for throw-off ball carrier
     const double GoalResetLineupOffsetX = 72;
-    const double RollingPlayRunLeadX = 34;
     const double DefenderMarkingGapX = 34;
     const double DefenderMarkingStepX = 46;
+    const double DeepDefenseRadius = GoalAreaRadius + 25;
+    const double AdvancedDefenseRadius = FreeThrowRadius + 25;
+    const double DefenseLaneAngle = 45;
+    const double DefenseMaxShiftAngle = 12;
+    const double DefensePressureLimit = 18;
+    const double DefenseRouteClearance = GoalAreaRadius + 14;
+    const double DefenseRouteStepAngle = 20 * Math.PI / 180;
     const double AwayAIPositionVariation = 0.20; // AI positioning randomness for variety
     const double AwayAIPressureDistance = 140; // distance where AI recognizes pressure and acts
     const double AwayAIFastPassChance = 0.25; // chance AI does quick pass under pressure
@@ -635,9 +667,9 @@ public class GameState
     const double AwayMaxShotChance = 0.58; // cap to avoid unrealistic shot spam
     const int AwayFreeThrowPassCooldownTicks = 18;
 
-    // Pivot (circle runner) positioning constants
-    const double PivotOscillationPeriod = 800.0; // milliseconds per oscillation cycle
-    const double PivotDriftAmplitude = 60; // pixels of vertical drift between defenders
+    const double AttackWingAngle = 75;
+    const double AttackBackAngle = 28;
+    const double AwayBreakthroughSpeed = 160;
 
     // Defensive tackle constants
     const double TackleDistance = 22;
@@ -1800,7 +1832,6 @@ public class GameState
                 return;
             }
 
-            owner.Velocity = Point.Zero;
             var previousOwnerPosition = owner.Position;
             double fastBreakMult = _homeFastBreakTicks > 0 ? FastBreakSpeedMultiplier : 1.0;
             bool hasManualInput = Math.Abs(ActiveMoveInput.X) > CarrierMovementThreshold || Math.Abs(ActiveMoveInput.Y) > CarrierMovementThreshold
@@ -1808,10 +1839,12 @@ public class GameState
 
             if (_freeThrowCooldownTicks > 0)
             {
+                owner.Velocity = Point.Zero;
                 // Ball carrier must stay still during free throw whistle pause
             }
             else if (hasManualInput)
             {
+                owner.Velocity = Point.Zero;
                 // Direct joystick / button control
                 double forwardExtra = _advanceBoost ? 220 : 0;
                 double diagonalForwardExtra = _attackDiagonalBoostY == 0 ? 0 : 140;
@@ -1820,7 +1853,7 @@ public class GameState
                     owner.Position.Y + (ActiveMoveInput.Y + _attackDiagonalBoostY) * dt * fastBreakMult);
                 owner.Position = nextPos;
             }
-            else
+            else if (owner.IsGoalkeeper)
             {
                 // No manual input: auto-advance naturally toward the press line
                 double targetX = Math.Min(pressLineX - 40, ViewSize.Width - 250);
@@ -1831,6 +1864,11 @@ public class GameState
                     Lerp(owner.Position.X, targetX, lerpRate),
                     Lerp(owner.Position.Y, centerY, 0.01));
             }
+            else
+            {
+                var target = GetAttackingPosition(BallOwnerPlayerIndex, homeAttacking: true);
+                MoveActorTowardTarget(owner, GetOutfieldMovementTarget(owner.Position, target), dt, fastBreakMult);
+            }
 
             if (IsInsideRightGoalArea(owner.Position))
             {
@@ -1840,6 +1878,8 @@ public class GameState
             }
 
             ClampActor(owner);
+            if (hasManualInput)
+                RecordControlledVelocity(owner, previousOwnerPosition, dt);
 
             if (TrackBallCarrierHandling(owner, previousOwnerPosition, dt))
                 return;
@@ -1852,10 +1892,20 @@ public class GameState
 
         // Supporting players
         int homeAttackFocusIndex = GetHomeAttackFocusIndex();
-        Point homeAttackFocusPoint = homeAttackFocusIndex >= 0
-            ? HomePlayers[homeAttackFocusIndex].Position
-            : new Point(ViewSize.Width > 0 ? ViewSize.Width / 2 : 350, ViewSize.Height > 0 ? ViewSize.Height / 2 : 300);
         int awayAttackFocusIndex = GetAwayAttackFocusIndex();
+        bool homeDefendingFormation = (BallOwnerType == BallOwnershipType.Opponent)
+            || (BallOwnerType == BallOwnershipType.Loose && !_passActive) || _shootActive;
+        double homeDefenseBallY = awayAttackFocusIndex >= 0
+            ? AwayPlayers[awayAttackFocusIndex].Position.Y
+            : BallPos.Y;
+        int homePressingDefenderIndex = homeDefendingFormation
+            ? GetPressingDefenderIndex(HomePlayers, homeDefenseBallY, awayAttackFocusIndex, homeDefending: true)
+            : -1;
+        if (_retreatingFormerOwner)
+        {
+            _retreatingFormerOwner = false;
+            _formerOwnerIndex = -1;
+        }
         for (int i = 1; i < HomePlayers.Length; i++)
         {
             // Suspended players stay off-field
@@ -1865,7 +1915,6 @@ public class GameState
                 HomePlayers[i].Position = new Point(20, 30); // bench area top-left
                 continue;
             }
-            if (_retreatingFormerOwner && i == _formerOwnerIndex) continue;
             if (BallOwnerType == BallOwnershipType.Player && i == BallOwnerPlayerIndex) continue;
             if (IsHomeDefending && i == ControlledDefenderIndex)
             {
@@ -1877,6 +1926,7 @@ public class GameState
                 if (hasManualDefenseInput)
                 {
                     var c = HomePlayers[i];
+                    var previousPosition = c.Position;
                     c.Velocity = Point.Zero;
                     const double defenderControlBoost = 1.7;
                     double forwardBoost = _defenderAdvanceBoost ? 180 : 0;
@@ -1888,104 +1938,22 @@ public class GameState
                         c.Position.X + (ActiveMoveInput.X * defenderControlBoost + forwardBoost + sideForwardBoost + diagForwardBoost) * dt,
                         c.Position.Y + (ActiveMoveInput.Y * defenderControlBoost + sideBoost + diagSideBoost) * dt);
                     ClampActor(c);
+                    RecordControlledVelocity(c, previousPosition, dt);
                     continue;
                 }
             }
             var p = HomePlayers[i];
-            bool groupRetreat = (BallOwnerType == BallOwnershipType.Opponent) || (BallOwnerType == BallOwnershipType.Loose && !_passActive) || _shootActive;
-            double desiredX = p.Position.X, desiredY = p.Position.Y;
-            if (groupRetreat)
+            if (homeDefendingFormation)
             {
-                // Form defensive arc just outside the goal area, between attackers and goalkeeper
-                var defPos = GetDefensiveArcPosition(i - 1, HomePlayers.Length - 1);
-                var markedPos = GetMarkedDefensiveTarget(defPos, AwayPlayers, i, awayAttackFocusIndex, homeDefending: true);
-                desiredX = markedPos.X;
-                desiredY = markedPos.Y;
-            }
-            else
-            {
-                // Attacking: spread evenly based on field index, shift with ball carrier
-                // Only count non-suspended active field players for spacing
-                int activeFieldCount = 0;
-                int activeFieldIdx = 0;
-                for (int j = 1; j < HomePlayers.Length; j++)
-                {
-                    if (HomePlayers[j].IsSuspended) continue;
-                    if (BallOwnerType == BallOwnershipType.Player && j == BallOwnerPlayerIndex) continue;
-                    if (j == i) activeFieldIdx = activeFieldCount;
-                    activeFieldCount++;
-                }
-                if (activeFieldCount == 0) activeFieldCount = 1;
-
-                double topY = 60;
-                double bottomY = ViewSize.Height > 0 ? ViewSize.Height - 60 : 540;
-                double slotY = topY + activeFieldIdx * ((bottomY - topY) / Math.Max(activeFieldCount - 1, 1));
-
-                // Shift toward ball carrier Y position (gentle attraction to keep formation wide)
-                double carrierY = homeAttackFocusPoint.Y;
-                slotY = Lerp(slotY, carrierY, 0.10);
-
-                // Differentiate run-up: 6m players (wings 1,5 + pivot 6) go all the way,
-                // 9m players (backs 2,3,4) stay approximately with the ball carrier
-                bool isPivot = (i == 6);
-                bool is6mPlayer = (i == 1 || i == 5 || isPivot);
-                double carrierX = homeAttackFocusPoint.X;
-                if (isPivot)
-                {
-                    // Pivot positions just outside the opponent's 6m zone, between defenders
-                    double rightGoalAreaEdge = ViewSize.Width - GoalCenterInset - GoalAreaRadius;
-                    desiredX = Math.Min(rightGoalAreaEdge + 10, ViewSize.Width - 200);
-                    desiredX = Math.Max(p.BaseX + 30, desiredX);
-                    // Pivot stays central, oscillating between defenders to create gaps
-                    double pivotDrift = Math.Sin((double)Environment.TickCount * (2 * Math.PI / PivotOscillationPeriod)) * PivotDriftAmplitude;
-                    desiredY = Lerp(ViewSize.Height / 2 + pivotDrift, carrierY, 0.25);
-                }
-                else if (is6mPlayer)
-                {
-                    desiredX = Math.Min(pressLineX - 20, ViewSize.Width - 200);
-                    desiredX = Math.Max(p.BaseX + 30, desiredX);
-                }
-                else
-                {
-                    // Backs: advance roughly with the ball carrier, slightly ahead
-                    double backMaxX = Math.Min(carrierX + 40, ViewSize.Width - 200);
-                    desiredX = Math.Max(p.BaseX + 20, backMaxX);
-                }
-
-                if (_passActive && i == _passTargetHomeIndex)
-                {
-                    desiredX = Math.Min(desiredX + RollingPlayRunLeadX, ViewSize.Width - 180);
-                    desiredY = Lerp(desiredY, BallPos.Y, 0.18);
-                }
-
-                if (!isPivot)
-                {
-                    // Wings stay wide near the sidelines, but cut inside when near the goal area
-                    // This is authentic handball wing play — cutting inside for better shooting angles
-                    double rightGoalAreaEdge = ViewSize.Width - GoalCenterInset - GoalAreaRadius;
-                    bool nearGoalArea = desiredX > rightGoalAreaEdge - 60;
-
-                    if (i == 1) // Left wing (VY) — near top sideline
-                    {
-                        if (nearGoalArea)
-                            desiredY = Lerp(topY + 40, carrierY, 0.25); // cut inside toward center
-                        else
-                            desiredY = Lerp(topY, carrierY, 0.12);
-                    }
-                    else if (i == 5) // Right wing (HY) — near bottom sideline
-                    {
-                        if (nearGoalArea)
-                            desiredY = Lerp(bottomY - 40, carrierY, 0.25); // cut inside toward center
-                        else
-                            desiredY = Lerp(bottomY, carrierY, 0.12);
-                    }
-                    else
-                        desiredY = slotY;
-                }
+                var defensiveTarget = GetDefensiveTarget(
+                    i, AwayPlayers, awayAttackFocusIndex, homeDefenseBallY, homePressingDefenderIndex, homeDefending: true);
+                MoveActorTowardTarget(p, GetDefensiveMovementTarget(p.Position, defensiveTarget, homeDefending: true), dt);
+                ClampActor(p);
+                continue;
             }
             double movementSpeedMultiplier = (_passActive && i == _passTargetHomeIndex) ? 1.5 : 1.0;
-if (!_retreatingFormerOwner || i != _formerOwnerIndex)
-                MoveActorTowardTarget(p, new Point(desiredX, desiredY), dt, movementSpeedMultiplier);
+            var attackTarget = GetAttackingPosition(i, homeAttacking: true);
+            MoveActorTowardTarget(p, GetOutfieldMovementTarget(p.Position, attackTarget), dt, movementSpeedMultiplier);
             ClampActor(p);
         }
 
@@ -2075,26 +2043,13 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
         }
         ClampActor(awayGK);
 
-        // Former owner retreat only
-        if (_retreatingFormerOwner && _formerOwnerIndex >= 0)
-        {
-            var r = HomePlayers[_formerOwnerIndex];
-            double targetX = Math.Min(pressLineX - (_formerOwnerIndex * 18), ViewSize.Width - 200);
-            targetX = Math.Max(r.BaseX + 30, targetX);
-            MoveActorTowardTarget(r, new Point(targetX, r.BaseY), dt);
-            ClampActor(r);
-            if (Math.Abs(r.Position.X - targetX) < 2 && Math.Abs(r.Position.Y - r.BaseY) < 2)
-            {
-                _retreatingFormerOwner = false;
-                _formerOwnerIndex = -1;
-            }
-        }
-
         bool awayAttacking = (BallOwnerType == BallOwnershipType.Opponent && BallOwnerAwayIndex >= 0) || _awayPassActive || _awayShootActive;
-
-        // Away attack: handball build-up around the free-throw arc
-        double arcCenterX = GoalCenterInset;
-        double arcRadius = FreeThrowRadius + 30;
+        double awayDefenseBallY = homeAttackFocusIndex >= 0
+            ? HomePlayers[homeAttackFocusIndex].Position.Y
+            : BallPos.Y;
+        int awayPressingDefenderIndex = !awayAttacking
+            ? GetPressingDefenderIndex(AwayPlayers, awayDefenseBallY, homeAttackFocusIndex, homeDefending: false)
+            : -1;
 
         for (int i = 0; i < AwayPlayers.Length; i++)
         {
@@ -2123,6 +2078,7 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                                               || _awayAdvanceBoost2;
                     if (hasManualDefense2)
                     {
+                        var previousPosition = a.Position;
                         a.Velocity = Point.Zero;
                         const double defenderControlBoost = 1.7;
                         double forwardBoost = _awayAdvanceBoost2 ? -180 : 0; // negative = step out leftward to pressure home attackers
@@ -2130,87 +2086,26 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                             a.Position.X + (AwayActiveMoveInput.X * defenderControlBoost + forwardBoost) * dt,
                             a.Position.Y + AwayActiveMoveInput.Y * defenderControlBoost * dt);
                         ClampActor(a);
+                        RecordControlledVelocity(a, previousPosition, dt);
                         continue;
                     }
                 }
 
-                // Defending: 6-0 formation — defenders form an arc along the free-throw line
-                // Track the ball carrier, or during a home pass, track the pass target
-                bool trackingPlayer = (BallOwnerType == BallOwnershipType.Player && BallOwnerPlayerIndex >= 0)
-                    || (_passActive && _passTargetHomeIndex >= 0);
-                int trackedIdx = BallOwnerPlayerIndex >= 0 ? BallOwnerPlayerIndex : _passTargetHomeIndex;
-                if (trackingPlayer && trackedIdx >= 0 && trackedIdx < HomePlayers.Length)
-                {
-                    // Count non-suspended field defenders for proper arc spacing
-                    int activeDefCount = 0;
-                    int activeDefIdx = 0;
-                    for (int j = 1; j < AwayPlayers.Length; j++)
-                    {
-                        if (AwayPlayers[j].IsSuspended) continue;
-                        if (j == i) activeDefIdx = activeDefCount;
-                        activeDefCount++;
-                    }
-                    if (activeDefCount == 0) activeDefCount = 1;
-
-                    double defArcCenterX = ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset : 700;
-                    double defArcRadius = GoalAreaRadius + 25;
-
-                    // Shift arc toward tracked player
-                    double arcCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
-                    double carrierY = HomePlayers[trackedIdx].Position.Y;
-                    arcCenterY += (carrierY - arcCenterY) * 0.4;
-
-                    double angleRange = 120.0;
-                    double startAngle = 180.0 - angleRange / 2; // face left (toward home goal)
-                    double angleDeg = startAngle + activeDefIdx * (angleRange / Math.Max(activeDefCount - 1, 1));
-                    double angleRad = angleDeg * Math.PI / 180.0;
-
-                    double defX = defArcCenterX + defArcRadius * Math.Cos(angleRad);
-                    double defY = arcCenterY + defArcRadius * Math.Sin(angleRad);
-
-                    // Find the nearest defender to the carrier — that one pressures more aggressively
-                    double carrierX = HomePlayers[trackedIdx].Position.X;
-                    double distToCarrier = Distance(a.Position, HomePlayers[trackedIdx].Position);
-
-                    // Defenders within 130px of ball carrier step out to pressure more aggressively.
-                    // Multiple defenders may pressure simultaneously — intensity scales with proximity.
-                    if (distToCarrier < 130)
-                    {
-                        // Aggressive pressure: move toward carrier with intensity based on proximity
-                        double pressureIntensity = Math.Clamp(1.0 - distToCarrier / 130.0, 0, 1);
-                        defX = Lerp(defX, carrierX + 15, 0.35 * pressureIntensity);
-                        defY = Lerp(defY, carrierY, 0.25 * pressureIntensity);
-                    }
-
-                    double drift = Math.Sin(Environment.TickCount / 600.0 + i * 1.2) * 10;
-
-                    // Faster lerp rate toward defensive positions for snappier defense
-                    var markedPos = GetMarkedDefensiveTarget(
-                        new Point(defX, defY + drift),
-                        HomePlayers,
-                        i,
-                        trackedIdx,
-                        homeDefending: false);
-                    MoveActorTowardTarget(a, markedPos, dt);
-                }
-                else
-                {
-                    // No specific attacker: smoothly sway toward base position
-                    var swing = Math.Sin(Environment.TickCount / 600.0 + i) * 40;
-                    MoveActorTowardTarget(a, new Point(a.BaseX, a.BaseY + swing), dt);
-                }
+                var defensiveTarget = GetDefensiveTarget(
+                    i, HomePlayers, homeAttackFocusIndex, awayDefenseBallY, awayPressingDefenderIndex, homeDefending: false);
+                MoveActorTowardTarget(a, GetDefensiveMovementTarget(a.Position, defensiveTarget, homeDefending: false), dt);
                 ClampActor(a);
                 continue;
             }
 
             if (awayAttacking && i == BallOwnerAwayIndex)
             {
-                a.Velocity = Point.Zero;
                 var previousAwayOwnerPosition = a.Position;
                 if (RejectBallHandlingActionIfIllegal())
                     return;
                 if (_freeThrowCooldownTicks > 0)
                 {
+                    a.Velocity = Point.Zero;
                     ClampActor(a);
                     continue;
                 }
@@ -2222,6 +2117,7 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                     bool hasManualInput2 = Math.Abs(AwayActiveMoveInput.X) > CarrierMovementThreshold || Math.Abs(AwayActiveMoveInput.Y) > CarrierMovementThreshold || _awayAdvanceBoost2;
                     if (hasManualInput2)
                     {
+                        a.Velocity = Point.Zero;
                         double forwardExtra = _awayAdvanceBoost2 ? -220 : 0; // negative = attacking left
                         var nextPos = new Point(
                             a.Position.X + (AwayActiveMoveInput.X + forwardExtra) * dt * fastBreakMult,
@@ -2230,13 +2126,8 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                     }
                     else
                     {
-                        // Auto-advance toward arc position when no joystick input (mirrors home team behavior)
-                        var autoArcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                        double lerpRate = _awayFastBreakTicks > 0 ? 0.04 : 0.025;
-                        double centerY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
-                        a.Position = new Point(
-                            Lerp(a.Position.X, autoArcPos.X, lerpRate),
-                            Lerp(a.Position.Y, centerY, 0.01));
+                        var target = GetAttackingPosition(i, homeAttacking: false);
+                        MoveActorTowardTarget(a, GetOutfieldMovementTarget(a.Position, target), dt, fastBreakMult);
                     }
 
                     // In two-player mode, shooting is manual — no auto-shoot at attack stop line
@@ -2249,6 +2140,8 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                         return;
                     }
                     ClampActor(a);
+                    if (hasManualInput2)
+                        RecordControlledVelocity(a, previousAwayOwnerPosition, dt);
                     if (TrackBallCarrierHandling(a, previousAwayOwnerPosition, dt))
                         return;
                     continue;
@@ -2256,11 +2149,8 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
 
                 if (_awayBreakthrough)
                 {
-                    // Breaking through: charge toward goal area with varied angles
+                    // Preserve the breakthrough pace and each player's approach side.
                     double attackStopX = GoalCenterInset + GoalAreaRadius + 30;
-                    double newX = a.Position.X;
-                    if (a.Position.X > attackStopX)
-                        newX -= 160 * dt * fastBreakMult;
                     // Varied breakthrough angles: wings go wide, backs cut inside
                     bool isWing = (i == 1 || i == 6); // top/bottom wing
                     double targetY;
@@ -2273,11 +2163,12 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                     else
                     {
                         // Backs cut toward center with slight offset
-                        double offset = (a.Position.Y > ViewSize.Height / 2 ? 40 : -40);
+                        double offset = i <= 3 ? -40 : 40;
                         targetY = ViewSize.Height / 2 + offset;
                     }
-                    double newY = Lerp(a.Position.Y, targetY, 0.08);
-                    a.Position = new Point(newX, newY);
+                    var target = new Point(attackStopX, targetY);
+                    MoveActorTowardTarget(a, GetOutfieldMovementTarget(a.Position, target), dt,
+                        AwayBreakthroughSpeed / AIOutfieldMaxSpeed * fastBreakMult);
                     ClampActor(a);
                     if (TrackBallCarrierHandling(a, previousAwayOwnerPosition, dt))
                         return;
@@ -2288,17 +2179,8 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                 }
                 else
                 {
-                    // Build-up: lerp toward arc position (matches home team transition speed)
-                    var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                    double lerpRate = _awayFastBreakTicks > 0 ? 0.04 : 0.025;
-                    if (a.Position.X <= arcPos.X + AwayPushForwardThreshold)
-                    {
-                        // Near arc: tighter lerp for lateral positioning
-                        lerpRate = 0.06;
-                    }
-                    a.Position = new Point(
-                        Lerp(a.Position.X, arcPos.X, lerpRate),
-                        Lerp(a.Position.Y, arcPos.Y, 0.04));
+                    var arcPos = GetAttackingPosition(i, homeAttacking: false);
+                    MoveActorTowardTarget(a, GetOutfieldMovementTarget(a.Position, arcPos), dt, fastBreakMult);
                     ClampActor(a);
                     if (TrackBallCarrierHandling(a, previousAwayOwnerPosition, dt))
                         return;
@@ -2336,22 +2218,8 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
             }
             else
             {
-                // Support: advance toward arc formation, shift toward ball carrier
-                var arcPos = GetArcPosition(i, arcCenterX, arcRadius);
-                double shiftY = 0;
-                if (awayAttackFocusIndex >= 0)
-                {
-                    var carrierY = AwayPlayers[awayAttackFocusIndex].Position.Y;
-                    shiftY = (carrierY - arcPos.Y) * 0.15;
-                }
-                double supportX = arcPos.X;
-                double supportY = arcPos.Y + shiftY;
-                if (_awayPassActive && i == _awayPassTargetIndex)
-                {
-                    supportX = Math.Max(GoalCenterInset + GoalAreaRadius + 20, supportX - RollingPlayRunLeadX);
-                    supportY = Lerp(supportY, BallPos.Y, 0.18);
-                }
-                MoveActorTowardTarget(a, new Point(supportX, supportY), dt,
+                var target = GetAttackingPosition(i, homeAttacking: false);
+                MoveActorTowardTarget(a, GetOutfieldMovementTarget(a.Position, target), dt,
                     _awayPassActive && i == _awayPassTargetIndex
                         ? 1.5
                         : (_awayFastBreakTicks > 0 ? 1.4 : 1.0));
@@ -2764,6 +2632,15 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                 team[i].Velocity = Point.Zero;
     }
 
+    static void RecordControlledVelocity(Actor actor, Point previousPosition, double dt)
+    {
+        if (actor.IsGoalkeeper || dt <= 0) return;
+        // Direct input stays immediate; releasing it hands the actual speed back to the AI.
+        actor.Velocity = new Point(
+            (actor.Position.X - previousPosition.X) / dt,
+            (actor.Position.Y - previousPosition.Y) / dt);
+    }
+
     void MoveActorTowardTarget(Actor actor, Point target, double dt, double speedMultiplier = 1.0)
     {
         if (dt <= 0 || actor.IsGoalkeeper || actor.IsSuspended)
@@ -2807,7 +2684,7 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
         double nextVelocityX = actor.Velocity.X + velocityDeltaX;
         double nextVelocityY = actor.Velocity.Y + velocityDeltaY;
         double nextSpeed = Math.Sqrt(nextVelocityX * nextVelocityX + nextVelocityY * nextVelocityY);
-        double maxSpeed = AIOutfieldMaxSpeed * speedMultiplier;
+        double maxSpeed = Math.Max(AIOutfieldMaxSpeed * speedMultiplier, currentSpeed);
         if (nextSpeed > maxSpeed)
         {
             nextVelocityX *= maxSpeed / nextSpeed;
@@ -3083,35 +2960,111 @@ if (!_retreatingFormerOwner || i != _formerOwnerIndex)
                 y = Lerp(y, centerY + 40, 0.2);
         }
 
-        // Add subtle lateral drift for realism
-        double drift = Math.Sin(Environment.TickCount / 800.0 + playerIndex * 1.5) * 18;
-        return new Point(x, y + drift);
+        return new Point(x, y);
     }
 
-    /// <summary>
-    /// Returns the defensive arc position for home field player at the given slot.
-    /// Defenders form a semicircle just outside the goal area, shifted toward the ball.
-    /// </summary>
-    Point GetDefensiveArcPosition(int fieldIndex, int fieldCount)
+    Point GetAttackingPosition(int playerIndex, bool homeAttacking)
     {
-        double defArcCenterX = GoalCenterInset;
-        double defArcRadius = GoalAreaRadius + 25;
+        if (!homeAttacking)
+            return GetArcPosition(playerIndex, GoalCenterInset, FreeThrowRadius + 30);
 
-        // Shift arc center toward ball carrier vertically
-        double arcCenterY = ViewSize.Height > 0 ? ViewSize.Height / 2 : 300;
-        arcCenterY += (BallPos.Y - arcCenterY) * 0.3;
+        // Keep the existing blue wing/back/pivot identities, regardless of who has the ball.
+        double angleDegrees = playerIndex switch
+        {
+            1 => -AttackWingAngle,
+            2 => -AttackBackAngle,
+            4 => AttackBackAngle,
+            5 => AttackWingAngle,
+            _ => 0
+        };
+        double radius = playerIndex is 1 or 5 or 6 ? DeepDefenseRadius : FreeThrowRadius + 30;
+        double angle = angleDegrees * Math.PI / 180;
+        var goalCenter = GetDefenseGoalCenter(homeDefending: false);
+        return new Point(goalCenter.X - radius * Math.Cos(angle), goalCenter.Y + radius * Math.Sin(angle));
+    }
 
-        double angleRange = 120.0;
-        double startAngle = -angleRange / 2;
-        double angleDeg = startAngle + fieldIndex * (angleRange / Math.Max(fieldCount - 1, 1));
-        double angleRad = angleDeg * Math.PI / 180.0;
+    Point GetOutfieldMovementTarget(Point position, Point target)
+    {
+        var leftRoute = GetDefensiveMovementTarget(position, target, homeDefending: true);
+        return leftRoute != target
+            ? leftRoute
+            : GetDefensiveMovementTarget(position, target, homeDefending: false);
+    }
 
-        double x = defArcCenterX + defArcRadius * Math.Cos(angleRad);
-        double y = arcCenterY + defArcRadius * Math.Sin(angleRad);
+    Point GetDefenseGoalCenter(bool homeDefending)
+    {
+        return new Point(
+            homeDefending ? GoalCenterInset : ViewSize.Width > 0 ? ViewSize.Width - GoalCenterInset : 700,
+            ViewSize.Height > 0 ? ViewSize.Height / 2 : 300);
+    }
 
-        // Subtle defensive sway
-        double drift = Math.Sin(Environment.TickCount / 600.0 + fieldIndex * 1.2) * 12;
-        return new Point(x, y + drift);
+    Point GetDefensivePosition(int playerIndex, double ballY, bool homeDefending)
+    {
+        var goalCenter = GetDefenseGoalCenter(homeDefending);
+        double direction = homeDefending ? 1 : -1;
+        // Fixed roles survive turnovers and suspensions: 1–3 deep, 4–6 advanced.
+        double radius = playerIndex <= 3 ? DeepDefenseRadius : AdvancedDefenseRadius;
+        int lane = (playerIndex - 1) % 3;
+        double shiftAngle = Math.Clamp(
+            (ballY - goalCenter.Y) / GoalAreaRadius * DefenseMaxShiftAngle,
+            -DefenseMaxShiftAngle,
+            DefenseMaxShiftAngle);
+        double angle = ((lane - 1) * DefenseLaneAngle + shiftAngle) * Math.PI / 180;
+        return PushOutsideGoalArea(new Point(
+            goalCenter.X + direction * radius * Math.Cos(angle),
+            goalCenter.Y + radius * Math.Sin(angle)), goalCenter, GoalAreaRadius + 2);
+    }
+
+    int GetPressingDefenderIndex(Actor[] defenders, double ballY, int focusIndex, bool homeDefending)
+    {
+        if (focusIndex < 1) return -1;
+        int pressingIndex = -1;
+        double nearestLaneDistance = double.MaxValue;
+        for (int i = 4; i < defenders.Length; i++)
+        {
+            if (defenders[i].IsSuspended || defenders[i].IsGoalkeeper) continue;
+            double laneDistance = Math.Abs(GetDefensivePosition(i, ballY, homeDefending).Y - ballY);
+            if (laneDistance < nearestLaneDistance)
+            {
+                nearestLaneDistance = laneDistance;
+                pressingIndex = i;
+            }
+        }
+        return pressingIndex;
+    }
+
+    Point GetDefensiveTarget(int playerIndex, Actor[] attackers, int focusIndex, double ballY, int pressingIndex, bool homeDefending)
+    {
+        var target = GetDefensivePosition(playerIndex, ballY, homeDefending);
+        if (playerIndex != pressingIndex) return target;
+        var markedPos = GetMarkedDefensiveTarget(target, attackers, focusIndex, focusIndex, homeDefending);
+        // Only the ball-side front player pressures, without abandoning their lane.
+        return new Point(
+            homeDefending
+                ? Math.Clamp(markedPos.X, target.X, target.X + DefensePressureLimit)
+                : Math.Clamp(markedPos.X, target.X - DefensePressureLimit, target.X),
+            Math.Clamp(markedPos.Y, target.Y - DefensePressureLimit, target.Y + DefensePressureLimit));
+    }
+
+    Point GetDefensiveMovementTarget(Point position, Point target, bool homeDefending)
+    {
+        var goalCenter = GetDefenseGoalCenter(homeDefending);
+        double direction = homeDefending ? 1 : -1;
+        if (DistanceToSegment(goalCenter, position, target) >= DefenseRouteClearance)
+            return target;
+
+        // Route returning defenders around 6m rather than getting stuck on its clamp.
+        double currentAngle = Math.Atan2(position.Y - goalCenter.Y, direction * (position.X - goalCenter.X));
+        double targetAngle = Math.Atan2(target.Y - goalCenter.Y, direction * (target.X - goalCenter.X));
+        double distance = Distance(position, goalCenter);
+        double stepAngle = distance > DeepDefenseRadius + 1
+            ? Math.Acos(DeepDefenseRadius / distance)
+            : DefenseRouteStepAngle;
+        double nextAngle = currentAngle + Math.Clamp(targetAngle - currentAngle, -stepAngle, stepAngle);
+        double radius = DeepDefenseRadius;
+        return new Point(
+            goalCenter.X + direction * radius * Math.Cos(nextAngle),
+            goalCenter.Y + radius * Math.Sin(nextAngle));
     }
 
     /// <summary>Returns true for the away team's wing positions (indices 1 and 6).</summary>
@@ -4267,6 +4220,8 @@ public class GameDrawable : IDrawable
     readonly PathF _courtScreenClip = new();
     readonly PathF _goalRoof = new();
     CourtCamera _camera;
+    Size _canvasScale = new(1, 1);
+    public Func<Size>? GetCanvasPixelSize { get; set; }
     Point _cameraFocus = new(GameState.CourtWidth / 2, GameState.CourtHeight / 2);
     double _lastCameraSimulationSeconds;
     float _followZoom = 1.55f;
@@ -4284,6 +4239,8 @@ public class GameDrawable : IDrawable
     }
     public float ControlsBottomInset { get; set; } = 148;
     public float CourtTopInset { get; set; } = 100;
+    public float ControlsSideInset { get; set; }
+    public float JoystickBottomInset { get; set; } = 136;
 
     // Confetti colors (updated per-game based on team colors)
     readonly Color[] _confettiColors;
@@ -4346,6 +4303,19 @@ public class GameDrawable : IDrawable
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
+        // Native resize/close callbacks can temporarily have no room for the score/clock.
+        if (!float.IsFinite(dirtyRect.Width) || !float.IsFinite(dirtyRect.Height)
+            || dirtyRect.Width < 120 || dirtyRect.Height < 80)
+            return;
+
+        _canvasScale = new Size(1, 1);
+        if (canvas is ScalingCanvas scalingCanvas)
+        {
+            var pixels = GetCanvasPixelSize?.Invoke() ?? default;
+            _canvasScale = pixels.Width > 0 && pixels.Height > 0 && dirtyRect.Width > 0 && dirtyRect.Height > 0
+                ? new Size(pixels.Width / dirtyRect.Width, pixels.Height / dirtyRect.Height)
+                : new Size(scalingCanvas.GetScale(), scalingCanvas.GetScale());
+        }
         double cameraElapsed = Math.Max(0, _state.SimulationSeconds - _lastCameraSimulationSeconds);
         _lastCameraSimulationSeconds = _state.SimulationSeconds;
         if (CameraMode == CourtCameraMode.BroadcastFollow)
@@ -4356,10 +4326,12 @@ public class GameDrawable : IDrawable
             double maxX = Math.Max(controlled.X, _state.BallPos.X);
             double minY = Math.Min(controlled.Y, _state.BallPos.Y);
             double maxY = Math.Max(controlled.Y, _state.BallPos.Y);
+            Point? awayControlled = null;
             if (_state.Mode == GameMode.TwoPlayerLocal)
             {
                 var away = _state.AwayPlayers[_state.BallOwnerType == BallOwnershipType.Opponent
                     ? _state.ControlledAwayAttackerIndex : _state.ControlledAwayDefenderIndex].Position;
+                awayControlled = away;
                 minX = Math.Min(minX, away.X);
                 maxX = Math.Max(maxX, away.X);
                 minY = Math.Min(minY, away.Y);
@@ -4379,6 +4351,11 @@ public class GameDrawable : IDrawable
             _cameraFocus = new Point(
                 _cameraFocus.X + (focus.X - _cameraFocus.X) * blend,
                 _cameraFocus.Y + (focus.Y - _cameraFocus.Y) * blend);
+            var followedCamera = new CourtCamera(viewport, true, _followZoom, _cameraFocus);
+            if (!IsVisibleInViewport(followedCamera, viewport, controlled)
+                || !IsVisibleInViewport(followedCamera, viewport, _state.BallPos)
+                || awayControlled is Point awayPoint && !IsVisibleInViewport(followedCamera, viewport, awayPoint))
+                _cameraFocus = focus;
         }
         _camera = CreateCamera(new Size(dirtyRect.Width, dirtyRect.Height));
         var courtRect = new RectF(0, 0, (float)GameState.CourtWidth, (float)GameState.CourtHeight);
@@ -4387,8 +4364,14 @@ public class GameDrawable : IDrawable
         canvas.FillColor = ArenaBackground;
         canvas.FillRectangle(dirtyRect);
 
+        var gameplayViewport = GetCourtViewport(new Size(dirtyRect.Width, dirtyRect.Height));
+        float clipTop = Math.Max(0, CourtTopInset - 36);
+        float clipRight = gameplayViewport.Width < Math.Max(1, dirtyRect.Width - 24)
+            ? gameplayViewport.Right : dirtyRect.Width;
         canvas.SaveState();
-        canvas.ConcatenateTransform(_camera.Transform);
+        canvas.ClipRectangle(0, clipTop, clipRight, Math.Max(1, gameplayViewport.Bottom - clipTop));
+        canvas.SaveState();
+        ConcatenateCourtTransform(canvas, _camera.Transform);
         DrawField(canvas, courtRect);
         DrawMotionTrails(canvas);
         DrawShotTrail(canvas);
@@ -4399,11 +4382,7 @@ public class GameDrawable : IDrawable
 
         DrawPlayers(canvas);
         DrawBall(canvas);
-
-        // Keep the zoomed court out of the touch-control strip.
-        canvas.FillColor = ArenaBackground;
-        canvas.FillRectangle(0, dirtyRect.Height - ControlsBottomInset, dirtyRect.Width, ControlsBottomInset);
-        canvas.FillRectangle(0, 0, dirtyRect.Width, Math.Max(0, CourtTopInset - 36));
+        canvas.RestoreState();
         DrawIntroEffects(canvas, dirtyRect);
         DrawScore(canvas, dirtyRect);
         DrawSuspensionIndicator(canvas, dirtyRect);
@@ -4414,11 +4393,28 @@ public class GameDrawable : IDrawable
         DrawKeyboardHelp(canvas, dirtyRect);
     }
 
+    static bool IsVisibleInViewport(CourtCamera camera, RectF viewport, Point world)
+    {
+        var screen = camera.Project(world);
+        return screen.X >= viewport.Left && screen.X <= viewport.Right
+            && screen.Y >= viewport.Top && screen.Y <= viewport.Bottom;
+    }
+
     RectF GetCourtViewport(Size viewSize)
     {
         float width = Math.Max(1, (float)viewSize.Width - 24);
         float height = Math.Max(1, (float)viewSize.Height - CourtTopInset - ControlsBottomInset);
-        return new RectF(12, CourtTopInset, width, height);
+        var aboveControls = new RectF(12, CourtTopInset, width, height);
+        if (_state.Mode != GameMode.SinglePlayer || ControlsSideInset <= 0)
+            return aboveControls;
+
+        // Use the taller space beside the action panel only when the full court fits larger.
+        var besideControls = new RectF(12, CourtTopInset,
+            Math.Max(1, width - ControlsSideInset),
+            Math.Max(1, (float)viewSize.Height - CourtTopInset - JoystickBottomInset));
+        bool tilted = CameraMode != CourtCameraMode.Tactical;
+        return new CourtCamera(besideControls, tilted).Scale > new CourtCamera(aboveControls, tilted).Scale
+            ? besideControls : aboveControls;
     }
 
     CourtCamera CreateCamera(Size viewSize) => new(GetCourtViewport(viewSize),
@@ -4427,6 +4423,21 @@ public class GameDrawable : IDrawable
         CameraMode == CourtCameraMode.BroadcastFollow ? _cameraFocus : null);
 
     public Point ScreenToCourt(Point screen, Size viewSize) => CreateCamera(viewSize).Unproject(screen);
+
+    void ConcatenateCourtTransform(ICanvas canvas, System.Numerics.Matrix3x2 transform)
+    {
+        // Android's ScalingCanvas pre-scales primitives and paths, but also decomposes
+        // concatenated matrices into another scale. Apply the density-conjugated
+        // camera to its parent instead, leaving that existing DIP scale untouched.
+        if (canvas is ScalingCanvas scalingCanvas)
+        {
+            var density = System.Numerics.Matrix3x2.CreateScale((float)_canvasScale.Width, (float)_canvasScale.Height);
+            System.Numerics.Matrix3x2.Invert(density, out var inverseDensity);
+            scalingCanvas.ParentCanvas.ConcatenateTransform(inverseDensity * transform * density);
+        }
+        else
+            canvas.ConcatenateTransform(transform);
+    }
 
     void DrawField(ICanvas canvas, RectF dirtyRect)
     {
@@ -4455,9 +4466,9 @@ public class GameDrawable : IDrawable
         corner = _camera.Project(new Point(courtLeft, courtTop + courtH));
         _courtScreenClip.SetPoint(3, (float)corner.X, (float)corner.Y);
         System.Numerics.Matrix3x2.Invert(_camera.Transform, out var inverse);
-        canvas.ConcatenateTransform(inverse);
+        ConcatenateCourtTransform(canvas, inverse);
         canvas.ClipPath(_courtScreenClip);
-        canvas.ConcatenateTransform(_camera.Transform);
+        ConcatenateCourtTransform(canvas, _camera.Transform);
 
         // Maple boards under a matte sports-floor finish.
         canvas.FillColor = MapleFloor;
@@ -4696,7 +4707,7 @@ public class GameDrawable : IDrawable
             _playerDrawOrder[j] = i;
         }
         bool awayAttacking = _state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex >= 0;
-        float figureScale = Math.Max(0.85f, _camera.Scale);
+        float figureScale = _camera.Scale;
         for (int slot = 0; slot < count; slot++)
         {
             int index = _playerDrawOrder[slot];
@@ -4715,7 +4726,7 @@ public class GameDrawable : IDrawable
             canvas.SaveState();
             canvas.Translate((float)screen.X, (float)screen.Y);
             canvas.Scale(figureScale, figureScale);
-            DrawPlayerFigure(canvas, new Point(0, -20), jerseyColor, i, isActive, isDefender,
+            DrawPlayerFigure(canvas, new Point(0, actor.IsGoalkeeper ? -20.5 : -20), jerseyColor, i, isActive, isDefender,
                 actor.IsGoalkeeper, away, actor.IsSuspended);
             canvas.RestoreState();
         }
@@ -4751,7 +4762,9 @@ public class GameDrawable : IDrawable
             + jerseyColor.Blue * 0.114f > 0.65f ? ArenaBackground : Colors.White;
 
         var actor = isAwayPlayer ? _state.AwayPlayers[number] : _state.HomePlayers[number];
-        float legSway = (float)Math.Sin(actor.StridePhase) * 3f;
+        float movementAmount = Math.Clamp((float)(actor.MovementSpeed - 5) / 105, 0, 1);
+        float stride = (float)Math.Sin(actor.StridePhase) * movementAmount;
+        float legSway = stride * 3f;
         bool isMoving = actor.MovementSpeed > 5;
 
         // Enhanced shadow with motion blur effect when moving fast
@@ -4830,26 +4843,32 @@ public class GameDrawable : IDrawable
             canvas.FillRoundedRectangle(x - bodyW / 2 + 2, y + 1, bodyW - 4, 5, 2);
         }
 
-        // Opposite arm/leg swing, with bent elbows and a raised defensive guard.
+        // Running field players keep bent elbows below the shoulders; only a
+        // settled defender or goalkeeper uses the raised blocking stance.
         float armY = y - bodyH / 2 + 6;
-        float armSway = isMoving ? (float)Math.Sin(actor.StridePhase) * 7
+        float armSway = isMoving ? stride * (isGoalkeeper ? 7 : 3)
             : (float)Math.Sin(_state.SimulationSeconds * 2 + number) * 0.6f;
         bool defending = isAwayPlayer
             ? _state.BallOwnerType == BallOwnershipType.Player
             : _state.BallOwnerType == BallOwnershipType.Opponent;
-        float guard = isGoalkeeper ? 10 : defending ? 6 : 0;
-        float reach = isGoalkeeper ? 9 : defending ? 7 : 5;
+        float guard = isGoalkeeper ? 10 : defending ? 6 * (1 - movementAmount) : 0;
+        float reach = isGoalkeeper ? 9 : defending ? 5 + 2 * (1 - movementAmount) : 5;
         float leftShoulderX = x - bodyW / 2;
         float rightShoulderX = x + bodyW / 2;
         float leftElbowX = leftShoulderX - reach;
         float rightElbowX = rightShoulderX + reach;
-        float leftElbowY = armY + 5 - guard - armSway;
-        float rightElbowY = armY + 5 - guard + armSway;
+        float elbowDrop = isGoalkeeper ? 5 : 8;
+        float leftElbowY = armY + elbowDrop - guard - armSway;
+        float rightElbowY = armY + elbowDrop - guard + armSway;
         float leftHandX = leftElbowX + (defending || isGoalkeeper ? -2 : 3);
         float rightHandX = rightElbowX + (defending || isGoalkeeper ? 2 : -3);
-        float leftHandY = leftElbowY - 5 - Math.Max(0, armSway * 0.4f);
-        float rightHandY = rightElbowY - 5 + Math.Min(0, armSway * 0.4f);
-        if (isActive)
+        float forearmLift = isGoalkeeper ? 5 : 4;
+        float leftHandY = leftElbowY - forearmLift - (isGoalkeeper ? Math.Max(0, armSway * 0.4f) : 0);
+        float rightHandY = rightElbowY - forearmLift + (isGoalkeeper ? Math.Min(0, armSway * 0.4f) : 0);
+        bool carryingBall = isAwayPlayer
+            ? _state.BallOwnerType == BallOwnershipType.Opponent && _state.BallOwnerAwayIndex == number
+            : _state.BallOwnerType == BallOwnershipType.Player && _state.BallOwnerPlayerIndex == number;
+        if (carryingBall)
         {
             rightHandX = x + 3;
             rightHandY = _state.IsDribbleActive ? y + 6 - (float)_state.BallHeight * 12 : y - 3;
@@ -4884,8 +4903,10 @@ public class GameDrawable : IDrawable
 
         // Number on jersey
         canvas.FontColor = jerseyInk;
-        canvas.FontSize = 8;
-        canvas.DrawString(JerseyNumbers[number], x - 5, y - 1, 10, 10,
+        float numberFontSize = Math.Min(12, Math.Max(8, 4 / _camera.Scale));
+        float numberHeight = Math.Max(10, numberFontSize + 2);
+        canvas.FontSize = numberFontSize;
+        canvas.DrawString(JerseyNumbers[number], x - 5, y + 4 - numberHeight / 2, 10, numberHeight,
             G.HorizontalAlignment.Center, G.VerticalAlignment.Center);
 
         // Position label below player
@@ -4972,7 +4993,7 @@ public class GameDrawable : IDrawable
         var screen = _camera.Project(_state.BallPos);
         canvas.SaveState();
         canvas.Translate((float)screen.X, (float)screen.Y);
-        float ballScale = Math.Max(0.85f, _camera.Scale);
+        float ballScale = _camera.Scale;
         canvas.Scale(ballScale, ballScale);
         float bx = 0;
         float by = 0;
@@ -5567,10 +5588,11 @@ public class GameDrawable : IDrawable
         var frontB = _camera.Project(new Point(frontX, rect.Bottom));
         var backA = _camera.Project(new Point(backX, rect.Top));
         var backB = _camera.Project(new Point(backX, rect.Bottom));
-        float height = Math.Max(40, _camera.Scale * 48);
+        float scale = _camera.Scale;
+        float height = scale * 48;
         canvas.SaveState();
         System.Numerics.Matrix3x2.Invert(_camera.Transform, out var inverse);
-        canvas.ConcatenateTransform(inverse);
+        ConcatenateCourtTransform(canvas, inverse);
 
         _goalRoof.SetPoint(0, (float)frontA.X, (float)frontA.Y - height);
         _goalRoof.SetPoint(1, (float)frontB.X, (float)frontB.Y - height);
@@ -5580,7 +5602,7 @@ public class GameDrawable : IDrawable
         canvas.FillPath(_goalRoof);
 
         canvas.StrokeColor = CourtWhite.WithAlpha(0.32f);
-        canvas.StrokeSize = 0.8f;
+        canvas.StrokeSize = 0.8f * scale;
         for (int i = 0; i <= 12; i++)
         {
             float t = i / 12f;
@@ -5599,14 +5621,14 @@ public class GameDrawable : IDrawable
         }
 
         canvas.StrokeColor = CourtWhite;
-        canvas.StrokeSize = 3;
+        canvas.StrokeSize = 3 * scale;
         canvas.DrawLine((float)frontA.X, (float)frontA.Y, (float)frontA.X, (float)frontA.Y - height);
         canvas.DrawLine((float)frontB.X, (float)frontB.Y, (float)frontB.X, (float)frontB.Y - height);
         canvas.DrawLine((float)frontA.X, (float)frontA.Y - height, (float)frontB.X, (float)frontB.Y - height);
         canvas.StrokeColor = Color.FromArgb("#A52B3A");
-        for (float lift = 4; lift < height; lift += 12)
+        for (float lift = 4 * scale; lift < height; lift += 12 * scale)
         {
-            float end = Math.Min(height, lift + 6);
+            float end = Math.Min(height, lift + 6 * scale);
             canvas.DrawLine((float)frontA.X, (float)frontA.Y - lift, (float)frontA.X, (float)frontA.Y - end);
             canvas.DrawLine((float)frontB.X, (float)frontB.Y - lift, (float)frontB.X, (float)frontB.Y - end);
         }

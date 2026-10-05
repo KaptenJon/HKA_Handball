@@ -51,6 +51,14 @@ public class GoalAimView : ContentView
     /// <summary>Invalidate the internal graphics view to trigger a redraw.</summary>
     public void InvalidateView() => _view.Invalidate();
 
+    static RectF GetGoalBounds(float width, float height)
+    {
+        const float pad = 4;
+        float goalHeight = Math.Max(0, Math.Min(height - 22, (width - pad * 2) * 2 / 3));
+        float goalWidth = goalHeight * 1.5f;
+        return new RectF((width - goalWidth) / 2, pad, goalWidth, goalHeight);
+    }
+
     void OnTapped(object? sender, TappedEventArgs e)
     {
         var pos = e.GetPosition(_view);
@@ -60,10 +68,9 @@ public class GoalAimView : ContentView
         if (viewW <= 0 || viewH <= 0) return;
 
         // Map tap X to normalized goal position (0=left, 1=right in front view)
-        const float pad = 4f;
-        double goalLeft = pad;
-        double goalWidth = viewW - pad * 2;
-        double normalizedX = Math.Clamp((p.X - goalLeft) / goalWidth, 0, 1);
+        var goal = GetGoalBounds((float)viewW, (float)viewH);
+        if (goal.Width <= 0) return;
+        double normalizedX = Math.Clamp((p.X - goal.Left) / goal.Width, 0, 1);
         ShotAimed?.Invoke(this, normalizedX);
     }
 
@@ -78,11 +85,11 @@ public class GoalAimView : ContentView
             float h = dirtyRect.Height;
             if (w <= 0 || h <= 0) return;
 
-            const float pad = 4f;
-            float goalLeft = pad;
-            float goalTop = pad;
-            float goalWidth = w - pad * 2;
-            float goalHeight = h - pad * 2 - 14;
+            var goal = GetGoalBounds(w, h);
+            float goalLeft = goal.Left;
+            float goalTop = goal.Top;
+            float goalWidth = goal.Width;
+            float goalHeight = goal.Height;
             if (goalWidth <= 20 || goalHeight <= 12) return;
 
             // Net background

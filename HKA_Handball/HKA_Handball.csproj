@@ -18,9 +18,9 @@
         <!-- Unique app identifier for Google Play -->
         <ApplicationId>com.kaptenjon.hkahandball</ApplicationId>
 
-        <!-- Versions: bump ApplicationVersion (integer) for each Play Store upload -->
-        <ApplicationDisplayVersion>1.12.1</ApplicationDisplayVersion>
-        <ApplicationVersion>19</ApplicationVersion>
+        <!-- Versions: bump once when chat app tasks are complete, not per validation build -->
+        <ApplicationDisplayVersion>1.13.1</ApplicationDisplayVersion>
+        <ApplicationVersion>21</ApplicationVersion>
 
         <WindowsPackageType>None</WindowsPackageType>
 

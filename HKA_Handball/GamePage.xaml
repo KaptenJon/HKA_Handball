@@ -105,11 +105,8 @@
                         HeightRequest="44" MinimumWidthRequest="76"
                         Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnPassDown" />
-                <Label x:Name="DribbleButton" Grid.Row="1" Text="↕ Auto-studs" FontSize="11"
-                       TextColor="#ACBED1" VerticalOptions="Center"
-                       HorizontalTextAlignment="Center" InputTransparent="True" />
-                <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="1" Grid.Column="1"
-                        HeightRequest="64" SemanticProperties.Description="Tryck i målet för att sikta och skjuta" />
+                <controls:GoalAimView x:Name="HomeGoalAim" Grid.Row="1" Grid.ColumnSpan="2"
+                        HeightRequest="128" SemanticProperties.Description="Tryck i målet för att sikta och skjuta" />
 
                 <!-- Defense controls (visible when defending) -->
                 <Button x:Name="SwitchDefenderButton" Grid.ColumnSpan="2" Text="Byt försvarare" FontSize="14"
@@ -167,11 +164,8 @@
                         HeightRequest="44" MinimumWidthRequest="76"
                         Style="{StaticResource PressableButtonStyle}"
                         Pressed="OnAwayPassDown" />
-                <Label x:Name="AwayDribbleButton" Grid.Row="1" Text="↕ Auto-studs" FontSize="11"
-                       TextColor="#ACBED1" VerticalOptions="Center"
-                       HorizontalTextAlignment="Center" InputTransparent="True" />
-                <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="1" Grid.Column="1"
-                        HeightRequest="64" SemanticProperties.Description="Tryck i målet för att sikta och skjuta" />
+                <controls:GoalAimView x:Name="AwayGoalAim" Grid.Row="1" Grid.ColumnSpan="2"
+                        HeightRequest="128" SemanticProperties.Description="Tryck i målet för att sikta och skjuta" />
 
                 <!-- Away defense controls -->
                 <Button x:Name="AwaySwitchDefenderButton" Grid.ColumnSpan="2" Text="Byt försvarare" FontSize="14"

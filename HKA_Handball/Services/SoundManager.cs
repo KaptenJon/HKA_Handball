@@ -1,4 +1,5 @@
 using Plugin.Maui.Audio;
+using Microsoft.Extensions.Logging;
 
 namespace HKA_Handball.Services;
 
@@ -6,23 +7,42 @@ namespace HKA_Handball.Services;
 /// Manages game sound effects using Plugin.Maui.Audio.
 /// Preloads short audio clips and exposes fire-and-forget Play methods.
 /// </summary>
-public sealed class SoundManager
+public sealed class SoundManager : IDisposable
 {
+    static readonly string[] SoundNames = ["whistle", "goal", "shoot", "pass", "crowd", "click"];
     readonly IAudioManager _audioManager;
+    readonly ILogger<SoundManager> _logger;
     readonly Dictionary<string, IAudioPlayer> _players = new();
+    readonly Dictionary<string, Stream> _streams = new();
+    readonly SemaphoreSlim _preloadLock = new(1, 1);
     bool _enabled = true;
     bool _preloaded;
+    bool _disposed;
 
     /// <summary>Whether sound effects are enabled.</summary>
     public bool Enabled
     {
         get => _enabled;
-        set => _enabled = value;
+        set
+        {
+            _enabled = value;
+            if (!value)
+                foreach (var (name, player) in _players)
+                    try
+                    {
+                        player.Stop();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to stop sound {SoundName}", name);
+                    }
+        }
     }
 
-    public SoundManager(IAudioManager audioManager)
+    public SoundManager(IAudioManager audioManager, ILogger<SoundManager> logger)
     {
         _audioManager = audioManager;
+        _logger = logger;
     }
 
     /// <summary>
@@ -31,33 +51,42 @@ public sealed class SoundManager
     /// </summary>
     public async Task PreloadAsync()
     {
-        if (_preloaded) return;
-        _preloaded = true;
-
-        string[] sounds = ["whistle", "goal", "shoot", "pass", "crowd", "click"];
-        foreach (var name in sounds)
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await _preloadLock.WaitAsync();
+        try
         {
-            try
-            {
-                var stream = await FileSystem.OpenAppPackageFileAsync($"Sounds/{name}.wav");
-                var player = _audioManager.CreatePlayer(stream);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_preloaded) return;
 
-                // Dispose any previously loaded player for this name
-                if (_players.TryGetValue(name, out var old))
-                    old.Dispose();
-
-                _players[name] = player;
-            }
-            catch (FileNotFoundException)
+            foreach (var name in SoundNames)
             {
-                // Sound file not bundled – continue without it
-                System.Diagnostics.Debug.WriteLine($"[SoundManager] Sound file not found: Sounds/{name}.wav");
+                if (_players.ContainsKey(name)) continue;
+                Stream? stream = null;
+                try
+                {
+                    stream = await FileSystem.OpenAppPackageFileAsync($"Sounds/{name}.wav");
+                    if (_disposed) return;
+                    var player = _audioManager.CreatePlayer(stream);
+                    _players.Add(name, player);
+                    // Keep the input alive: some platform players consume it lazily.
+                    _streams.Add(name, stream);
+                    stream = null;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to load packaged sound Sounds/{SoundName}.wav", name);
+                }
+                finally
+                {
+                    stream?.Dispose();
+                }
             }
-            catch (Exception ex)
-            {
-                // Unsupported format or platform issue – continue without it
-                System.Diagnostics.Debug.WriteLine($"[SoundManager] Failed to load Sounds/{name}.wav: {ex.Message}");
-            }
+            // A failed clip remains retryable on the next preload call.
+            _preloaded = _players.Count == SoundNames.Length;
+        }
+        finally
+        {
+            _preloadLock.Release();
         }
     }
 
@@ -66,17 +95,52 @@ public sealed class SoundManager
     /// </summary>
     public void Play(string name, double volume = 1.0)
     {
-        if (!_enabled) return;
-        if (_players.TryGetValue(name, out var player))
+        if (!_enabled || _disposed) return;
+        if (!_players.TryGetValue(name, out var player))
+        {
+            _logger.LogWarning("Sound {SoundName} is not loaded", name);
+            return;
+        }
+        try
         {
             // Seek to start if still playing a previous instance
             if (player.IsPlaying)
                 player.Stop();
             player.Seek(0);
-            var clampedVolume = Math.Clamp(volume, 0.0, 1.0);
+            var clampedVolume = double.IsFinite(volume) ? Math.Clamp(volume, 0.0, 1.0) : 0.0;
             player.Volume = clampedVolume;
             player.Play();
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to play sound {SoundName}", name);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        foreach (var (name, player) in _players)
+            try
+            {
+                player.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to dispose sound {SoundName}", name);
+            }
+        _players.Clear();
+        foreach (var (name, stream) in _streams)
+            try
+            {
+                stream.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to dispose input stream for sound {SoundName}", name);
+            }
+        _streams.Clear();
     }
 
     public void PlayGoal() => Play("goal");

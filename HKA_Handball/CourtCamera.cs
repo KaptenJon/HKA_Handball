@@ -25,13 +25,16 @@ public readonly struct CourtCamera
         float focusY = halfHeight >= GameState.CourtHeight / 2 ? (float)GameState.CourtHeight / 2
             : Math.Clamp((float)(focus?.Y ?? GameState.CourtHeight / 2),
                 halfHeight, (float)GameState.CourtHeight - halfHeight);
-        float horizontalPadding = halfWidth + Math.Abs(shear) * Math.Min(halfHeight, (float)GameState.CourtHeight / 2);
-        float focusX = horizontalPadding >= GameState.CourtWidth / 2 ? (float)GameState.CourtWidth / 2
-            : Math.Clamp((float)(focus?.X ?? GameState.CourtWidth / 2),
-                horizontalPadding, (float)GameState.CourtWidth - horizontalPadding);
+        // Clamp the projected centre, not world X: shear otherwise hides corner players.
+        float left = Math.Min(0, shear * (float)GameState.CourtHeight);
+        float right = left + projectedWidth;
+        float focusProjectedX = (float)(focus?.X ?? GameState.CourtWidth / 2)
+            + shear * (float)(focus?.Y ?? GameState.CourtHeight / 2);
+        focusProjectedX = halfWidth >= projectedWidth / 2 ? (left + right) / 2
+            : Math.Clamp(focusProjectedX, left + halfWidth, right - halfWidth);
         Transform = new Matrix3x2(
             Scale, 0, shear * Scale, verticalScale * Scale,
-            viewport.Center.X - Scale * (focusX + shear * focusY),
+            viewport.Center.X - Scale * focusProjectedX,
             viewport.Center.Y - Scale * verticalScale * focusY);
     }
 

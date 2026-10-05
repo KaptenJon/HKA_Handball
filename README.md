@@ -18,17 +18,32 @@ A free, offline handball game built with .NET MAUI.
 
 The court keeps the same 2:1 proportions and simulation coordinates on every
 screen. Landscape Android phones are the primary layout: the camera fits the
-court between the scoreboard and the touch controls, while player and ball
-markers retain a readable minimum size. Running animation follows actual
-movement, including bent-elbow arm swings, defensive guards and a wider
-goalkeeper stance. In the TV views, raised goal frames and net roofs add depth
+court between the scoreboard and the touch controls. Single-player uses the
+taller space beside the action panel when that makes the whole court larger,
+without shrinking the aiming goal or hiding court lines behind controls.
+Upright players, ball, shadows, selection rings and raised TV goal frames use
+the court camera's uniform world scale, so zooming or resizing does not change
+their proportions relative to the court. Jersey-number legibility is bounded
+within the jersey; HUD and touch controls remain independent of camera zoom.
+Running animation follows actual
+movement speed: field players run with lowered, bent-elbow arm swings and
+opposing leg strides; defensive guards return when slowing down. Goalkeepers
+retain their raised blocking stance. Court primitives, clipping and player
+positions share the same DIP-to-pixel camera projection on Android.
+Following clamps the projected arena bounds and recentres after a possession
+jump if smooth panning would temporarily hide the ball or a controlled player.
+In the TV views, raised goal frames and net roofs add depth
 above the floor. Fixed simulation steps catch up after brief dropped frames.
 
 The menu's team-colour palettes wrap on smaller screens. Match controls resize
 for compact landscape windows and local two-player play. White markers identify
 the ball carrier; gold markers identify the controlled defender. The mini goal
-labelled **SIKTA / SKJUT** is the touch shooting control. **Auto-studs** and
-**Max 3 steg** are ball-handling indicators, not buttons.
+labelled **SIKTA / SKJUT** spans both pass-button columns and keeps the goal's
+3:2 proportions. Taps map to the visible posts (left/centre/right), including
+when the goal is centred within a compact control. Match notices focus on goals,
+free throws, penalties, suspensions and meaningful turnovers or restarts.
+Routine possession, dribbling, pass and shot narration stays out of the HUD;
+rule warnings and necessary action prompts remain visible.
 
 ### Ball handling
 
@@ -38,11 +53,51 @@ up the ball, the carrier cannot dribble again until a new catch or possession.
 They may take up to three steps and hold the ball for at most three seconds before
 passing or shooting. Pass and shoot controls remain available during dribbling.
 
+### Movement and positioning
+
+Automatic field-player running uses a shared speed limit and smooth acceleration
+and braking, rather than moving faster merely because the destination is farther
+away. Fast breaks and pass-receiving runs retain their boosts, and manual controls
+remain immediate. Releasing manual input hands the player's current movement
+speed back to the automatic movement.
+
+Attacking roles and lanes stay fixed when the ball carrier changes or a teammate
+is suspended. Wings stay wide, backs retain their lanes, and the blue pivot keeps
+a central position instead of continuously oscillating. Players take straight
+routes to their positions whenever legal, with a short detour only when needed
+to avoid a goal area. Passing no longer sends the passer toward a different lane.
+
+### Team defense
+
+Both blue (home) and red (away) defend in a stable **3–3 formation**: three field
+players stay close to, but outside, the six-metre goal area, with three further forward.
+Both rows shift together toward the ball side. Only one front-row defender
+applies limited pressure, while the others retain their lanes rather than
+swarming the same attacker. Players return to their defensive roles after
+possession changes and restarts; suspensions leave the remaining roles intact.
+The selected blue defender remains manually controllable in single-player mode,
+and both teams' selected defenders remain controllable in local two-player mode.
+Goalkeeper behaviour is unchanged.
+
 ## Download
 
 [![Google Play](https://img.shields.io/badge/Google%20Play-Download-green?logo=google-play)](https://play.google.com/store/apps/details?id=com.kaptenjon.hkahandball)
 
 ## Build
+
+### Android versioning when chat tasks are complete
+
+**When the chat's tasks are complete ("när chattens uppgifter är klara")**, and
+the completed work batch changes the Android app, increment the integer
+`ApplicationVersion` in `HKA_Handball\HKA_Handball.csproj` by exactly **1** from
+its latest value, **once per completed work batch**. Never reset, decrease or
+reuse a build version.
+
+At that completion, explicitly write a valid, suitable human-facing app version
+number in `ApplicationDisplayVersion` in the same `.csproj` (for example, `1.12.1`).
+Do not increment for each validation build or retry. Questions,
+documentation-only tasks and Windows-only changes do not trigger this update.
+These are developer/agent responsibilities, not automated version updates.
 
 ```bash
 # Debug (Android)
@@ -62,6 +117,29 @@ dotnet publish -f net10.0-android -c Release \
 See **[RELEASING.md](RELEASING.md)** for the full step-by-step guide to sign,
 build, and publish to Google Play (including how to add the signing key to
 GitHub Actions).
+
+## UI visual verification
+
+**All UI changes must be tested visually in the running app.** Open the affected
+views and exercise the changed interactions at representative screen/window
+sizes, including a compact layout where relevant.
+
+Keep checks focused on changed behavior/views and representative relevant
+formats. Reuse still-valid prior evidence for unchanged systems; do not rerun
+full game/system or multi-viewport suites after every edit. Expand coverage only
+when change risk or a targeted failure warrants it. Changed UI must still be
+visually verified in the running app; disclose blockers and pre-existing failures.
+
+Use an Android device or emulator when available. If neither is available, run
+the Windows app for visual runtime inspection. Windows verification is useful,
+but does not establish Android-device correctness. Successful builds and
+headless layout/geometry checks alone do **not** satisfy this requirement.
+
+Report the platform, screen/window sizes, views and interactions inspected, and
+the results in the change summary or PR. Identify unverified targets/platforms
+and blockers explicitly. If runtime inspection cannot be performed, report
+visual verification as incomplete, not passed. This requirement does not change
+the rule against adding test projects unless explicitly requested.
 
 ## Privacy
 
