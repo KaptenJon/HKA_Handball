@@ -19,8 +19,8 @@
         <ApplicationId>com.kaptenjon.hkahandball</ApplicationId>
 
         <!-- Versions: bump once when chat app tasks are complete, not per validation build -->
-        <ApplicationDisplayVersion>1.13.1</ApplicationDisplayVersion>
-        <ApplicationVersion>21</ApplicationVersion>
+        <ApplicationDisplayVersion>1.13.2</ApplicationDisplayVersion>
+        <ApplicationVersion>22</ApplicationVersion>
 
         <WindowsPackageType>None</WindowsPackageType>
 

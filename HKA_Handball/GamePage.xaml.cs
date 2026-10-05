@@ -133,10 +133,7 @@ public partial class GamePage : ContentPage
             AwayPassUpButton.FontSize = AwayPassDownButton.FontSize = compactLocal ? 12 : 14;
         PassUpButton.Padding = PassDownButton.Padding =
             AwayPassUpButton.Padding = AwayPassDownButton.Padding = new Microsoft.Maui.Thickness(6, 0);
-        _drawable.ControlsBottomInset = (float)(goalHeight + controlOverhead);
         _drawable.CourtTopInset = courtTopInset;
-        _drawable.ControlsSideInset = (float)(actionWidth + 8);
-        _drawable.JoystickBottomInset = (float)(joystickSize + 24);
         if (_gameMode == GameMode.SinglePlayer)
         {
             StatusBadge.VerticalOptions = LayoutOptions.End;
@@ -149,13 +146,11 @@ public partial class GamePage : ContentPage
             double inset = stacked ? HudBottomMargin : joystickSize + 32;
             Player1Buttons.Margin = new Microsoft.Maui.Thickness(inset, 0, 0, HudBottomMargin);
             Player2Buttons.Margin = new Microsoft.Maui.Thickness(0, 0, inset, HudBottomMargin);
-            double stackedJoystickInset = _drawable.ControlsBottomInset + HudBottomMargin;
+            double stackedJoystickInset = goalHeight + controlOverhead + HudBottomMargin;
             JoystickPanel.Margin = new Microsoft.Maui.Thickness(HudBottomMargin, 0, 0,
                 stacked ? stackedJoystickInset : HudBottomMargin);
             Joystick2Panel.Margin = new Microsoft.Maui.Thickness(0, 0, HudBottomMargin,
                 stacked ? stackedJoystickInset : HudBottomMargin);
-            if (stacked)
-                _drawable.ControlsBottomInset = (float)(stackedJoystickInset + joystickSize + 12);
         }
         UpdateCameraButtonText();
         GameView.Invalidate();
@@ -4237,10 +4232,7 @@ public class GameDrawable : IDrawable
             _lastCameraSimulationSeconds = _state.SimulationSeconds;
         }
     }
-    public float ControlsBottomInset { get; set; } = 148;
     public float CourtTopInset { get; set; } = 100;
-    public float ControlsSideInset { get; set; }
-    public float JoystickBottomInset { get; set; } = 136;
 
     // Confetti colors (updated per-game based on team colors)
     readonly Color[] _confettiColors;
@@ -4366,10 +4358,8 @@ public class GameDrawable : IDrawable
 
         var gameplayViewport = GetCourtViewport(new Size(dirtyRect.Width, dirtyRect.Height));
         float clipTop = Math.Max(0, CourtTopInset - 36);
-        float clipRight = gameplayViewport.Width < Math.Max(1, dirtyRect.Width - 24)
-            ? gameplayViewport.Right : dirtyRect.Width;
         canvas.SaveState();
-        canvas.ClipRectangle(0, clipTop, clipRight, Math.Max(1, gameplayViewport.Bottom - clipTop));
+        canvas.ClipRectangle(0, clipTop, dirtyRect.Width, Math.Max(1, gameplayViewport.Bottom - clipTop));
         canvas.SaveState();
         ConcatenateCourtTransform(canvas, _camera.Transform);
         DrawField(canvas, courtRect);
@@ -4402,19 +4392,10 @@ public class GameDrawable : IDrawable
 
     RectF GetCourtViewport(Size viewSize)
     {
+        // Controls overlay play; only the HUD and a small edge margin reserve space.
         float width = Math.Max(1, (float)viewSize.Width - 24);
-        float height = Math.Max(1, (float)viewSize.Height - CourtTopInset - ControlsBottomInset);
-        var aboveControls = new RectF(12, CourtTopInset, width, height);
-        if (_state.Mode != GameMode.SinglePlayer || ControlsSideInset <= 0)
-            return aboveControls;
-
-        // Use the taller space beside the action panel only when the full court fits larger.
-        var besideControls = new RectF(12, CourtTopInset,
-            Math.Max(1, width - ControlsSideInset),
-            Math.Max(1, (float)viewSize.Height - CourtTopInset - JoystickBottomInset));
-        bool tilted = CameraMode != CourtCameraMode.Tactical;
-        return new CourtCamera(besideControls, tilted).Scale > new CourtCamera(aboveControls, tilted).Scale
-            ? besideControls : aboveControls;
+        float height = Math.Max(1, (float)viewSize.Height - CourtTopInset - 12);
+        return new RectF(12, CourtTopInset, width, height);
     }
 
     CourtCamera CreateCamera(Size viewSize) => new(GetCourtViewport(viewSize),

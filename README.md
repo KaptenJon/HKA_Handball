@@ -18,9 +18,10 @@ A free, offline handball game built with .NET MAUI.
 
 The court keeps the same 2:1 proportions and simulation coordinates on every
 screen. Landscape Android phones are the primary layout: the camera fits the
-court between the scoreboard and the touch controls. Single-player uses the
-taller space beside the action panel when that makes the whole court larger,
-without shrinking the aiming goal or hiding court lines behind controls.
+court across the available screen below the scoreboard, with only a small edge
+margin. Touch controls overlay the court instead of reserving space beside or
+below it, in both single-player and local two-player matches. The aiming goal
+keeps its size, and all three camera modes use the larger playing area.
 Upright players, ball, shadows, selection rings and raised TV goal frames use
 the court camera's uniform world scale, so zooming or resizing does not change
 their proportions relative to the court. Jersey-number legibility is bounded
