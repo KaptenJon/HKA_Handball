@@ -4216,6 +4216,10 @@ public class GameDrawable : IDrawable
     readonly PathF _goalRoof = new();
     CourtCamera _camera;
     Size _canvasScale = new(1, 1);
+#if ANDROID
+    readonly Android.Graphics.Matrix _androidCourtTransform = new();
+    readonly float[] _androidCourtTransformValues = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+#endif
     public Func<Size>? GetCanvasPixelSize { get; set; }
     Point _cameraFocus = new(GameState.CourtWidth / 2, GameState.CourtHeight / 2);
     double _lastCameraSimulationSeconds;
@@ -4414,7 +4418,24 @@ public class GameDrawable : IDrawable
         {
             var density = System.Numerics.Matrix3x2.CreateScale((float)_canvasScale.Width, (float)_canvasScale.Height);
             System.Numerics.Matrix3x2.Invert(density, out var inverseDensity);
-            scalingCanvas.ParentCanvas.ConcatenateTransform(inverseDensity * transform * density);
+            var pixelTransform = inverseDensity * transform * density;
+#if ANDROID
+            if (scalingCanvas.ParentCanvas is Microsoft.Maui.Graphics.Platform.PlatformCanvas platformCanvas)
+            {
+                // MAUI 10.0.110 AsMatrix swaps M31/M32. Native Concat also preserves
+                // the view's existing transform instead of replacing its matrix.
+                _androidCourtTransformValues[0] = pixelTransform.M11;
+                _androidCourtTransformValues[1] = pixelTransform.M21;
+                _androidCourtTransformValues[2] = pixelTransform.M31;
+                _androidCourtTransformValues[3] = pixelTransform.M12;
+                _androidCourtTransformValues[4] = pixelTransform.M22;
+                _androidCourtTransformValues[5] = pixelTransform.M32;
+                _androidCourtTransform.SetValues(_androidCourtTransformValues);
+                platformCanvas.Canvas.Concat(_androidCourtTransform);
+                return;
+            }
+#endif
+            scalingCanvas.ParentCanvas.ConcatenateTransform(pixelTransform);
         }
         else
             canvas.ConcatenateTransform(transform);

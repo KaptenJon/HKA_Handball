@@ -31,6 +31,8 @@ movement speed: field players run with lowered, bent-elbow arm swings and
 opposing leg strides; defensive guards return when slowing down. Goalkeepers
 retain their raised blocking stance. Court primitives, clipping and player
 positions share the same DIP-to-pixel camera projection on Android.
+Android camera matrices are applied directly to the native canvas, preserving
+X/Y translation and the view transform for court clipping and raised goals.
 Following clamps the projected arena bounds and recentres after a possession
 jump if smooth panning would temporarily hide the ball or a controlled player.
 In the TV views, raised goal frames and net roofs add depth
