@@ -1,3 +1,4 @@
+<!-- squad:copilot-instructions:start -->
 # Copilot Coding Agent — Squad Instructions
 
 You are working on a project that uses **Squad**, an AI team framework. When picking up issues autonomously, follow these guidelines.
@@ -55,6 +56,15 @@ When opening a PR:
 - If this is a 🟡 needs-review task, add to the PR description: `⚠️ This task was flagged as "needs review" — please have a squad member review before merging.`
 - Follow any project conventions in `.squad/decisions.md`
 
+## Decisions
+
+If you make a decision that affects other team members, write it to:
+```
+.squad/decisions/inbox/copilot-{brief-slug}.md
+```
+The Scribe will merge it into the shared decisions file.
+<!-- squad:copilot-instructions:end -->
+
 ## Android Versioning at Chat Task Completion
 
 When the chat's tasks are complete ("när chattens uppgifter är klara"), and the
@@ -77,15 +87,7 @@ headless checks alone are insufficient; Windows runtime inspection is useful
 when Android is unavailable, but does not count as Android-device verification.
 
 Keep verification focused on changed behavior/views and representative relevant
-formats. Reuse still-valid prior evidence for unchanged systems rather than
-rerunning full game/system or multi-viewport suites after every edit; expand
-only when change risk or a targeted failure warrants it. Changed UI still
-requires runtime visual verification; disclose blockers and pre-existing failures.
-
-## Decisions
-
-If you make a decision that affects other team members, write it to:
-```
-.squad/decisions/inbox/copilot-{brief-slug}.md
-```
-The Scribe will merge it into the shared decisions file.
+formats. Reuse still-valid prior evidence for unchanged systems; do not rerun
+full game/system or multi-viewport suites after every edit. Expand coverage only
+when change risk or a targeted failure warrants it. Changed UI still requires
+runtime visual verification; disclose blockers and pre-existing failures.
