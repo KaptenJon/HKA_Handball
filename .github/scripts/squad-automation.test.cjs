@@ -555,7 +555,7 @@ test('CI runs the actual automation contract assertions', () => {
 const node24ActionPins = new Map([
   ['actions/checkout', '3d3c42e5aac5ba805825da76410c181273ba90b1'],
   ['actions/github-script', '3a2844b7e9c422d3c10d287c895573f7108da1b3'],
-  ['actions/setup-node', '249970729cb0ef3589644e2896645e5dc5ba9c38'],
+  ['actions/setup-node', '949feb2413d6458794dcd2491c4babbbce0c15c1'],
   ['actions/upload-pages-artifact', 'fc324d3547104276b827a68afc52ff2a11cc49c9'],
   ['actions/deploy-pages', '368f82528645a54fb793d4d04e342629a3f51346']
 ]);
@@ -576,6 +576,34 @@ test('active workflows and installed templates pin verified Node 24 action relea
       assertNode24ActionPins(readFileSync(path, 'utf8'), path);
     }
   }
+});
+
+function assertSetupNode26(source, path) {
+  const setups = [...source.matchAll(/^[ \t]*-[ \t]*uses:[ \t]*actions\/setup-node@/gm)];
+  const versions = [...source.matchAll(
+    /^[ \t]*-[ \t]*uses:[ \t]*actions\/setup-node@[^\r\n]*\r?\n[ \t]+with:\r?\n[ \t]+node-version:[ \t]*(['"]?)([^'"\s#]+)\1/gm
+  )];
+  assert.equal(versions.length, setups.length, `${path}: every setup-node must configure node-version`);
+  for (const [, , version] of versions) {
+    assert.equal(version, '26', `${path}: setup-node must configure Node 26`);
+  }
+}
+
+test('active workflows and installed templates configure setup-node with Node 26', () => {
+  for (const directory of [join('.github', 'workflows'), join('.squad', 'templates', 'workflows')]) {
+    for (const name of readdirSync(directory).filter(name => /\.ya?ml$/.test(name))) {
+      const path = join(directory, name);
+      assertSetupNode26(readFileSync(path, 'utf8'), path);
+    }
+  }
+});
+
+test('the setup-node runtime assertion rejects a workflow changed back to Node 24', () => {
+  const path = join('.github', 'workflows', 'squad-ci.yml');
+  const source = readFileSync(path, 'utf8');
+  const mutated = source.replace(/node-version: 26/, 'node-version: 24');
+  assert.notEqual(mutated, source, 'The mutation must change the production Node runtime');
+  assert.throws(() => assertSetupNode26(mutated, path), /setup-node must configure Node 26/);
 });
 
 test('the action-runtime assertion rejects a real workflow mutated back to Node 20', () => {
