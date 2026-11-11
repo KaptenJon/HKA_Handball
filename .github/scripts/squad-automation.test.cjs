@@ -555,7 +555,7 @@ test('CI runs the actual automation contract assertions', () => {
 const node24ActionPins = new Map([
   ['actions/checkout', '3d3c42e5aac5ba805825da76410c181273ba90b1'],
   ['actions/github-script', '3a2844b7e9c422d3c10d287c895573f7108da1b3'],
-  ['actions/setup-node', '249970729cb0ef3589644e2896645e5dc5ba9c38'],
+  ['actions/setup-node', '949feb2413d6458794dcd2491c4babbbce0c15c1'],
   ['actions/upload-pages-artifact', 'fc324d3547104276b827a68afc52ff2a11cc49c9'],
   ['actions/deploy-pages', '368f82528645a54fb793d4d04e342629a3f51346']
 ]);
