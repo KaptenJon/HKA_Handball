@@ -578,6 +578,34 @@ test('active workflows and installed templates pin verified Node 24 action relea
   }
 });
 
+function assertSetupNode24(source, path) {
+  const setups = [...source.matchAll(/^[ \t]*-[ \t]*uses:[ \t]*actions\/setup-node@/gm)];
+  const versions = [...source.matchAll(
+    /^[ \t]*-[ \t]*uses:[ \t]*actions\/setup-node@[^\r\n]*\r?\n[ \t]+with:\r?\n[ \t]+node-version:[ \t]*(['"]?)([^'"\s#]+)\1/gm
+  )];
+  assert.equal(versions.length, setups.length, `${path}: every setup-node must configure node-version`);
+  for (const [, , version] of versions) {
+    assert.equal(version, '24', `${path}: setup-node must configure Node 24`);
+  }
+}
+
+test('active workflows and installed templates configure setup-node with Node 24', () => {
+  for (const directory of [join('.github', 'workflows'), join('.squad', 'templates', 'workflows')]) {
+    for (const name of readdirSync(directory).filter(name => /\.ya?ml$/.test(name))) {
+      const path = join(directory, name);
+      assertSetupNode24(readFileSync(path, 'utf8'), path);
+    }
+  }
+});
+
+test('the setup-node runtime assertion rejects a workflow changed back to Node 22', () => {
+  const path = join('.github', 'workflows', 'squad-ci.yml');
+  const source = readFileSync(path, 'utf8');
+  const mutated = source.replace(/node-version: 24/, 'node-version: 22');
+  assert.notEqual(mutated, source, 'The mutation must change the production Node runtime');
+  assert.throws(() => assertSetupNode24(mutated, path), /setup-node must configure Node 24/);
+});
+
 test('the action-runtime assertion rejects a real workflow mutated back to Node 20', () => {
   const path = join('.github', 'workflows', 'squad-start-work.yml');
   const source = readFileSync(path, 'utf8');
