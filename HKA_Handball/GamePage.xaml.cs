@@ -601,8 +601,9 @@ public class GameState
     const double PenaltySaveChance = 0.45; // 45% GK save on penalties
     const double PenaltyAwardChance = 0.12; // reduced by 60% (was 0.30) for fewer penalty calls
 
-    // 2-minute suspension constants (approximate at ~62.5fps from 0.016f dt)
-    const int SuspensionDurationTicks = 7500; // ~2 real minutes at ~62.5fps
+    // Two minutes of match-clock time at the fixed simulation step
+    const double SuspensionDurationGameSeconds = 2 * 60;
+    const int SuspensionDurationTicks = (int)(SuspensionDurationGameSeconds / (SimulationStepSeconds * GameTimeMultiplier));
     const double SuspensionChance = 0.05; // general foul-check chance for a suspension; reduced from 0.12 for fewer suspensions
 
     // Shot distance factor constants
@@ -1608,6 +1609,11 @@ public class GameState
         if (!IsMatchOver && !IsHalfTime && !_resettingAfterGoal)
         {
             MatchClockSeconds += dt * GameTimeMultiplier;
+            foreach (var a in HomePlayers)
+                if (a.SuspensionTicks > 0) a.SuspensionTicks--;
+            foreach (var a in AwayPlayers)
+                if (a.SuspensionTicks > 0) a.SuspensionTicks--;
+
             if (MatchClockSeconds >= HalfDurationSeconds)
             {
                 MatchClockSeconds = HalfDurationSeconds;
@@ -1666,11 +1672,6 @@ public class GameState
         // Fast break timers
         if (_homeFastBreakTicks > 0) _homeFastBreakTicks--;
         if (_awayFastBreakTicks > 0) _awayFastBreakTicks--;
-
-        // Suspension timers
-        foreach (var team in new[] { HomePlayers, AwayPlayers })
-            foreach (var a in team)
-                if (a.SuspensionTicks > 0) a.SuspensionTicks--;
 
         // Passive play tracking
         bool isHomePassivePossession = BallOwnerType == BallOwnershipType.Player && !_shootActive && !_passActive && !_dribbleActive;
