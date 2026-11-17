@@ -126,14 +126,14 @@ If you prefer to build the signed AAB on your machine:
 
 ```bash
 dotnet publish HKA_Handball/HKA_Handball.csproj \
-  -f net10.0-android \
+  -f net11.0-android \
   -c Release \
   -p:AndroidSigningStorePass=YOUR_PASSWORD \
   -p:AndroidSigningKeyPass=YOUR_PASSWORD
 ```
 
 The signed AAB will be in
-`HKA_Handball/bin/Release/net10.0-android/publish/`.
+`HKA_Handball/bin/Release/net11.0-android/publish/`.
 
 ---
 

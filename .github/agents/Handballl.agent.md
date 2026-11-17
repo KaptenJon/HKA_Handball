@@ -58,7 +58,7 @@ This project follows these conventions:
 - Prefer `const` or `static readonly` for game-tuning values so they are easy to find and adjust.
 - Use meaningful names that reflect handball terminology where appropriate (e.g., `GoalArea`, `FreeThrow`, `Pivot`, `Wing`).
 - When adding new game features, respect existing handball rules already implemented (goal-area violations, possession changes, goalkeeper behavior).
-- Target **net10.0-android** as the primary platform; ensure Windows compatibility where feasible.
-- Build the project with: `dotnet build HKA_Handball/HKA_Handball.csproj -f net10.0-android -c Debug`.
+- Target **net11.0-android** as the primary platform and **net11.0-windows10.0.19041.0** for Windows.
+- Build the project with: `dotnet build HKA_Handball/HKA_Handball.csproj -f net11.0-android -c Debug`.
 - This project has no test infrastructure; do not add test projects unless explicitly asked.
 - Keep the app free, offline, ad-free, and privacy-respecting — no telemetry, no network calls, no in-app purchases.

@@ -104,10 +104,13 @@ These are developer/agent responsibilities, not automated version updates.
 
 ```bash
 # Debug (Android)
-dotnet build -f net10.0-android
+dotnet build -f net11.0-android
+
+# Debug (Windows)
+dotnet build -f net11.0-windows10.0.19041.0
 
 # Release AAB for Google Play
-dotnet publish -f net10.0-android -c Release \
+dotnet publish -f net11.0-android -c Release \
   -p:AndroidSigningStorePass=YOUR_PASSWORD \
   -p:AndroidSigningKeyPass=YOUR_PASSWORD
 ```

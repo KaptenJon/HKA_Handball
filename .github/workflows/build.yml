@@ -28,8 +28,8 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: '10.0.x'
-        dotnet-quality: 'preview'
+        dotnet-version: '11.0.x'
+        dotnet-quality: 'ga'
 
     - name: Install MAUI workload
       run: dotnet workload install maui-android
@@ -38,11 +38,11 @@ jobs:
       run: dotnet restore HKA_Handball/HKA_Handball.csproj
 
     - name: Build Android Debug
-      run: dotnet build HKA_Handball/HKA_Handball.csproj -f net10.0-android -c Debug --no-restore
+      run: dotnet build HKA_Handball/HKA_Handball.csproj -f net11.0-android -c Debug --no-restore
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v7
       with:
         name: android-debug-apk
-        path: HKA_Handball/bin/Debug/net10.0-android/*.apk
+        path: HKA_Handball/bin/Debug/net11.0-android/*.apk
         retention-days: 14

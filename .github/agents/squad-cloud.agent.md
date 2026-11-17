@@ -33,7 +33,7 @@ Do not claim a requested model was used if the cloud host reports otherwise.
    invoke Review Comment Fixer, not the original implementation agent, to address
    the feedback. Re-review after fixes; never claim a review that did not run.
 6. Run the smallest relevant validation. Gameplay changes require
-   `dotnet build HKA_Handball/HKA_Handball.csproj -f net10.0-android -c Debug`.
+   `dotnet build HKA_Handball/HKA_Handball.csproj -f net11.0-android -c Debug`.
    Automation changes require the workflow script checks documented in README.md.
    Do not introduce a .NET test project. Report missing tools and failed checks.
 7. Open one draft pull request against the default branch with `Closes #<issue>`,
