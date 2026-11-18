@@ -374,5 +374,7 @@ FodyWeavers.xsd
 .squad/sessions/
 .squad/.scratch/
 .squad/.cache/
+# Copilot-created worktrees
+/copilot-worktrees/
 # Squad: SubSquad activation file (local to this machine)
 .squad-workstream
